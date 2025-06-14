@@ -4,11 +4,15 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Progress } from "@/components/ui/progress";
-import { Calendar, Bot, Image, Settings, BarChart3, Clock, Users, Zap } from "lucide-react";
+import { Calendar, Bot, Image, Settings, BarChart3, Clock, Users, Zap, LogOut } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
 
 const Index = () => {
   const navigate = useNavigate();
+  const { signOut, user } = useAuth();
+  const { toast } = useToast();
   const [stats] = useState({
     todayPosts: 12,
     scheduledPosts: 24,
@@ -47,6 +51,14 @@ const Index = () => {
     }
   ];
 
+  const handleSignOut = async () => {
+    await signOut();
+    toast({
+      title: "ログアウト",
+      description: "正常にログアウトしました。",
+    });
+  };
+
   return (
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-7xl mx-auto space-y-6">
@@ -54,12 +66,20 @@ const Index = () => {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold text-foreground">AIThreads ダッシュボード</h1>
-            <p className="text-muted-foreground">自動運用ツールで効率的なSNS管理</p>
+            <p className="text-muted-foreground">
+              こんにちは、{user?.email}さん！自動運用ツールで効率的なSNS管理
+            </p>
           </div>
-          <Button onClick={() => navigate("/settings")} variant="outline" size="sm">
-            <Settings className="h-4 w-4 mr-2" />
-            設定
-          </Button>
+          <div className="flex gap-2">
+            <Button onClick={() => navigate("/settings")} variant="outline" size="sm">
+              <Settings className="h-4 w-4 mr-2" />
+              設定
+            </Button>
+            <Button onClick={handleSignOut} variant="outline" size="sm">
+              <LogOut className="h-4 w-4 mr-2" />
+              ログアウト
+            </Button>
+          </div>
         </div>
 
         {/* Stats Cards */}
