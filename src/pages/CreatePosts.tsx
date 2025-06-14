@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,56 +6,176 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Bot, Calendar, Hash, Image, Settings, Wand2 } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { ArrowLeft, Bot, Calendar, Hash, Image, Settings, Wand2, Loader2, Save, Users } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
+import type { Database } from "@/integrations/supabase/types";
+
+type Persona = Database['public']['Tables']['personas']['Row'];
+type GeneratedPost = {
+  id: string;
+  content: string;
+  hashtags: string[];
+  scheduled_for: string;
+  edited: boolean;
+};
 
 const CreatePosts = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { user } = useAuth();
   const [currentStep, setCurrentStep] = useState(1);
+  const [generating, setGenerating] = useState(false);
+  const [saving, setSaving] = useState(false);
+  
+  const [personas, setPersonas] = useState<Persona[]>([]);
+  const [selectedPersona, setSelectedPersona] = useState<string>("");
+  const [loadingPersonas, setLoadingPersonas] = useState(true);
   
   const [settings, setSettings] = useState({
-    postCount: 10,
+    postCount: 5,
     startTime: "09:00",
     endTime: "21:00",
     interval: 2,
     topics: ["テクノロジー", "ライフスタイル"]
   });
 
-  const [generatedPosts, setGeneratedPosts] = useState([
-    {
-      id: 1,
-      time: "09:00",
-      content: "おはよう！今日も素敵な一日を始めましょう✨ 朝のコーヒーを飲みながら、新しいテクノロジーのニュースをチェック中です。AIの進歩って本当にすごいですね！",
-      hashtags: ["#朝活", "#テクノロジー", "#AI"],
-      edited: false
-    },
-    {
-      id: 2,
-      time: "12:00",
-      content: "ランチタイム🍽️ 今日はヘルシーなサラダボウルを作ってみました。バランスの良い食事は心と体の健康に大切ですよね。皆さんはどんなランチを楽しんでいますか？",
-      hashtags: ["#ランチ", "#ヘルシー", "#ライフスタイル"],
-      edited: false
-    }
-  ]);
-
+  const [generatedPosts, setGeneratedPosts] = useState<GeneratedPost[]>([]);
   const [newTopic, setNewTopic] = useState("");
 
-  const handleGeneratePosts = () => {
-    toast({
-      title: "投稿を生成しています...",
-      description: "GeminiAPIを使用して投稿を生成中です。",
-    });
+  useEffect(() => {
+    loadPersonas();
+  }, [user]);
+
+  const loadPersonas = async () => {
+    if (!user) return;
     
-    // Simulate API call
-    setTimeout(() => {
+    setLoadingPersonas(true);
+    try {
+      const { data, error } = await supabase
+        .from('personas')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setPersonas(data || []);
+      
+      // Auto-select first persona if available
+      if (data && data.length > 0) {
+        setSelectedPersona(data[0].id);
+      }
+    } catch (error) {
+      console.error('Error loading personas:', error);
+      toast({
+        title: "エラー",
+        description: "ペルソナの読み込みに失敗しました。",
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingPersonas(false);
+    }
+  };
+
+  const handleGeneratePosts = async () => {
+    if (!selectedPersona) {
+      toast({
+        title: "エラー",
+        description: "ペルソナを選択してください。",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (settings.topics.length === 0) {
+      toast({
+        title: "エラー",
+        description: "投稿トピックを少なくとも1つ追加してください。",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setGenerating(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('generate-posts', {
+        body: {
+          personaId: selectedPersona,
+          topics: settings.topics,
+          postCount: settings.postCount,
+          startTime: settings.startTime,
+          endTime: settings.endTime,
+          interval: settings.interval,
+          user_id: user?.id
+        }
+      });
+
+      if (error) throw error;
+
+      const postsWithIds = data.posts.map((post: any, index: number) => ({
+        ...post,
+        id: `generated-${index}`,
+        edited: false
+      }));
+
+      setGeneratedPosts(postsWithIds);
+      setCurrentStep(2);
+      
       toast({
         title: "投稿生成完了！",
         description: `${settings.postCount}件の投稿を生成しました。`,
       });
-      setCurrentStep(2);
-    }, 2000);
+    } catch (error) {
+      console.error('Error generating posts:', error);
+      toast({
+        title: "エラー",
+        description: "投稿の生成に失敗しました。OpenAI APIキーが設定されているか確認してください。",
+        variant: "destructive",
+      });
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const savePosts = async () => {
+    setSaving(true);
+    try {
+      const postsToSave = generatedPosts.map(post => ({
+        content: post.content,
+        hashtags: post.hashtags,
+        scheduled_for: post.scheduled_for,
+        persona_id: selectedPersona,
+        user_id: user?.id,
+        status: 'scheduled' as const,
+        platform: 'threads'
+      }));
+
+      const { error } = await supabase
+        .from('posts')
+        .insert(postsToSave);
+
+      if (error) throw error;
+
+      toast({
+        title: "投稿を保存しました",
+        description: `${generatedPosts.length}件の投稿を予約投稿として保存しました。`,
+      });
+      
+      navigate('/scheduled-posts');
+    } catch (error) {
+      console.error('Error saving posts:', error);
+      toast({
+        title: "エラー",
+        description: "投稿の保存に失敗しました。",
+        variant: "destructive",
+      });
+    } finally {
+      setSaving(false);
+    }
   };
 
   const addTopic = () => {
@@ -75,7 +195,7 @@ const CreatePosts = () => {
     }));
   };
 
-  const updatePost = (id: number, content: string) => {
+  const updatePost = (id: string, content: string) => {
     setGeneratedPosts(prev => 
       prev.map(post => 
         post.id === id 
@@ -85,9 +205,13 @@ const CreatePosts = () => {
     );
   };
 
-  const proceedToImageGeneration = () => {
-    navigate("/image-generation", { 
-      state: { posts: generatedPosts } 
+  const formatScheduledTime = (isoString: string) => {
+    const date = new Date(isoString);
+    return date.toLocaleString('ja-JP', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
     });
   };
 
@@ -132,6 +256,89 @@ const CreatePosts = () => {
 
         <Tabs value={currentStep === 1 ? "settings" : "posts"} className="space-y-6">
           <TabsContent value="settings" className="space-y-6">
+            {/* Persona Selection */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Users className="h-5 w-5" />
+                  ペルソナ選択
+                </CardTitle>
+                <CardDescription>
+                  投稿を生成するペルソナを選択してください
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {loadingPersonas ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-6 w-6 animate-spin mr-2" />
+                    <span>ペルソナを読み込み中...</span>
+                  </div>
+                ) : personas.length === 0 ? (
+                  <div className="text-center py-8">
+                    <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                    <p className="text-muted-foreground mb-4">ペルソナが見つかりません</p>
+                    <Button onClick={() => navigate("/persona-setup")} variant="outline">
+                      ペルソナを作成する
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <Label>使用するペルソナ</Label>
+                    <Select value={selectedPersona} onValueChange={setSelectedPersona}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="ペルソナを選択" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {personas.map((persona) => (
+                          <SelectItem key={persona.id} value={persona.id}>
+                            <div className="flex items-center gap-3">
+                              <Avatar className="h-6 w-6">
+                                <AvatarImage src={persona.avatar_url || ""} />
+                                <AvatarFallback>{persona.name[0]?.toUpperCase()}</AvatarFallback>
+                              </Avatar>
+                              <span>{persona.name}</span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    
+                    {selectedPersona && (
+                      <div className="p-4 bg-muted rounded-lg">
+                        {(() => {
+                          const persona = personas.find(p => p.id === selectedPersona);
+                          return persona ? (
+                            <div className="flex items-center gap-4">
+                              <Avatar className="h-12 w-12">
+                                <AvatarImage src={persona.avatar_url || ""} />
+                                <AvatarFallback>{persona.name[0]?.toUpperCase()}</AvatarFallback>
+                              </Avatar>
+                              <div>
+                                <h3 className="font-semibold">{persona.name}</h3>
+                                {persona.age && <p className="text-sm text-muted-foreground">{persona.age}</p>}
+                                {persona.personality && (
+                                  <p className="text-sm mt-1 line-clamp-2">{persona.personality}</p>
+                                )}
+                                {persona.expertise && persona.expertise.length > 0 && (
+                                  <div className="flex flex-wrap gap-1 mt-2">
+                                    {persona.expertise.slice(0, 3).map((skill, index) => (
+                                      <Badge key={index} variant="secondary" className="text-xs">
+                                        {skill}
+                                      </Badge>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          ) : null;
+                        })()}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -152,7 +359,7 @@ const CreatePosts = () => {
                       value={settings.postCount}
                       onChange={(e) => setSettings(prev => ({ ...prev, postCount: parseInt(e.target.value) }))}
                       min="1"
-                      max="100"
+                      max="20"
                     />
                   </div>
                   <div className="space-y-2">
@@ -214,9 +421,22 @@ const CreatePosts = () => {
                 </div>
 
                 <div className="flex justify-end">
-                  <Button onClick={handleGeneratePosts} size="lg">
-                    <Wand2 className="h-4 w-4 mr-2" />
-                    投稿を生成
+                  <Button 
+                    onClick={handleGeneratePosts} 
+                    size="lg"
+                    disabled={generating || !selectedPersona}
+                  >
+                    {generating ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        生成中...
+                      </>
+                    ) : (
+                      <>
+                        <Wand2 className="h-4 w-4 mr-2" />
+                        投稿を生成
+                      </>
+                    )}
                   </Button>
                 </div>
               </CardContent>
@@ -242,7 +462,7 @@ const CreatePosts = () => {
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
                             <Calendar className="h-4 w-4" />
-                            <span className="text-sm font-medium">{post.time}</span>
+                            <span className="text-sm font-medium">{formatScheduledTime(post.scheduled_for)}</span>
                           </div>
                           {post.edited && (
                             <Badge variant="outline" className="text-orange-600 border-orange-200">
@@ -275,9 +495,18 @@ const CreatePosts = () => {
                   <Button onClick={() => setCurrentStep(1)} variant="outline">
                     設定に戻る
                   </Button>
-                  <Button onClick={proceedToImageGeneration}>
-                    <Image className="h-4 w-4 mr-2" />
-                    画像生成へ進む
+                  <Button onClick={savePosts} disabled={saving}>
+                    {saving ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        保存中...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="h-4 w-4 mr-2" />
+                        投稿を保存
+                      </>
+                    )}
                   </Button>
                 </div>
               </CardContent>
