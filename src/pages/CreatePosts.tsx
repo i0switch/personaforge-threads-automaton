@@ -167,7 +167,7 @@ const CreatePosts = () => {
         description: `${generatedPosts.length}件の投稿を予約投稿として保存しました。`,
       });
       
-      navigate('/scheduled-posts');
+      setCurrentStep(3);
     } catch (error) {
       console.error('Error saving posts:', error);
       toast({
@@ -202,6 +202,16 @@ const CreatePosts = () => {
       prev.map(post => 
         post.id === id 
           ? { ...post, content, edited: true }
+          : post
+      )
+    );
+  };
+
+  const updatePostSchedule = (id: string, scheduled_for: string) => {
+    setGeneratedPosts(prev => 
+      prev.map(post => 
+        post.id === id 
+          ? { ...post, scheduled_for, edited: true }
           : post
       )
     );
@@ -256,7 +266,7 @@ const CreatePosts = () => {
           </div>
         </div>
 
-        <Tabs value={currentStep === 1 ? "settings" : "posts"} className="space-y-6">
+        <Tabs value={currentStep === 1 ? "settings" : currentStep === 2 ? "posts" : "images"} className="space-y-6">
           <TabsContent value="settings" className="space-y-6">
             {/* Persona Selection */}
             <Card>
@@ -481,7 +491,12 @@ const CreatePosts = () => {
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
                             <Calendar className="h-4 w-4" />
-                            <span className="text-sm font-medium">{formatScheduledTime(post.scheduled_for)}</span>
+                            <Input
+                              type="datetime-local"
+                              value={new Date(post.scheduled_for).toISOString().slice(0, 16)}
+                              onChange={(e) => updatePostSchedule(post.id, new Date(e.target.value).toISOString())}
+                              className="w-auto text-sm"
+                            />
                           </div>
                           {post.edited && (
                             <Badge variant="outline" className="text-orange-600 border-orange-200">
@@ -519,6 +534,37 @@ const CreatePosts = () => {
                       </>
                     )}
                   </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="images" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Image className="h-5 w-5" />
+                  画像生成
+                </CardTitle>
+                <CardDescription>
+                  投稿用の画像を生成します（今後実装予定）
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="text-center py-12">
+                  <Image className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+                  <h3 className="text-lg font-medium mb-2">画像生成機能</h3>
+                  <p className="text-muted-foreground mb-6">
+                    AIを使用して投稿に適した画像を自動生成する機能を準備中です。
+                  </p>
+                  <div className="flex justify-center gap-4">
+                    <Button onClick={() => setCurrentStep(2)} variant="outline">
+                      投稿編集に戻る
+                    </Button>
+                    <Button onClick={() => navigate('/scheduled-posts')} className="bg-primary text-primary-foreground">
+                      予約投稿を確認
+                    </Button>
+                  </div>
                 </div>
               </CardContent>
             </Card>
