@@ -47,8 +47,7 @@ const Settings = () => {
   });
 
   const [apiKeys, setApiKeys] = useState({
-    gemini_api_key: "",
-    threads_access_token: ""
+    gemini_api_key: ""
   });
 
   const [apiSaving, setApiSaving] = useState(false);
@@ -180,10 +179,10 @@ const Settings = () => {
   };
 
   const saveApiKeys = async () => {
-    if (!apiKeys.gemini_api_key.trim() && !apiKeys.threads_access_token.trim()) {
+    if (!apiKeys.gemini_api_key.trim()) {
       toast({
         title: "エラー",
-        description: "少なくとも1つのAPIキーを入力してください。",
+        description: "Gemini APIキーを入力してください。",
         variant: "destructive",
       });
       return;
@@ -191,33 +190,13 @@ const Settings = () => {
 
     setApiSaving(true);
     try {
-      const promises = [];
-
       // GeminiAPIキーの保存
-      if (apiKeys.gemini_api_key.trim()) {
-        promises.push(
-          supabase.functions.invoke('save-secret', {
-            body: { 
-              secret_name: 'GEMINI_API_KEY',
-              secret_value: apiKeys.gemini_api_key.trim()
-            }
-          })
-        );
-      }
-
-      // ThreadsAPIキーの保存
-      if (apiKeys.threads_access_token.trim()) {
-        promises.push(
-          supabase.functions.invoke('save-secret', {
-            body: { 
-              secret_name: 'THREADS_ACCESS_TOKEN',
-              secret_value: apiKeys.threads_access_token.trim()
-            }
-          })
-        );
-      }
-
-      await Promise.all(promises);
+      await supabase.functions.invoke('save-secret', {
+        body: { 
+          secret_name: 'GEMINI_API_KEY',
+          secret_value: apiKeys.gemini_api_key.trim()
+        }
+      });
 
       toast({
         title: "保存完了",
@@ -226,8 +205,7 @@ const Settings = () => {
 
       // フォームをクリア
       setApiKeys({
-        gemini_api_key: "",
-        threads_access_token: ""
+        gemini_api_key: ""
       });
     } catch (error) {
       console.error('Error saving API keys:', error);
@@ -446,7 +424,7 @@ const Settings = () => {
                   API設定
                 </CardTitle>
                 <CardDescription>
-                  GeminiとThreadsのAPIキーを設定できます
+                  GeminiのAPIキーを設定できます
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
@@ -490,32 +468,11 @@ const Settings = () => {
                       </p>
                     </div>
 
-                    <div className="space-y-2">
-                      <Label htmlFor="threads-access-token">Threads アクセストークン</Label>
-                      <Input
-                        id="threads-access-token"
-                        type="password"
-                        value={apiKeys.threads_access_token}
-                        onChange={(e) => setApiKeys(prev => ({ ...prev, threads_access_token: e.target.value }))}
-                        placeholder="THAAHGQ61U8o1BUVQ2RUdH..."
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        Threadsへの投稿と自動返信に使用されます。
-                        <a 
-                          href="https://developers.facebook.com/docs/threads" 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="text-primary hover:underline ml-1"
-                        >
-                          Meta Developersで取得
-                        </a>
-                      </p>
-                    </div>
                   </div>
 
                   <Button 
                     onClick={saveApiKeys} 
-                    disabled={apiSaving || (!apiKeys.gemini_api_key.trim() && !apiKeys.threads_access_token.trim())}
+                    disabled={apiSaving || !apiKeys.gemini_api_key.trim()}
                   >
                     {apiSaving ? (
                       <>
