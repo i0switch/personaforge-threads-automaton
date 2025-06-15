@@ -18,10 +18,10 @@ const Index = () => {
   const { signOut, user } = useAuth();
   const { toast } = useToast();
   const [stats] = useState({
-    todayPosts: 12,
-    scheduledPosts: 24,
-    autoReplies: 8,
-    engagement: 85
+    todayPosts: 0,
+    scheduledPosts: 0,
+    autoReplies: 0,
+    engagement: 0
   });
 
   const [personas, setPersonas] = useState<Persona[]>([]);
@@ -156,7 +156,7 @@ const Index = () => {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{stats.todayPosts}</div>
-              <p className="text-xs text-muted-foreground">+20% 前日比</p>
+              <p className="text-xs text-muted-foreground">投稿を作成して開始</p>
             </CardContent>
           </Card>
 
