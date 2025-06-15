@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Upload, ArrowLeft, Save, Loader2 } from "lucide-react";
+import { Upload, ArrowLeft, Save, Loader2, ImagePlus, Link } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -41,6 +41,8 @@ const PersonaSetup = () => {
   const [newExpertise, setNewExpertise] = useState("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [showImageUrlInput, setShowImageUrlInput] = useState(false);
+  const [imageUrl, setImageUrl] = useState("");
 
   useEffect(() => {
     if (personaId) {
@@ -158,6 +160,41 @@ const PersonaSetup = () => {
     }));
   };
 
+  const handleImageChange = () => {
+    setShowImageUrlInput(true);
+    setImageUrl(persona.avatar);
+  };
+
+  const handleImageUrlSave = () => {
+    if (imageUrl.trim()) {
+      setPersona(prev => ({ ...prev, avatar: imageUrl }));
+      setShowImageUrlInput(false);
+      setImageUrl("");
+      toast({
+        title: "成功",
+        description: "画像を変更しました。",
+      });
+    }
+  };
+
+  const handleImageUrlCancel = () => {
+    setShowImageUrlInput(false);
+    setImageUrl("");
+  };
+
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      // Create a preview URL for the uploaded file
+      const url = URL.createObjectURL(file);
+      setPersona(prev => ({ ...prev, avatar: url }));
+      toast({
+        title: "成功",
+        description: "画像をアップロードしました。",
+      });
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-4xl mx-auto space-y-6">
@@ -185,10 +222,58 @@ const PersonaSetup = () => {
                   <AvatarImage src={persona.avatar} />
                   <AvatarFallback>AI</AvatarFallback>
                 </Avatar>
-                <Button variant="outline" size="sm" className="mb-4">
-                  <Upload className="h-4 w-4 mr-2" />
-                  画像を変更
-                </Button>
+                
+                {/* Image Change UI */}
+                {showImageUrlInput ? (
+                  <div className="space-y-2 mb-4">
+                    <Label htmlFor="imageUrl">画像URL</Label>
+                    <Input
+                      id="imageUrl"
+                      value={imageUrl}
+                      onChange={(e) => setImageUrl(e.target.value)}
+                      placeholder="画像のURLを入力してください"
+                    />
+                    <div className="flex gap-2 justify-center">
+                      <Button onClick={handleImageUrlSave} size="sm">
+                        <Save className="h-4 w-4 mr-2" />
+                        保存
+                      </Button>
+                      <Button onClick={handleImageUrlCancel} variant="outline" size="sm">
+                        キャンセル
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2 mb-4">
+                    <div className="flex gap-2 justify-center">
+                      <Button 
+                        onClick={handleImageChange} 
+                        variant="outline" 
+                        size="sm"
+                        disabled={saving}
+                      >
+                        <Link className="h-4 w-4 mr-2" />
+                        URLで変更
+                      </Button>
+                      <Button 
+                        onClick={() => document.getElementById('fileInput')?.click()}
+                        variant="outline" 
+                        size="sm"
+                        disabled={saving}
+                      >
+                        <Upload className="h-4 w-4 mr-2" />
+                        ファイル選択
+                      </Button>
+                    </div>
+                    <input
+                      id="fileInput"
+                      type="file"
+                      accept="image/*"
+                      onChange={handleFileUpload}
+                      className="hidden"
+                    />
+                  </div>
+                )}
               </div>
               <div className="space-y-2">
                 <h3 className="font-semibold text-lg">{persona.name}</h3>
