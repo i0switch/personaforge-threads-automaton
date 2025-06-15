@@ -359,9 +359,18 @@ const AutoReply = () => {
 
                     <Button 
                       type="button"
-                      onClick={addReplyRule} 
+                      onClick={(e) => {
+                        console.log('Button clicked!', e);
+                        console.log('Current form state:', newRule);
+                        console.log('Saving state:', saving);
+                        console.log('Button disabled?', saving);
+                        e.preventDefault();
+                        e.stopPropagation();
+                        addReplyRule();
+                      }} 
                       disabled={saving} 
-                      className="w-full"
+                      className="w-full cursor-pointer"
+                      style={{ pointerEvents: saving ? 'none' : 'auto' }}
                     >
                       {saving ? (
                         <>
