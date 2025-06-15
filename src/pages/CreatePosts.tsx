@@ -57,6 +57,9 @@ const CreatePosts = () => {
   const [imagePrompts, setImagePrompts] = useState<{[key: string]: string}>({});
   const [generatingImage, setGeneratingImage] = useState<string | null>(null);
   const [ngrokUrl, setNgrokUrl] = useState<string>("");
+  const [referenceImage, setReferenceImage] = useState<string>("");
+  const [ipAdapterScale, setIpAdapterScale] = useState<number>(0.8);
+  const [controlWeight, setControlWeight] = useState<number>(0.8);
 
   useEffect(() => {
     loadPersonas();
@@ -350,10 +353,13 @@ const CreatePosts = () => {
       const { data, error } = await supabase.functions.invoke('generate-image-stable-diffusion', {
         body: {
           prompt: imagePrompt,
-          negative_prompt: "cartoon, anime, low quality, blurry, distorted",
+          negative_prompt: "cartoon, painting, illustration, (worst quality, low quality, normal quality:1.8), ugly, deformed",
           steps: 30,
-          guidance_scale: 7.5,
-          api_url: ngrokUrl.trim()
+          guidance_scale: 5,
+          api_url: ngrokUrl.trim(),
+          ...(referenceImage && { reference_image: referenceImage }),
+          ip_adapter_scale: ipAdapterScale,
+          control_weight: controlWeight
         }
       });
 
@@ -389,6 +395,20 @@ const CreatePosts = () => {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+
+  const handleReferenceImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const base64 = e.target?.result as string;
+        // Remove data:image/...;base64, prefix to get just the base64 string
+        const base64Data = base64.split(',')[1];
+        setReferenceImage(base64Data);
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   // Initialize image prompts when posts are generated
@@ -798,16 +818,87 @@ const CreatePosts = () => {
                       </CardContent>
                     </Card>
 
+                    {/* InstantID Settings */}
+                    <Card className="border-purple-200 bg-purple-50 dark:bg-purple-950 dark:border-purple-800">
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2 text-purple-800 dark:text-purple-200">
+                          <Users className="h-5 w-5" />
+                          InstantID 設定
+                        </CardTitle>
+                        <CardDescription className="text-purple-700 dark:text-purple-300">
+                          特定の人物の顔で画像を生成するためのリファレンス画像をアップロードしてください
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="referenceImage">リファレンス画像</Label>
+                          <Input
+                            id="referenceImage"
+                            type="file"
+                            accept="image/*"
+                            onChange={handleReferenceImageUpload}
+                            className="bg-white dark:bg-gray-900"
+                          />
+                          <p className="text-sm text-purple-700 dark:text-purple-300">
+                            JPG、PNG形式の人物画像をアップロードしてください
+                          </p>
+                          {referenceImage && (
+                            <div className="mt-2 p-2 bg-purple-100 dark:bg-purple-900 rounded">
+                              <p className="text-sm text-purple-800 dark:text-purple-200">
+                                ✓ リファレンス画像がアップロードされました
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="ipAdapterScale">IP Adapter Scale</Label>
+                            <Input
+                              id="ipAdapterScale"
+                              type="number"
+                              step="0.1"
+                              min="0"
+                              max="1"
+                              value={ipAdapterScale}
+                              onChange={(e) => setIpAdapterScale(parseFloat(e.target.value))}
+                              className="bg-white dark:bg-gray-900"
+                            />
+                            <p className="text-xs text-purple-700 dark:text-purple-300">
+                              デフォルト: 0.8
+                            </p>
+                          </div>
+                          
+                          <div className="space-y-2">
+                            <Label htmlFor="controlWeight">Control Weight</Label>
+                            <Input
+                              id="controlWeight"
+                              type="number"
+                              step="0.1"
+                              min="0"
+                              max="1"
+                              value={controlWeight}
+                              onChange={(e) => setControlWeight(parseFloat(e.target.value))}
+                              className="bg-white dark:bg-gray-900"
+                            />
+                            <p className="text-xs text-purple-700 dark:text-purple-300">
+                              デフォルト: 0.8
+                            </p>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+
                     <div className="flex items-center gap-2 p-4 bg-blue-50 dark:bg-blue-950 rounded-lg">
                       <div className="text-blue-600 dark:text-blue-400">
                         <Image className="h-5 w-5" />
                       </div>
                       <div className="text-sm">
                         <p className="font-medium text-blue-900 dark:text-blue-100">
-                          Stable Diffusion APIを使用しています
+                          InstantID対応 Stable Diffusion APIを使用しています
                         </p>
                         <p className="text-blue-700 dark:text-blue-300">
-                          投稿内容に基づいて自動的にプロンプトが生成されます。プロンプトは編集できます。
+                          投稿内容に基づいて自動的にプロンプトが生成されます。リファレンス画像をアップロードすると、その人物の顔で画像が生成されます。
                         </p>
                       </div>
                     </div>

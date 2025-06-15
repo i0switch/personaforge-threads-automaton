@@ -12,7 +12,16 @@ serve(async (req) => {
   }
 
   try {
-    const { prompt, negative_prompt = "", steps = 30, guidance_scale = 7.5, api_url } = await req.json()
+    const { 
+      prompt, 
+      negative_prompt = "", 
+      steps = 30, 
+      guidance_scale = 7.5, 
+      api_url,
+      reference_image,
+      ip_adapter_scale = 0.8,
+      control_weight = 0.8
+    } = await req.json()
 
     if (!prompt) {
       return new Response(
@@ -33,8 +42,8 @@ serve(async (req) => {
     if (!apiEndpoint.startsWith('http')) {
       apiEndpoint = 'https://' + apiEndpoint
     }
-    if (!apiEndpoint.endsWith('/generate')) {
-      apiEndpoint = apiEndpoint.replace(/\/$/, '') + '/generate'
+    if (!apiEndpoint.endsWith('/generate_with_instantid')) {
+      apiEndpoint = apiEndpoint.replace(/\/$/, '') + '/generate_with_instantid'
     }
 
     console.log('Generating image with prompt:', prompt)
@@ -49,7 +58,10 @@ serve(async (req) => {
         prompt,
         negative_prompt,
         steps,
-        guidance_scale
+        guidance_scale,
+        ...(reference_image && { reference_image }),
+        ip_adapter_scale,
+        control_weight
       })
     })
 
