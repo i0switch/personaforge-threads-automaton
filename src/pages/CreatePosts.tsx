@@ -41,7 +41,8 @@ const CreatePosts = () => {
     startTime: "09:00",
     endTime: "21:00",
     interval: 2,
-    topics: ["テクノロジー", "ライフスタイル"]
+    topics: ["テクノロジー", "ライフスタイル"],
+    customPrompt: ""
   });
 
   const [generatedPosts, setGeneratedPosts] = useState<GeneratedPost[]>([]);
@@ -110,6 +111,7 @@ const CreatePosts = () => {
           startTime: settings.startTime,
           endTime: settings.endTime,
           interval: settings.interval,
+          customPrompt: settings.customPrompt,
           user_id: user?.id
         }
       });
@@ -146,7 +148,7 @@ const CreatePosts = () => {
     try {
       const postsToSave = generatedPosts.map(post => ({
         content: post.content,
-        hashtags: post.hashtags,
+        hashtags: [],
         scheduled_for: post.scheduled_for,
         persona_id: selectedPersona,
         user_id: user?.id,
@@ -393,30 +395,47 @@ const CreatePosts = () => {
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <Label>投稿トピック</Label>
-                  <div className="flex gap-2 mb-2">
-                    <Input
-                      value={newTopic}
-                      onChange={(e) => setNewTopic(e.target.value)}
-                      placeholder="新しいトピックを追加"
-                      onKeyPress={(e) => e.key === 'Enter' && addTopic()}
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="customPrompt">カスタムプロンプト</Label>
+                    <Textarea
+                      id="customPrompt"
+                      value={settings.customPrompt}
+                      onChange={(e) => setSettings(prev => ({ ...prev, customPrompt: e.target.value }))}
+                      placeholder="例：AI美女アカウント運用の場合、日常系の200文字程度のポストを生成してください"
+                      rows={3}
+                      className="resize-none"
                     />
-                    <Button onClick={addTopic} variant="outline" size="sm">
-                      追加
-                    </Button>
+                    <p className="text-sm text-muted-foreground">
+                      具体的な指示を入力することで、より適切な投稿を生成できます
+                    </p>
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    {settings.topics.map((topic, index) => (
-                      <Badge 
-                        key={index} 
-                        variant="secondary"
-                        className="cursor-pointer hover:bg-destructive hover:text-destructive-foreground"
-                        onClick={() => removeTopic(topic)}
-                      >
-                        {topic} ×
-                      </Badge>
-                    ))}
+
+                  <div className="space-y-2">
+                    <Label>投稿トピック</Label>
+                    <div className="flex gap-2 mb-2">
+                      <Input
+                        value={newTopic}
+                        onChange={(e) => setNewTopic(e.target.value)}
+                        placeholder="新しいトピックを追加"
+                        onKeyPress={(e) => e.key === 'Enter' && addTopic()}
+                      />
+                      <Button onClick={addTopic} variant="outline" size="sm">
+                        追加
+                      </Button>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {settings.topics.map((topic, index) => (
+                        <Badge 
+                          key={index} 
+                          variant="secondary"
+                          className="cursor-pointer hover:bg-destructive hover:text-destructive-foreground"
+                          onClick={() => removeTopic(topic)}
+                        >
+                          {topic} ×
+                        </Badge>
+                      ))}
+                    </div>
                   </div>
                 </div>
 
@@ -478,14 +497,6 @@ const CreatePosts = () => {
                           rows={3}
                           className="resize-none"
                         />
-                        <div className="flex flex-wrap gap-2">
-                          {post.hashtags.map((tag, index) => (
-                            <Badge key={index} variant="outline" className="text-blue-600">
-                              <Hash className="h-3 w-3 mr-1" />
-                              {tag.replace('#', '')}
-                            </Badge>
-                          ))}
-                        </div>
                       </CardContent>
                     </Card>
                   ))}

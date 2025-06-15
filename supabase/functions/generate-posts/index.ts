@@ -97,7 +97,8 @@ serve(async (req) => {
       postCount, 
       startTime, 
       endTime, 
-      interval 
+      interval,
+      customPrompt
     } = await req.json();
 
     if (!personaId || !topics) {
@@ -137,7 +138,7 @@ serve(async (req) => {
       console.log(`Generating post ${i + 1}/${postCount}`);
 
       // Create prompt for Gemini
-      const prompt = createPostPrompt(persona, topics, i + 1, postCount);
+      const prompt = createPostPrompt(persona, topics, i + 1, postCount, customPrompt);
 
       try {
         // Call Gemini API
@@ -195,10 +196,9 @@ serve(async (req) => {
 
         const generatedContent = data.candidates[0].content.parts[0].text;
 
-        // Parse content and hashtags
-        const lines = generatedContent.split('\n').filter(line => line.trim());
-        const content = lines.find(line => !line.startsWith('#') && !line.includes('#'))?.trim() || generatedContent;
-        const hashtags = extractHashtags(generatedContent);
+        // Use generated content as is, without hashtag extraction
+        const content = generatedContent.trim();
+        const hashtags: string[] = [];
 
         // Save post to database
         const { data: savedPost, error: saveError } = await supabase
@@ -290,9 +290,28 @@ function generateTimeSlots(startTime: string, endTime: string, interval: number,
   return slots;
 }
 
-function createPostPrompt(persona: any, topics: string[], postNumber: number, totalPosts: number): string {
+function createPostPrompt(persona: any, topics: string[], postNumber: number, totalPosts: number, customPrompt?: string): string {
   const topicsText = topics.join('、');
   
+  // カスタムプロンプトが提供されている場合はそれを使用
+  if (customPrompt && customPrompt.trim()) {
+    return `あなたは${persona.name}として投稿を作成してください。
+
+ペルソナ情報:
+- 名前: ${persona.name}
+- 年齢: ${persona.age || '不明'}
+- 性格: ${persona.personality || ''}
+- 専門分野: ${persona.expertise?.join(', ') || ''}
+- 口調: ${persona.tone_of_voice || ''}
+
+投稿番号: ${postNumber}/${totalPosts}
+
+カスタム指示: ${customPrompt}
+
+${persona.name}のキャラクターに沿って、上記の指示に従って投稿内容のみを返してください:`;
+  }
+  
+  // デフォルトプロンプト（ハッシュタグ指示を削除）
   return `あなたは${persona.name}として投稿を作成してください。
 
 ペルソナ情報:
@@ -309,9 +328,8 @@ function createPostPrompt(persona: any, topics: string[], postNumber: number, to
 1. ${persona.name}のキャラクターに沿った内容
 2. Threadsに適した長さ（500文字以内）
 3. 自然で魅力的な文章
-4. ハッシュタグを2-3個含める
-5. エンゲージメントを促す内容
-6. ${topicsText}のいずれかに関連した内容
+4. エンゲージメントを促す内容
+5. ${topicsText}のいずれかに関連した内容
 
 投稿内容のみを返してください:`;
 }
