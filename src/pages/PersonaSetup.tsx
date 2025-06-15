@@ -72,7 +72,7 @@ const PersonaSetup = () => {
           expertise: data.expertise || [],
           toneOfVoice: data.tone_of_voice || "",
           avatar: data.avatar_url || "https://images.unsplash.com/photo-1649972904349-6e44c42644a7?w=150",
-          threadsAccessToken: data.threads_access_token || ""
+          threadsAccessToken: (data as any).threads_access_token || ""
         });
       }
     } catch (error) {
