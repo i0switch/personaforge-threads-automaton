@@ -35,6 +35,17 @@ const AutoReply = () => {
     persona_id: ""
   });
 
+  // Debug: Check component state
+  useEffect(() => {
+    console.log('AutoReply component state:', {
+      loading,
+      saving,
+      personas: personas.length,
+      newRule,
+      hasPersonas: personas.length > 0
+    });
+  }, [loading, saving, personas.length, newRule]);
+
   useEffect(() => {
     if (user) {
       loadData();
