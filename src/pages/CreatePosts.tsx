@@ -68,6 +68,35 @@ const CreatePosts = () => {
     }
   }, [user, editPostId]);
 
+  // Set reference image when persona is selected
+  useEffect(() => {
+    if (selectedPersona && personas.length > 0) {
+      const persona = personas.find(p => p.id === selectedPersona);
+      if (persona && persona.avatar_url) {
+        // Convert URL to base64 for API
+        const img = document.createElement('img');
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          canvas.width = img.width;
+          canvas.height = img.height;
+          ctx?.drawImage(img, 0, 0);
+          try {
+            const base64 = canvas.toDataURL('image/jpeg').split(',')[1];
+            setReferenceImage(base64);
+          } catch (error) {
+            console.error('Failed to convert persona image to base64:', error);
+          }
+        };
+        img.onerror = () => {
+          console.error('Failed to load persona image for reference');
+        };
+        img.src = persona.avatar_url;
+      }
+    }
+  }, [selectedPersona, personas]);
+
   const loadPersonas = async () => {
     if (!user) return;
     
