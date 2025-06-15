@@ -13,10 +13,12 @@ serve(async (req) => {
 
   try {
     const requestData: Partial<GenerateImageRequest> = await req.json()
+    console.log('Received request data:', JSON.stringify(requestData, null, 2))
     
     // Validate request
     const validationError = validateRequest(requestData)
     if (validationError) {
+      console.error('Validation error:', validationError)
       return validationError
     }
 
