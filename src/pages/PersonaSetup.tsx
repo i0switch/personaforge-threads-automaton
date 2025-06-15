@@ -186,16 +186,42 @@ const PersonaSetup = () => {
     setImageUrl("");
   };
 
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file) {
-      // Create a preview URL for the uploaded file
-      const url = URL.createObjectURL(file);
-      setPersona(prev => ({ ...prev, avatar: url }));
-      toast({
-        title: "成功",
-        description: "画像をアップロードしました。",
-      });
+    if (file && user) {
+      try {
+        setSaving(true);
+        
+        // Upload file to Supabase Storage
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${user.id}/${Date.now()}.${fileExt}`;
+        
+        const { data, error } = await supabase.storage
+          .from('persona-avatars')
+          .upload(fileName, file);
+
+        if (error) throw error;
+
+        // Get public URL
+        const { data: { publicUrl } } = supabase.storage
+          .from('persona-avatars')
+          .getPublicUrl(fileName);
+
+        setPersona(prev => ({ ...prev, avatar: publicUrl }));
+        toast({
+          title: "成功",
+          description: "画像をアップロードしました。",
+        });
+      } catch (error) {
+        console.error('Error uploading image:', error);
+        toast({
+          title: "エラー",
+          description: "画像のアップロードに失敗しました。",
+          variant: "destructive",
+        });
+      } finally {
+        setSaving(false);
+      }
     }
   };
 
