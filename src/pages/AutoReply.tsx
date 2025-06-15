@@ -80,7 +80,14 @@ const AutoReply = () => {
   };
 
   const addReplyRule = async () => {
+    console.log('addReplyRule called', { newRule }); // Debug log
+    
     if (!newRule.trigger_keywords.trim() || !newRule.response_template.trim() || !newRule.persona_id) {
+      console.log('Validation failed:', {
+        keywords: newRule.trigger_keywords.trim(),
+        template: newRule.response_template.trim(),
+        persona: newRule.persona_id
+      });
       toast({
         title: "エラー",
         description: "すべての項目を入力してください。",
@@ -91,19 +98,27 @@ const AutoReply = () => {
 
     setSaving(true);
     try {
+      console.log('Starting to save rule...'); // Debug log
       const keywordsArray = newRule.trigger_keywords.split(',').map(k => k.trim()).filter(k => k);
+      console.log('Keywords array:', keywordsArray); // Debug log
+      
+      const insertData = {
+        trigger_keywords: keywordsArray,
+        response_template: newRule.response_template,
+        persona_id: newRule.persona_id,
+        user_id: user?.id,
+        is_active: true
+      };
+      
+      console.log('Insert data:', insertData); // Debug log
       
       const { data, error } = await supabase
         .from('auto_replies')
-        .insert([{
-          trigger_keywords: keywordsArray,
-          response_template: newRule.response_template,
-          persona_id: newRule.persona_id,
-          user_id: user?.id,
-          is_active: true
-        }])
+        .insert([insertData])
         .select()
         .single();
+
+      console.log('Supabase response:', { data, error }); // Debug log
 
       if (error) throw error;
 
@@ -114,6 +129,7 @@ const AutoReply = () => {
         persona_id: newRule.persona_id // Keep the selected persona
       });
       
+      console.log('Rule added successfully:', data); // Debug log
       toast({
         title: "返信ルールを追加しました",
         description: "新しい自動返信ルールが作成されました。",
@@ -122,7 +138,7 @@ const AutoReply = () => {
       console.error('Error adding reply rule:', error);
       toast({
         title: "エラー",
-        description: "返信ルールの追加に失敗しました。",
+        description: `返信ルールの追加に失敗しました: ${error.message}`,
         variant: "destructive",
       });
     } finally {

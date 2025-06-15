@@ -9,7 +9,6 @@ const corsHeaders = {
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const threadsAccessToken = Deno.env.get('THREADS_ACCESS_TOKEN');
 const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -22,10 +21,6 @@ serve(async (req) => {
 
   try {
     console.log('Starting Threads auto-reply process...');
-
-    if (!threadsAccessToken) {
-      throw new Error('THREADS_ACCESS_TOKEN is not configured');
-    }
 
     if (!geminiApiKey) {
       throw new Error('GEMINI_API_KEY is not configured');
@@ -40,12 +35,12 @@ serve(async (req) => {
     console.log(`Processing auto-reply for user ${userId}`);
     console.log(`Message content: ${message.substring(0, 100)}...`);
 
-    // Get active auto-reply rules for the user
+    // Get active auto-reply rules for the user with persona info including threads access token
     const { data: autoReplies, error: repliesError } = await supabase
       .from('auto_replies')
       .select(`
         *,
-        personas (*)
+        personas (*, threads_access_token)
       `)
       .eq('user_id', userId)
       .eq('is_active', true);
@@ -104,6 +99,13 @@ serve(async (req) => {
 
     // Generate personalized reply using Gemini
     const persona = matchedRule.personas;
+    
+    // Check if persona has threads access token for posting replies
+    const threadsAccessToken = persona.threads_access_token;
+    if (!threadsAccessToken) {
+      console.log(`No Threads access token configured for persona ${persona.name}`);
+      // Continue with reply generation but won't be able to post to Threads
+    }
     const prompt = `
 あなたは${persona.name}として返信を作成してください。
 
