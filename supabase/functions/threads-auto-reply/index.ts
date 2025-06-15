@@ -26,7 +26,7 @@ serve(async (req) => {
       throw new Error('GEMINI_API_KEY is not configured');
     }
 
-    const { message, userId, trigger_keywords } = await req.json();
+    const { message, userId, trigger_keywords, originalPost } = await req.json();
 
     if (!message || !userId) {
       throw new Error('Missing required fields: message, userId');
@@ -34,6 +34,9 @@ serve(async (req) => {
 
     console.log(`Processing auto-reply for user ${userId}`);
     console.log(`Message content: ${message.substring(0, 100)}...`);
+    if (originalPost) {
+      console.log(`Original post content: ${originalPost.substring(0, 100)}...`);
+    }
 
     // Get active auto-reply rules for the user with persona info including threads access token
     const { data: autoReplies, error: repliesError } = await supabase
@@ -65,30 +68,43 @@ serve(async (req) => {
 
     console.log(`Found ${autoReplies.length} active auto-reply rules`);
 
-    // Check if message matches any trigger keywords
+    // Enhanced logic: Check for keyword match OR context-aware rules
     let matchedRule = null;
     const messageText = message.toLowerCase();
 
+    // First, try to find keyword-based rules
     for (const rule of autoReplies) {
-      if (rule.trigger_keywords) {
+      if (rule.trigger_keywords && rule.trigger_keywords.length > 0) {
         const hasMatch = rule.trigger_keywords.some(keyword => 
           messageText.includes(keyword.toLowerCase())
         );
         
         if (hasMatch) {
           matchedRule = rule;
-          console.log(`Matched rule with keywords: ${rule.trigger_keywords.join(', ')}`);
+          console.log(`Matched keyword-based rule: ${rule.trigger_keywords.join(', ')}`);
           break;
         }
       }
     }
 
+    // If no keyword match, check for context-aware rules (rules with empty or no keywords)
     if (!matchedRule) {
-      console.log('No matching trigger keywords found');
+      const contextAwareRule = autoReplies.find(rule => 
+        !rule.trigger_keywords || rule.trigger_keywords.length === 0
+      );
+      
+      if (contextAwareRule) {
+        matchedRule = contextAwareRule;
+        console.log('Using context-aware rule for intelligent reply generation');
+      }
+    }
+
+    if (!matchedRule) {
+      console.log('No matching rules found');
       return new Response(
         JSON.stringify({ 
           success: true,
-          message: 'No matching trigger keywords found'
+          message: 'No matching auto-reply rules found'
         }),
         { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -106,8 +122,9 @@ serve(async (req) => {
       console.log(`No Threads access token configured for persona ${persona.name}`);
       // Continue with reply generation but won't be able to post to Threads
     }
+    // Create context-aware prompt that analyzes both original post and reply
     const prompt = `
-あなたは${persona.name}として返信を作成してください。
+あなたは${persona.name}として、ポストとそのリプライを分析して最適な返信を作成してください。
 
 ペルソナ情報:
 - 名前: ${persona.name}
@@ -116,15 +133,20 @@ serve(async (req) => {
 - 専門分野: ${persona.expertise?.join(', ') || ''}
 - 口調: ${persona.tone_of_voice || ''}
 
-返信テンプレート: ${matchedRule.response_template}
+${originalPost ? `元のポスト内容: ${originalPost}` : ''}
 
-受信メッセージ: ${message}
+受信したリプライ: ${message}
 
-要件:
-1. ${persona.name}のキャラクターに沿った返信
-2. 自然で親しみやすい文章
-3. 簡潔で200文字以内
-4. テンプレートを参考にしつつ、受信メッセージに合わせてカスタマイズ
+返信テンプレート（参考用）: ${matchedRule.response_template}
+
+分析と返信作成の要件:
+1. 元のポストの文脈とリプライの内容を両方考慮して返信を作成
+2. ${persona.name}のキャラクターと専門性を活かした返信
+3. リプライの意図や感情を理解して適切に対応
+4. 自然で親しみやすく、かつ価値のある返信
+5. 280文字以内で簡潔に
+6. 必要に応じて質問を返したり、追加情報を提供
+7. ${persona.tone_of_voice}の特徴を反映
 
 返信内容のみを返してください:`;
 

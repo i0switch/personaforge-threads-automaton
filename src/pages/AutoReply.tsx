@@ -93,7 +93,7 @@ const AutoReply = () => {
   const addReplyRule = async () => {
     console.log('addReplyRule called', { newRule }); // Debug log
     
-    if (!newRule.trigger_keywords.trim() || !newRule.response_template.trim() || !newRule.persona_id) {
+    if (!newRule.response_template.trim() || !newRule.persona_id) {
       console.log('Validation failed:', {
         keywords: newRule.trigger_keywords.trim(),
         template: newRule.response_template.trim(),
@@ -101,7 +101,7 @@ const AutoReply = () => {
       });
       toast({
         title: "エラー",
-        description: "すべての項目を入力してください。",
+        description: "ペルソナと返信テンプレートは必須項目です。",
         variant: "destructive",
       });
       return;
@@ -340,7 +340,7 @@ const AutoReply = () => {
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="trigger">トリガーキーワード</Label>
+                      <Label htmlFor="trigger">トリガーキーワード（オプション）</Label>
                       <Input
                         id="trigger"
                         value={newRule.trigger_keywords}
@@ -348,9 +348,11 @@ const AutoReply = () => {
                         placeholder="例: ありがとう, 質問, こんにちは (カンマ区切り)"
                         disabled={saving}
                       />
-                      <p className="text-sm text-muted-foreground">
-                        複数のキーワードはカンマで区切って入力してください
-                      </p>
+                      <div className="text-sm text-muted-foreground space-y-1">
+                        <p>・複数のキーワードはカンマで区切って入力してください</p>
+                        <p>・<strong>空白にすると、すべてのリプライに対して文脈を理解した自動返信を生成します</strong></p>
+                        <p>・キーワード指定時は、そのキーワードを含むリプライにのみ返信します</p>
+                      </div>
                     </div>
 
                     <div className="space-y-2">
@@ -456,11 +458,17 @@ const AutoReply = () => {
                       <div>
                         <Label className="text-sm font-medium">トリガーキーワード</Label>
                         <div className="flex flex-wrap gap-2 mt-2">
-                          {rule.trigger_keywords?.map((keyword, index) => (
-                            <Badge key={index} variant="outline">
-                              {keyword}
+                          {rule.trigger_keywords && rule.trigger_keywords.length > 0 ? (
+                            rule.trigger_keywords.map((keyword, index) => (
+                              <Badge key={index} variant="outline">
+                                {keyword}
+                              </Badge>
+                            ))
+                          ) : (
+                            <Badge variant="secondary" className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                              🧠 文脈理解型 (すべてのリプライに対応)
                             </Badge>
-                          ))}
+                          )}
                         </div>
                       </div>
                       <div>
