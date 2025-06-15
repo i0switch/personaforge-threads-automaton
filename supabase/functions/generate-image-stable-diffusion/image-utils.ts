@@ -5,7 +5,7 @@ export async function getPersonaAvatar(persona_id: string): Promise<{ avatarBase
     .from('personas')
     .select('avatar_url')
     .eq('id', persona_id)
-    .single()
+    .maybeSingle()
 
   if (personaError || !persona) {
     return new Response(
@@ -37,8 +37,12 @@ export async function convertImageToBase64(imageUrl: string): Promise<{ avatarBa
     
     return { avatarBase64 }
   } catch (error) {
+    console.error('Error processing avatar image:', error)
     return new Response(
-      JSON.stringify({ error: 'Failed to process avatar image', details: error.message }),
+      JSON.stringify({ 
+        error: 'Failed to process avatar image', 
+        details: error instanceof Error ? error.message : 'Unknown error' 
+      }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
     )
   }
