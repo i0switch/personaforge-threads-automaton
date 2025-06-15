@@ -9,9 +9,65 @@ const corsHeaders = {
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
+const fallbackGeminiApiKey = Deno.env.get('GEMINI_API_KEY'); // フォールバック用
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+async function getUserApiKey(userId: string, keyName: string): Promise<string | null> {
+  try {
+    const { data, error } = await supabase
+      .from('user_api_keys')
+      .select('encrypted_key')
+      .eq('user_id', userId)
+      .eq('key_name', keyName)
+      .single();
+
+    if (error || !data) {
+      return null;
+    }
+
+    // 復号化処理
+    const ENCRYPTION_KEY = 'AIThreadsSecretKey2024ForAPIEncryption';
+    
+    const enc = new TextEncoder();
+    const keyMaterial = await crypto.subtle.importKey(
+      'raw',
+      enc.encode(ENCRYPTION_KEY),
+      { name: 'PBKDF2' },
+      false,
+      ['deriveKey']
+    );
+    
+    const key = await crypto.subtle.deriveKey(
+      {
+        name: 'PBKDF2',
+        salt: enc.encode('salt'),
+        iterations: 100000,
+        hash: 'SHA-256',
+      },
+      keyMaterial,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['encrypt', 'decrypt']
+    );
+
+    const combined = Uint8Array.from(atob(data.encrypted_key), c => c.charCodeAt(0));
+    const iv = combined.slice(0, 12);
+    const encrypted = combined.slice(12);
+    
+    const decrypted = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: iv },
+      key,
+      encrypted
+    );
+    
+    const dec = new TextDecoder();
+    return dec.decode(decrypted);
+  } catch (error) {
+    console.error('Error retrieving user API key:', error);
+    return null;
+  }
+}
 
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -22,8 +78,17 @@ serve(async (req) => {
   try {
     console.log('Starting post generation...');
 
-    if (!geminiApiKey) {
-      throw new Error('GEMINI_API_KEY is not configured');
+    // JWT トークンから認証情報を取得
+    const authHeader = req.headers.get('authorization');
+    if (!authHeader) {
+      throw new Error('Authorization header is required');
+    }
+
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    
+    if (authError || !user) {
+      throw new Error('Invalid authentication token');
     }
 
     const { 
@@ -32,22 +97,29 @@ serve(async (req) => {
       postCount, 
       startTime, 
       endTime, 
-      interval,
-      user_id 
+      interval 
     } = await req.json();
 
-    if (!personaId || !topics || !user_id) {
-      throw new Error('Missing required fields: personaId, topics, user_id');
+    if (!personaId || !topics) {
+      throw new Error('Missing required fields: personaId, topics');
     }
 
-    console.log(`Generating ${postCount} posts for persona ${personaId}`);
+    // ユーザーのGemini APIキーを取得
+    const userGeminiApiKey = await getUserApiKey(user.id, 'GEMINI_API_KEY');
+    const geminiApiKey = userGeminiApiKey || fallbackGeminiApiKey;
+
+    if (!geminiApiKey) {
+      throw new Error('Gemini API key is not configured. Please set your API key in Settings.');
+    }
+
+    console.log(`Generating ${postCount} posts for persona ${personaId} using ${userGeminiApiKey ? 'user' : 'fallback'} API key`);
 
     // Get persona details
     const { data: persona, error: personaError } = await supabase
       .from('personas')
       .select('*')
       .eq('id', personaId)
-      .eq('user_id', user_id)
+      .eq('user_id', user.id)
       .single();
 
     if (personaError || !persona) {
@@ -136,7 +208,7 @@ serve(async (req) => {
             hashtags,
             scheduled_for: timeSlots[i],
             persona_id: personaId,
-            user_id: user_id,
+            user_id: user.id,
             status: 'scheduled',
             platform: 'threads'
           }])
