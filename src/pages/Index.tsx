@@ -315,34 +315,10 @@ const Index = () => {
             <CardTitle>最近のアクティビティ</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              <div className="flex items-center space-x-4">
-                <div className="bg-blue-100 p-2 rounded-full">
-                  <Bot className="h-4 w-4 text-blue-600" />
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm font-medium">新しい投稿を12件生成しました</p>
-                  <p className="text-xs text-muted-foreground">5分前</p>
-                </div>
-              </div>
-              <div className="flex items-center space-x-4">
-                <div className="bg-green-100 p-2 rounded-full">
-                  <Image className="h-4 w-4 text-green-600" />
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm font-medium">画像を8枚自動生成完了</p>
-                  <p className="text-xs text-muted-foreground">15分前</p>
-                </div>
-              </div>
-              <div className="flex items-center space-x-4">
-                <div className="bg-orange-100 p-2 rounded-full">
-                  <Zap className="h-4 w-4 text-orange-600" />
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm font-medium">3件の返信を自動送信</p>
-                  <p className="text-xs text-muted-foreground">30分前</p>
-                </div>
-              </div>
+            <div className="text-center py-8">
+              <Clock className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-muted-foreground mb-4">まだアクティビティはありません</p>
+              <p className="text-sm text-muted-foreground">投稿作成や自動返信を使用すると、ここにアクティビティが表示されます</p>
             </div>
           </CardContent>
         </Card>
