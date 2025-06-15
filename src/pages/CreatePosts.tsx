@@ -56,6 +56,7 @@ const CreatePosts = () => {
   const [generatedImages, setGeneratedImages] = useState<{[key: string]: string}>({});
   const [imagePrompts, setImagePrompts] = useState<{[key: string]: string}>({});
   const [generatingImage, setGeneratingImage] = useState<string | null>(null);
+  const [ngrokUrl, setNgrokUrl] = useState<string>("");
 
   useEffect(() => {
     loadPersonas();
@@ -333,6 +334,15 @@ const CreatePosts = () => {
     const post = generatedPosts.find(p => p.id === postId);
     if (!post) return;
 
+    if (!ngrokUrl.trim()) {
+      toast({
+        title: "エラー",
+        description: "ngrokのURLを入力してください。",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const imagePrompt = prompt || imagePrompts[postId] || generateImagePrompt(post.content);
     
     setGeneratingImage(postId);
@@ -342,7 +352,8 @@ const CreatePosts = () => {
           prompt: imagePrompt,
           negative_prompt: "cartoon, anime, low quality, blurry, distorted",
           steps: 30,
-          guidance_scale: 7.5
+          guidance_scale: 7.5,
+          api_url: ngrokUrl.trim()
         }
       });
 
@@ -363,7 +374,7 @@ const CreatePosts = () => {
       console.error('Error generating image:', error);
       toast({
         title: "エラー",
-        description: "画像の生成に失敗しました。しばらく後でもう一度お試しください。",
+        description: `画像の生成に失敗しました。${error.message}`,
         variant: "destructive",
       });
     } finally {
@@ -749,6 +760,44 @@ const CreatePosts = () => {
                   </div>
                 ) : (
                   <div className="space-y-6">
+                    {/* Google Colab ngrok URL Input */}
+                    <Card className="border-green-200 bg-green-50 dark:bg-green-950 dark:border-green-800">
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2 text-green-800 dark:text-green-200">
+                          <Image className="h-5 w-5" />
+                          Google Colab セットアップ
+                        </CardTitle>
+                        <CardDescription className="text-green-700 dark:text-green-300">
+                          Google ColabのStable Diffusion notebookを実行し、生成されたngrok URLを入力してください
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="ngrokUrl">ngrok URL</Label>
+                          <Input
+                            id="ngrokUrl"
+                            value={ngrokUrl}
+                            onChange={(e) => setNgrokUrl(e.target.value)}
+                            placeholder="例: https://a9b0-34-16-133-110.ngrok-free.app"
+                            className="bg-white dark:bg-gray-900"
+                          />
+                          <p className="text-sm text-green-700 dark:text-green-300">
+                            「NgrokTunnel: "https://..." -> "http://localhost:5000"」の部分をコピーして貼り付けてください
+                          </p>
+                        </div>
+                        
+                        <div className="text-sm text-green-700 dark:text-green-300 space-y-2">
+                          <p className="font-medium">Google Colab実行手順:</p>
+                          <ol className="list-decimal list-inside space-y-1 ml-2">
+                            <li>提供されたGoogle Colab notebookを開く</li>
+                            <li>ngrok Auth Tokenを設定する</li>
+                            <li>セルを実行してAPIサーバーを起動</li>
+                            <li>表示されたngrok URLをこちらに入力</li>
+                          </ol>
+                        </div>
+                      </CardContent>
+                    </Card>
+
                     <div className="flex items-center gap-2 p-4 bg-blue-50 dark:bg-blue-950 rounded-lg">
                       <div className="text-blue-600 dark:text-blue-400">
                         <Image className="h-5 w-5" />

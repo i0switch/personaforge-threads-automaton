@@ -12,7 +12,7 @@ serve(async (req) => {
   }
 
   try {
-    const { prompt, negative_prompt = "", steps = 30, guidance_scale = 7.5 } = await req.json()
+    const { prompt, negative_prompt = "", steps = 30, guidance_scale = 7.5, api_url } = await req.json()
 
     if (!prompt) {
       return new Response(
@@ -21,12 +21,26 @@ serve(async (req) => {
       )
     }
 
-    // Google Colab Stable Diffusion APIエンドポイント
-    const STABLE_DIFFUSION_API_URL = "https://a9b0-34-16-133-110.ngrok-free.app/generate"
+    if (!api_url) {
+      return new Response(
+        JSON.stringify({ error: 'API URL is required. Please provide your Google Colab ngrok URL.' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      )
+    }
+
+    // Validate and format the API URL
+    let apiEndpoint = api_url.trim()
+    if (!apiEndpoint.startsWith('http')) {
+      apiEndpoint = 'https://' + apiEndpoint
+    }
+    if (!apiEndpoint.endsWith('/generate')) {
+      apiEndpoint = apiEndpoint.replace(/\/$/, '') + '/generate'
+    }
 
     console.log('Generating image with prompt:', prompt)
+    console.log('Using API endpoint:', apiEndpoint)
 
-    const response = await fetch(STABLE_DIFFUSION_API_URL, {
+    const response = await fetch(apiEndpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -40,13 +54,18 @@ serve(async (req) => {
     })
 
     if (!response.ok) {
-      throw new Error(`API request failed: ${response.status} ${response.statusText}`)
+      const errorText = await response.text()
+      throw new Error(`API request failed: ${response.status} ${response.statusText}. Response: ${errorText}`)
     }
 
     const data = await response.json()
 
     if (data.error) {
       throw new Error(data.error)
+    }
+
+    if (!data.image) {
+      throw new Error('No image data received from API')
     }
 
     // Base64データをdata URLに変換
@@ -56,7 +75,8 @@ serve(async (req) => {
       JSON.stringify({ 
         success: true,
         image: imageDataUrl,
-        prompt: prompt
+        prompt: prompt,
+        api_url: apiEndpoint
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
