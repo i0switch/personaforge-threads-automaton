@@ -8,7 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, User, Bell, Shield, Trash2, Save, Loader2, Upload } from "lucide-react";
+import { ArrowLeft, User, Bell, Shield, Trash2, Save, Loader2, Upload, Key } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -45,6 +45,13 @@ const Settings = () => {
     share_analytics: false,
     data_collection: true
   });
+
+  const [apiKeys, setApiKeys] = useState({
+    gemini_api_key: "",
+    threads_access_token: ""
+  });
+
+  const [apiSaving, setApiSaving] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -172,6 +179,68 @@ const Settings = () => {
     }
   };
 
+  const saveApiKeys = async () => {
+    if (!apiKeys.gemini_api_key.trim() && !apiKeys.threads_access_token.trim()) {
+      toast({
+        title: "エラー",
+        description: "少なくとも1つのAPIキーを入力してください。",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setApiSaving(true);
+    try {
+      const promises = [];
+
+      // GeminiAPIキーの保存
+      if (apiKeys.gemini_api_key.trim()) {
+        promises.push(
+          supabase.functions.invoke('save-secret', {
+            body: { 
+              secret_name: 'GEMINI_API_KEY',
+              secret_value: apiKeys.gemini_api_key.trim()
+            }
+          })
+        );
+      }
+
+      // ThreadsAPIキーの保存
+      if (apiKeys.threads_access_token.trim()) {
+        promises.push(
+          supabase.functions.invoke('save-secret', {
+            body: { 
+              secret_name: 'THREADS_ACCESS_TOKEN',
+              secret_value: apiKeys.threads_access_token.trim()
+            }
+          })
+        );
+      }
+
+      await Promise.all(promises);
+
+      toast({
+        title: "保存完了",
+        description: "APIキーを保存しました。",
+      });
+
+      // フォームをクリア
+      setApiKeys({
+        gemini_api_key: "",
+        threads_access_token: ""
+      });
+    } catch (error) {
+      console.error('Error saving API keys:', error);
+      toast({
+        title: "エラー",
+        description: "APIキーの保存に失敗しました。管理者がSupabaseで設定してください。",
+        variant: "destructive",
+      });
+    } finally {
+      setApiSaving(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -199,8 +268,9 @@ const Settings = () => {
         </div>
 
         <Tabs defaultValue="profile" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="profile">プロフィール</TabsTrigger>
+            <TabsTrigger value="api">API設定</TabsTrigger>
             <TabsTrigger value="notifications">通知</TabsTrigger>
             <TabsTrigger value="privacy">プライバシー</TabsTrigger>
             <TabsTrigger value="account">アカウント</TabsTrigger>
@@ -362,6 +432,103 @@ const Settings = () => {
                       </div>
                     </div>
                   </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* API Settings */}
+          <TabsContent value="api" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Key className="h-5 w-5" />
+                  API設定
+                </CardTitle>
+                <CardDescription>
+                  GeminiとThreadsのAPIキーを設定できます
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="space-y-4">
+                  <div className="bg-blue-50 dark:bg-blue-950/20 p-4 rounded-lg">
+                    <div className="flex items-start gap-3">
+                      <div className="bg-blue-500 rounded-full p-1 mt-0.5">
+                        <Shield className="h-3 w-3 text-white" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
+                          セキュリティについて
+                        </p>
+                        <p className="text-xs text-blue-700 dark:text-blue-200 mt-1">
+                          APIキーは暗号化されてSupabaseに安全に保存されます。APIキーは一度設定すると表示されません。
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="gemini-api-key">Gemini API キー</Label>
+                      <Input
+                        id="gemini-api-key"
+                        type="password"
+                        value={apiKeys.gemini_api_key}
+                        onChange={(e) => setApiKeys(prev => ({ ...prev, gemini_api_key: e.target.value }))}
+                        placeholder="AIzaSyBGLFv0hDGln0i-x1fJmQOGZbltTLdF9bc"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        投稿のAI生成に使用されます。 
+                        <a 
+                          href="https://aistudio.google.com/app/apikey" 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-primary hover:underline ml-1"
+                        >
+                          Google AI Studioで取得
+                        </a>
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="threads-access-token">Threads アクセストークン</Label>
+                      <Input
+                        id="threads-access-token"
+                        type="password"
+                        value={apiKeys.threads_access_token}
+                        onChange={(e) => setApiKeys(prev => ({ ...prev, threads_access_token: e.target.value }))}
+                        placeholder="THAAHGQ61U8o1BUVQ2RUdH..."
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Threadsへの投稿と自動返信に使用されます。
+                        <a 
+                          href="https://developers.facebook.com/docs/threads" 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-primary hover:underline ml-1"
+                        >
+                          Meta Developersで取得
+                        </a>
+                      </p>
+                    </div>
+                  </div>
+
+                  <Button 
+                    onClick={saveApiKeys} 
+                    disabled={apiSaving || (!apiKeys.gemini_api_key.trim() && !apiKeys.threads_access_token.trim())}
+                  >
+                    {apiSaving ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        保存中...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="h-4 w-4 mr-2" />
+                        APIキーを保存
+                      </>
+                    )}
+                  </Button>
                 </div>
               </CardContent>
             </Card>
