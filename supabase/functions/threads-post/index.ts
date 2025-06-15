@@ -9,7 +9,6 @@ const corsHeaders = {
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const threadsAccessToken = Deno.env.get('THREADS_ACCESS_TOKEN');
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
@@ -22,10 +21,6 @@ serve(async (req) => {
   try {
     console.log('Starting Threads post...');
 
-    if (!threadsAccessToken) {
-      throw new Error('THREADS_ACCESS_TOKEN is not configured');
-    }
-
     const { postId, userId } = await req.json();
 
     if (!postId || !userId) {
@@ -34,10 +29,13 @@ serve(async (req) => {
 
     console.log(`Publishing post ${postId} to Threads`);
 
-    // Get post details
+    // Get post details with persona info
     const { data: post, error: postError } = await supabase
       .from('posts')
-      .select('*')
+      .select(`
+        *,
+        personas!inner(threads_access_token)
+      `)
       .eq('id', postId)
       .eq('user_id', userId)
       .single();
@@ -46,6 +44,11 @@ serve(async (req) => {
       throw new Error('Post not found or access denied');
     }
 
+    if (!post.personas?.threads_access_token) {
+      throw new Error('Threads access token not configured for this persona');
+    }
+
+    const threadsAccessToken = post.personas.threads_access_token;
     console.log(`Publishing post: ${post.content.substring(0, 100)}...`);
 
     // First, create a media container (Step 1)

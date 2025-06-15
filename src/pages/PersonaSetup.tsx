@@ -20,6 +20,7 @@ type PersonaData = {
   expertise: string[];
   toneOfVoice: string;
   avatar: string;
+  threadsAccessToken: string;
 };
 
 const PersonaSetup = () => {
@@ -35,7 +36,8 @@ const PersonaSetup = () => {
     personality: "",
     expertise: [],
     toneOfVoice: "",
-    avatar: "https://images.unsplash.com/photo-1649972904349-6e44c42644a7?w=150"
+    avatar: "https://images.unsplash.com/photo-1649972904349-6e44c42644a7?w=150",
+    threadsAccessToken: ""
   });
 
   const [newExpertise, setNewExpertise] = useState("");
@@ -69,7 +71,8 @@ const PersonaSetup = () => {
           personality: data.personality || "",
           expertise: data.expertise || [],
           toneOfVoice: data.tone_of_voice || "",
-          avatar: data.avatar_url || "https://images.unsplash.com/photo-1649972904349-6e44c42644a7?w=150"
+          avatar: data.avatar_url || "https://images.unsplash.com/photo-1649972904349-6e44c42644a7?w=150",
+          threadsAccessToken: data.threads_access_token || ""
         });
       }
     } catch (error) {
@@ -104,6 +107,7 @@ const PersonaSetup = () => {
         expertise: persona.expertise,
         tone_of_voice: persona.toneOfVoice,
         avatar_url: persona.avatar,
+        threads_access_token: persona.threadsAccessToken,
         user_id: user.id,
         is_active: true
       };
@@ -349,6 +353,21 @@ const PersonaSetup = () => {
                       rows={3}
                       disabled={saving}
                     />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="threadsToken">Threadsアクセストークン</Label>
+                    <Input
+                      id="threadsToken"
+                      type="password"
+                      value={persona.threadsAccessToken}
+                      onChange={(e) => setPersona(prev => ({ ...prev, threadsAccessToken: e.target.value }))}
+                      placeholder="このペルソナ用のThreadsアクセストークンを入力"
+                      disabled={saving}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      このペルソナでThreadsに投稿する際に使用されるアクセストークンです
+                    </p>
                   </div>
 
                   <div className="space-y-2">
