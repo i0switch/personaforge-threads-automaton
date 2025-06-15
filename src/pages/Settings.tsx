@@ -3,12 +3,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, User, Bell, Shield, Trash2, Save, Loader2, Upload, Key } from "lucide-react";
+import { ArrowLeft, User, Shield, Trash2, Save, Loader2, Upload, Key } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -32,19 +30,6 @@ const Settings = () => {
     avatar_url: ""
   });
 
-  const [notifications, setNotifications] = useState({
-    email_posts: true,
-    email_replies: true,
-    email_analytics: false,
-    push_posts: true,
-    push_replies: true
-  });
-
-  const [privacy, setPrivacy] = useState({
-    public_profile: false,
-    share_analytics: false,
-    data_collection: true
-  });
 
   const [apiKeys, setApiKeys] = useState({
     gemini_api_key: ""
@@ -246,11 +231,9 @@ const Settings = () => {
         </div>
 
         <Tabs defaultValue="profile" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="profile">プロフィール</TabsTrigger>
             <TabsTrigger value="api">API設定</TabsTrigger>
-            <TabsTrigger value="notifications">通知</TabsTrigger>
-            <TabsTrigger value="privacy">プライバシー</TabsTrigger>
             <TabsTrigger value="account">アカウント</TabsTrigger>
           </TabsList>
 
@@ -333,88 +316,6 @@ const Settings = () => {
             </Card>
           </TabsContent>
 
-          {/* Notification Settings */}
-          <TabsContent value="notifications" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Bell className="h-5 w-5" />
-                  通知設定
-                </CardTitle>
-                <CardDescription>
-                  各種通知の受信設定を管理できます
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="space-y-4">
-                  <div>
-                    <h3 className="font-medium mb-3">メール通知</h3>
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm font-medium">投稿生成完了</p>
-                          <p className="text-xs text-muted-foreground">AI投稿生成が完了した時</p>
-                        </div>
-                        <Switch
-                          checked={notifications.email_posts}
-                          onCheckedChange={(checked) => setNotifications(prev => ({ ...prev, email_posts: checked }))}
-                        />
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm font-medium">自動返信実行</p>
-                          <p className="text-xs text-muted-foreground">自動返信が実行された時</p>
-                        </div>
-                        <Switch
-                          checked={notifications.email_replies}
-                          onCheckedChange={(checked) => setNotifications(prev => ({ ...prev, email_replies: checked }))}
-                        />
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm font-medium">分析レポート</p>
-                          <p className="text-xs text-muted-foreground">週次分析レポート</p>
-                        </div>
-                        <Switch
-                          checked={notifications.email_analytics}
-                          onCheckedChange={(checked) => setNotifications(prev => ({ ...prev, email_analytics: checked }))}
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <Separator />
-
-                  <div>
-                    <h3 className="font-medium mb-3">プッシュ通知</h3>
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm font-medium">投稿アクティビティ</p>
-                          <p className="text-xs text-muted-foreground">投稿関連の通知</p>
-                        </div>
-                        <Switch
-                          checked={notifications.push_posts}
-                          onCheckedChange={(checked) => setNotifications(prev => ({ ...prev, push_posts: checked }))}
-                        />
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm font-medium">返信アクティビティ</p>
-                          <p className="text-xs text-muted-foreground">返信関連の通知</p>
-                        </div>
-                        <Switch
-                          checked={notifications.push_replies}
-                          onCheckedChange={(checked) => setNotifications(prev => ({ ...prev, push_replies: checked }))}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
           {/* API Settings */}
           <TabsContent value="api" className="space-y-6">
             <Card>
@@ -486,55 +387,6 @@ const Settings = () => {
                       </>
                     )}
                   </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Privacy Settings */}
-          <TabsContent value="privacy" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Shield className="h-5 w-5" />
-                  プライバシー設定
-                </CardTitle>
-                <CardDescription>
-                  データの使用と共有に関する設定
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium">プロフィール公開</p>
-                      <p className="text-xs text-muted-foreground">他のユーザーがプロフィールを閲覧可能</p>
-                    </div>
-                    <Switch
-                      checked={privacy.public_profile}
-                      onCheckedChange={(checked) => setPrivacy(prev => ({ ...prev, public_profile: checked }))}
-                    />
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium">分析データ共有</p>
-                      <p className="text-xs text-muted-foreground">匿名化された分析データの共有</p>
-                    </div>
-                    <Switch
-                      checked={privacy.share_analytics}
-                      onCheckedChange={(checked) => setPrivacy(prev => ({ ...prev, share_analytics: checked }))}
-                    />
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium">利用データ収集</p>
-                      <p className="text-xs text-muted-foreground">サービス改善のためのデータ収集</p>
-                    </div>
-                    <Switch
-                      checked={privacy.data_collection}
-                      onCheckedChange={(checked) => setPrivacy(prev => ({ ...prev, data_collection: checked }))}
-                    />
-                  </div>
                 </div>
               </CardContent>
             </Card>
