@@ -19,7 +19,8 @@ import {
   Search,
   Filter,
   Loader2,
-  TrendingUp
+  TrendingUp,
+  Send
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
@@ -139,6 +140,38 @@ const ScheduledPosts = () => {
         description: "投稿の状態更新に失敗しました。",
         variant: "destructive",
       });
+    }
+  };
+
+  const [publishing, setPublishing] = useState<string | null>(null);
+
+  const publishPost = async (postId: string) => {
+    setPublishing(postId);
+    try {
+      const { data, error } = await supabase.functions.invoke('threads-post', {
+        body: {
+          postId,
+          userId: user?.id
+        }
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "投稿完了",
+        description: "Threadsに投稿しました。",
+      });
+      
+      await loadData();
+    } catch (error) {
+      console.error('Error publishing post:', error);
+      toast({
+        title: "エラー",
+        description: "投稿の公開に失敗しました。",
+        variant: "destructive",
+      });
+    } finally {
+      setPublishing(null);
     }
   };
 
@@ -382,6 +415,22 @@ const ScheduledPosts = () => {
                               <>
                                 <Play className="h-4 w-4 mr-2" />
                                 再開
+                              </>
+                            )}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem 
+                            onClick={() => publishPost(post.id)}
+                            disabled={publishing === post.id}
+                          >
+                            {publishing === post.id ? (
+                              <>
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                投稿中...
+                              </>
+                            ) : (
+                              <>
+                                <Send className="h-4 w-4 mr-2" />
+                                今すぐ投稿
                               </>
                             )}
                           </DropdownMenuItem>

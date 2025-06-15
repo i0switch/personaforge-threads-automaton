@@ -7,15 +7,23 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
+
+const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
 serve(async (req) => {
+  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
-    if (!openAIApiKey) {
-      throw new Error('OPENAI_API_KEY is not set');
+    console.log('Starting post generation...');
+
+    if (!geminiApiKey) {
+      throw new Error('GEMINI_API_KEY is not configured');
     }
 
     const { 
@@ -28,11 +36,13 @@ serve(async (req) => {
       user_id 
     } = await req.json();
 
-    // Get persona details
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    if (!personaId || !topics || !user_id) {
+      throw new Error('Missing required fields: personaId, topics, user_id');
+    }
 
+    console.log(`Generating ${postCount} posts for persona ${personaId}`);
+
+    // Get persona details
     const { data: persona, error: personaError } = await supabase
       .from('personas')
       .select('*')
@@ -41,86 +51,143 @@ serve(async (req) => {
       .single();
 
     if (personaError || !persona) {
-      throw new Error('Persona not found');
+      throw new Error('Persona not found or access denied');
     }
+
+    console.log(`Using persona: ${persona.name}`);
 
     // Generate time slots
     const timeSlots = generateTimeSlots(startTime, endTime, interval, postCount);
 
-    // Generate posts using OpenAI
     const posts = [];
-    
+
     for (let i = 0; i < postCount; i++) {
+      console.log(`Generating post ${i + 1}/${postCount}`);
+
+      // Create prompt for Gemini
       const prompt = createPostPrompt(persona, topics, i + 1, postCount);
-      
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${openAIApiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o-mini',
-          messages: [
-            {
-              role: 'system',
-              content: `あなたは「${persona.name}」というペルソナでソーシャルメディアの投稿を作成するAIです。
 
-ペルソナの特徴:
-- 名前: ${persona.name}
-- 年齢: ${persona.age || '不明'}
-- 性格: ${persona.personality || ''}
-- 話し方: ${persona.tone_of_voice || ''}
-- 専門分野: ${persona.expertise?.join(', ') || ''}
-
-投稿の要件:
-- SNS投稿として自然で魅力的な内容
-- ペルソナの特徴を反映した話し方
-- 絵文字を適度に使用
-- ハッシュタグを3-5個含める
-- 280文字以内で簡潔に`
+      try {
+        // Call Gemini API
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${geminiApiKey}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  {
+                    text: prompt
+                  }
+                ]
+              }
+            ],
+            generationConfig: {
+              temperature: 0.9,
+              topK: 1,
+              topP: 1,
+              maxOutputTokens: 2048,
             },
-            {
-              role: 'user',
-              content: prompt
-            }
-          ],
-          temperature: 0.8,
-          max_tokens: 500,
-        }),
-      });
+            safetySettings: [
+              {
+                category: "HARM_CATEGORY_HARASSMENT",
+                threshold: "BLOCK_MEDIUM_AND_ABOVE"
+              },
+              {
+                category: "HARM_CATEGORY_HATE_SPEECH",
+                threshold: "BLOCK_MEDIUM_AND_ABOVE"
+              },
+              {
+                category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                threshold: "BLOCK_MEDIUM_AND_ABOVE"
+              },
+              {
+                category: "HARM_CATEGORY_DANGEROUS_CONTENT",
+                threshold: "BLOCK_MEDIUM_AND_ABOVE"
+              }
+            ]
+          }),
+        });
 
-      const data = await response.json();
-      const generatedContent = data.choices[0].message.content;
-      
-      // Parse content and hashtags
-      const lines = generatedContent.split('\n').filter(line => line.trim());
-      const content = lines.find(line => !line.startsWith('#') && !line.includes('#'))?.trim() || generatedContent;
-      const hashtags = extractHashtags(generatedContent);
+        if (!response.ok) {
+          throw new Error(`Gemini API error: ${response.status} ${response.statusText}`);
+        }
 
-      posts.push({
-        content,
-        hashtags,
-        scheduled_for: timeSlots[i],
-        persona_id: personaId,
-        user_id: user_id,
-        status: 'draft'
-      });
+        const data = await response.json();
+
+        if (!data.candidates || !data.candidates[0] || !data.candidates[0].content) {
+          throw new Error('Invalid response from Gemini API');
+        }
+
+        const generatedContent = data.candidates[0].content.parts[0].text;
+
+        // Parse content and hashtags
+        const lines = generatedContent.split('\n').filter(line => line.trim());
+        const content = lines.find(line => !line.startsWith('#') && !line.includes('#'))?.trim() || generatedContent;
+        const hashtags = extractHashtags(generatedContent);
+
+        // Save post to database
+        const { data: savedPost, error: saveError } = await supabase
+          .from('posts')
+          .insert([{
+            content,
+            hashtags,
+            scheduled_for: timeSlots[i],
+            persona_id: personaId,
+            user_id: user_id,
+            status: 'scheduled',
+            platform: 'threads'
+          }])
+          .select()
+          .single();
+
+        if (saveError) {
+          console.error('Error saving post:', saveError);
+          throw saveError;
+        }
+
+        console.log(`Post ${i + 1} saved with ID: ${savedPost.id}`);
+        posts.push(savedPost);
+
+      } catch (error) {
+        console.error(`Error generating post ${i + 1}:`, error);
+        // Continue with next post instead of failing completely
+        continue;
+      }
 
       // Add small delay to avoid rate limiting
       await new Promise(resolve => setTimeout(resolve, 200));
     }
 
-    return new Response(JSON.stringify({ posts }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    console.log(`Successfully generated ${posts.length} posts`);
+
+    return new Response(
+      JSON.stringify({ 
+        posts,
+        success: true,
+        generated_count: posts.length,
+        requested_count: postCount
+      }),
+      { 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200 
+      }
+    );
 
   } catch (error) {
     console.error('Error in generate-posts function:', error);
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    return new Response(
+      JSON.stringify({ 
+        error: error.message,
+        success: false 
+      }),
+      { 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }, 
+        status: 500 
+      }
+    );
   }
 });
 
@@ -154,21 +221,27 @@ function generateTimeSlots(startTime: string, endTime: string, interval: number,
 function createPostPrompt(persona: any, topics: string[], postNumber: number, totalPosts: number): string {
   const topicsText = topics.join('、');
   
-  return `以下のトピックに関連する魅力的なSNS投稿を作成してください: ${topicsText}
+  return `あなたは${persona.name}として投稿を作成してください。
 
-投稿 ${postNumber}/${totalPosts}
+ペルソナ情報:
+- 名前: ${persona.name}
+- 年齢: ${persona.age || '不明'}
+- 性格: ${persona.personality || ''}
+- 専門分野: ${persona.expertise?.join(', ') || ''}
+- 口調: ${persona.tone_of_voice || ''}
+
+投稿テーマ: ${topicsText}
+投稿番号: ${postNumber}/${totalPosts}
 
 要件:
-- ペルソナ「${persona.name}」の特徴を活かした内容
-- ${topicsText}のいずれかに関連
-- 自然で親しみやすい文体
-- 適切な絵文字の使用
-- 関連するハッシュタグを3-5個含める
-- 280文字以内
+1. ${persona.name}のキャラクターに沿った内容
+2. Threadsに適した長さ（500文字以内）
+3. 自然で魅力的な文章
+4. ハッシュタグを2-3個含める
+5. エンゲージメントを促す内容
+6. ${topicsText}のいずれかに関連した内容
 
-フォーマット:
-[投稿本文]
-#ハッシュタグ1 #ハッシュタグ2 #ハッシュタグ3`;
+投稿内容のみを返してください:`;
 }
 
 function extractHashtags(text: string): string[] {
