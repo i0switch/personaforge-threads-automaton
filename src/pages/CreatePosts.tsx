@@ -387,12 +387,13 @@ const CreatePosts = () => {
         body: {
           prompt: imagePrompt,
           negative_prompt: "cartoon, painting, illustration, (worst quality, low quality, normal quality:1.8), ugly, deformed",
-          steps: 30,
+          num_inference_steps: 30,
           guidance_scale: 5,
           api_url: ngrokUrl.trim(),
-          ...(referenceImage && { reference_image: referenceImage }),
+          persona_id: selectedPersona || personas[0]?.id,
           ip_adapter_scale: ipAdapterScale,
-          control_weight: controlWeight
+          width: 512,
+          height: 768
         }
       });
 
