@@ -782,7 +782,7 @@ const CreatePosts = () => {
                             className="bg-white dark:bg-gray-900"
                           />
                           <p className="text-sm text-green-700 dark:text-green-300">
-                            「NgrokTunnel: "https://..." -> "http://localhost:5000"」の部分をコピーして貼り付けてください
+                            「NgrokTunnel: "https://..." -&gt; "http://localhost:5000"」の部分をコピーして貼り付けてください
                           </p>
                         </div>
                         
