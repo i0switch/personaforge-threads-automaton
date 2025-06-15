@@ -307,30 +307,24 @@ const CreatePosts = () => {
   };
 
   // Image generation functions
-  const generateImagePrompt = (postContent: string) => {
-    // Extract key themes from post content to generate image prompt
-    const words = postContent.toLowerCase();
-    let prompt = "";
-    
-    if (words.includes('コーヒー') || words.includes('カフェ')) {
-      prompt = "a beautiful coffee cup, warm lighting, aesthetic cafe scene";
-    } else if (words.includes('本') || words.includes('読書')) {
-      prompt = "beautiful books, cozy reading scene, warm lighting";
-    } else if (words.includes('仕事') || words.includes('オフィス')) {
-      prompt = "modern workspace, laptop, clean desk, professional setting";
-    } else if (words.includes('旅行') || words.includes('旅')) {
-      prompt = "beautiful travel scene, scenic view, wanderlust";
-    } else if (words.includes('料理') || words.includes('食事')) {
-      prompt = "beautiful food photography, delicious meal, aesthetic presentation";
-    } else if (words.includes('夕日') || words.includes('夕焼け')) {
-      prompt = "beautiful sunset, golden hour, peaceful scenery";
-    } else if (words.includes('海') || words.includes('ビーチ')) {
-      prompt = "beautiful ocean view, peaceful beach scene, blue water";
-    } else {
-      prompt = "aesthetic minimalist scene, soft lighting, peaceful atmosphere";
+  const generateImagePrompt = async (postContent: string): Promise<string> => {
+    try {
+      const { data, error } = await supabase.functions.invoke('generate-image-prompt', {
+        body: { postContent }
+      });
+
+      if (error) throw error;
+
+      if (data.success && data.imagePrompt) {
+        return data.imagePrompt;
+      } else {
+        throw new Error(data.details || 'Failed to generate image prompt');
+      }
+    } catch (error) {
+      console.error('Error generating image prompt with Gemini:', error);
+      // Fallback to simple prompt if Gemini fails
+      return "Beautiful woman, Japanese actress, looking us and smiling, upper half of the body, incredibly detailed face, incredibly detailed beautiful eye, focus on face, masterpiece, high quality, best quality, highly detailed, insanely detailed, 4K";
     }
-    
-    return prompt + ", high quality, professional photography, beautiful composition";
   };
 
   const generateImage = async (postId: string, prompt?: string) => {
@@ -346,7 +340,17 @@ const CreatePosts = () => {
       return;
     }
 
-    const imagePrompt = prompt || imagePrompts[postId] || generateImagePrompt(post.content);
+    let imagePrompt = prompt || imagePrompts[postId];
+    
+    // If no prompt exists, generate one using Gemini
+    if (!imagePrompt) {
+      try {
+        imagePrompt = await generateImagePrompt(post.content);
+      } catch (error) {
+        console.error('Failed to generate prompt with Gemini:', error);
+        imagePrompt = "Beautiful woman, Japanese actress, looking us and smiling, upper half of the body, incredibly detailed face, incredibly detailed beautiful eye, focus on face, masterpiece, high quality, best quality, highly detailed, insanely detailed, 4K";
+      }
+    }
     
     setGeneratingImage(postId);
     try {
@@ -413,17 +417,30 @@ const CreatePosts = () => {
 
   // Initialize image prompts when posts are generated
   useEffect(() => {
-    if (generatedPosts.length > 0 && currentStep === 3) {
-      const newPrompts: {[key: string]: string} = {};
-      generatedPosts.forEach(post => {
-        if (!imagePrompts[post.id]) {
-          newPrompts[post.id] = generateImagePrompt(post.content);
+    const initializeImagePrompts = async () => {
+      if (generatedPosts.length > 0 && currentStep === 3) {
+        const newPrompts: {[key: string]: string} = {};
+        
+        for (const post of generatedPosts) {
+          if (!imagePrompts[post.id]) {
+            try {
+              const prompt = await generateImagePrompt(post.content);
+              newPrompts[post.id] = prompt;
+            } catch (error) {
+              console.error('Failed to generate prompt for post:', post.id, error);
+              // Use fallback prompt
+              newPrompts[post.id] = "Beautiful woman, Japanese actress, looking us and smiling, upper half of the body, incredibly detailed face, incredibly detailed beautiful eye, focus on face, masterpiece, high quality, best quality, highly detailed, insanely detailed, 4K";
+            }
+          }
         }
-      });
-      if (Object.keys(newPrompts).length > 0) {
-        setImagePrompts(prev => ({ ...prev, ...newPrompts }));
+        
+        if (Object.keys(newPrompts).length > 0) {
+          setImagePrompts(prev => ({ ...prev, ...newPrompts }));
+        }
       }
-    }
+    };
+
+    initializeImagePrompts();
   }, [generatedPosts, currentStep]);
 
   if (loading && editPostId) {
@@ -895,10 +912,10 @@ const CreatePosts = () => {
                       </div>
                       <div className="text-sm">
                         <p className="font-medium text-blue-900 dark:text-blue-100">
-                          InstantID対応 Stable Diffusion APIを使用しています
+                          InstantID対応 Stable Diffusion + Gemini APIを使用しています
                         </p>
                         <p className="text-blue-700 dark:text-blue-300">
-                          投稿内容に基づいて自動的にプロンプトが生成されます。リファレンス画像をアップロードすると、その人物の顔で画像が生成されます。
+                          投稿内容をGemini APIが解析し、RealBeautyMix向けに最適化されたプロンプトを自動生成します。リファレンス画像をアップロードすると、その人物の顔で画像が生成されます。
                         </p>
                       </div>
                     </div>
