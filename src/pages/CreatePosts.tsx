@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ArrowLeft, Bot, Calendar, Hash, Image, Settings, Wand2, Loader2, Save, Users } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -28,9 +28,13 @@ const CreatePosts = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user } = useAuth();
-  const [currentStep, setCurrentStep] = useState(1);
+  const [searchParams] = useSearchParams();
+  const editPostId = searchParams.get('edit');
+  
+  const [currentStep, setCurrentStep] = useState(editPostId ? 2 : 1);
   const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(false);
   
   const [personas, setPersonas] = useState<Persona[]>([]);
   const [selectedPersona, setSelectedPersona] = useState<string>("");
@@ -50,7 +54,10 @@ const CreatePosts = () => {
 
   useEffect(() => {
     loadPersonas();
-  }, [user]);
+    if (editPostId) {
+      loadPostForEdit(editPostId);
+    }
+  }, [user, editPostId]);
 
   const loadPersonas = async () => {
     if (!user) return;
@@ -66,8 +73,8 @@ const CreatePosts = () => {
       if (error) throw error;
       setPersonas(data || []);
       
-      // Auto-select first persona if available
-      if (data && data.length > 0) {
+      // Auto-select first persona if available (only if not editing)
+      if (data && data.length > 0 && !editPostId) {
         setSelectedPersona(data[0].id);
       }
     } catch (error) {
@@ -79,6 +86,44 @@ const CreatePosts = () => {
       });
     } finally {
       setLoadingPersonas(false);
+    }
+  };
+
+  const loadPostForEdit = async (postId: string) => {
+    if (!user) return;
+    
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('posts')
+        .select('*')
+        .eq('id', postId)
+        .eq('user_id', user.id)
+        .single();
+
+      if (error) throw error;
+
+      if (data) {
+        // Set up the form for editing
+        setSelectedPersona(data.persona_id || "");
+        setGeneratedPosts([{
+          id: data.id,
+          content: data.content,
+          hashtags: data.hashtags || [],
+          scheduled_for: data.scheduled_for || new Date().toISOString(),
+          edited: false
+        }]);
+      }
+    } catch (error) {
+      console.error('Error loading post for edit:', error);
+      toast({
+        title: "エラー",
+        description: "投稿の読み込みに失敗しました。",
+        variant: "destructive",
+      });
+      navigate('/scheduled-posts');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -146,28 +191,53 @@ const CreatePosts = () => {
   const savePosts = async () => {
     setSaving(true);
     try {
-      const postsToSave = generatedPosts.map(post => ({
-        content: post.content,
-        hashtags: [],
-        scheduled_for: post.scheduled_for,
-        persona_id: selectedPersona,
-        user_id: user?.id,
-        status: 'scheduled' as const,
-        platform: 'threads'
-      }));
+      if (editPostId && generatedPosts.length === 1) {
+        // Update existing post
+        const post = generatedPosts[0];
+        const { error } = await supabase
+          .from('posts')
+          .update({
+            content: post.content,
+            hashtags: [],
+            scheduled_for: post.scheduled_for,
+            persona_id: selectedPersona,
+          })
+          .eq('id', editPostId)
+          .eq('user_id', user?.id);
 
-      const { error } = await supabase
-        .from('posts')
-        .insert(postsToSave);
+        if (error) throw error;
 
-      if (error) throw error;
+        toast({
+          title: "投稿を更新しました",
+          description: "投稿の変更が保存されました。",
+        });
+        
+        navigate('/scheduled-posts');
+      } else {
+        // Create new posts
+        const postsToSave = generatedPosts.map(post => ({
+          content: post.content,
+          hashtags: [],
+          scheduled_for: post.scheduled_for,
+          persona_id: selectedPersona,
+          user_id: user?.id,
+          status: 'scheduled' as const,
+          platform: 'threads'
+        }));
 
-      toast({
-        title: "投稿を保存しました",
-        description: `${generatedPosts.length}件の投稿を予約投稿として保存しました。`,
-      });
-      
-      setCurrentStep(3);
+        const { error } = await supabase
+          .from('posts')
+          .insert(postsToSave);
+
+        if (error) throw error;
+
+        toast({
+          title: "投稿を保存しました",
+          description: `${generatedPosts.length}件の投稿を予約投稿として保存しました。`,
+        });
+        
+        setCurrentStep(3);
+      }
     } catch (error) {
       console.error('Error saving posts:', error);
       toast({
@@ -227,18 +297,33 @@ const CreatePosts = () => {
     });
   };
 
+  if (loading && editPostId) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-12 w-12 animate-spin mx-auto mb-4" />
+          <p className="text-muted-foreground">投稿データを読み込み中...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-6xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex items-center gap-4">
-          <Button onClick={() => navigate("/")} variant="ghost" size="sm">
+          <Button onClick={() => navigate(editPostId ? "/scheduled-posts" : "/")} variant="ghost" size="sm">
             <ArrowLeft className="h-4 w-4 mr-2" />
             戻る
           </Button>
           <div>
-            <h1 className="text-3xl font-bold text-foreground">投稿作成</h1>
-            <p className="text-muted-foreground">AIで投稿を一括生成・編集します</p>
+            <h1 className="text-3xl font-bold text-foreground">
+              {editPostId ? "投稿編集" : "投稿作成"}
+            </h1>
+            <p className="text-muted-foreground">
+              {editPostId ? "投稿内容を編集・更新します" : "AIで投稿を一括生成・編集します"}
+            </p>
           </div>
         </div>
 
@@ -477,10 +562,10 @@ const CreatePosts = () => {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Bot className="h-5 w-5" />
-                  生成された投稿
+                  {editPostId ? "投稿編集" : "生成された投稿"}
                 </CardTitle>
                 <CardDescription>
-                  投稿内容を確認・編集できます
+                  {editPostId ? "投稿内容とスケジュールを編集できます" : "投稿内容を確認・編集できます"}
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -518,19 +603,21 @@ const CreatePosts = () => {
                 </div>
 
                 <div className="flex justify-between mt-6">
-                  <Button onClick={() => setCurrentStep(1)} variant="outline">
-                    設定に戻る
-                  </Button>
-                  <Button onClick={savePosts} disabled={saving}>
+                  {!editPostId && (
+                    <Button onClick={() => setCurrentStep(1)} variant="outline">
+                      設定に戻る
+                    </Button>
+                  )}
+                  <Button onClick={savePosts} disabled={saving} className={editPostId ? "ml-auto" : ""}>
                     {saving ? (
                       <>
                         <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        保存中...
+                        {editPostId ? "更新中..." : "保存中..."}
                       </>
                     ) : (
                       <>
                         <Save className="h-4 w-4 mr-2" />
-                        投稿を保存
+                        {editPostId ? "投稿を更新" : "投稿を保存"}
                       </>
                     )}
                   </Button>
