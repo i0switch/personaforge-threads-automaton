@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { ArrowLeft, Bot, Calendar, Hash, Image, Settings, Wand2, Loader2, Save, Users } from "lucide-react";
+import { ArrowLeft, Bot, Calendar, Hash, Image, Settings, Wand2, Loader2, Save, Users, Download, RefreshCw } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -51,6 +51,11 @@ const CreatePosts = () => {
 
   const [generatedPosts, setGeneratedPosts] = useState<GeneratedPost[]>([]);
   const [newTopic, setNewTopic] = useState("");
+  
+  // Image generation states
+  const [generatedImages, setGeneratedImages] = useState<{[key: string]: string}>({});
+  const [imagePrompts, setImagePrompts] = useState<{[key: string]: string}>({});
+  const [generatingImage, setGeneratingImage] = useState<string | null>(null);
 
   useEffect(() => {
     loadPersonas();
@@ -296,6 +301,99 @@ const CreatePosts = () => {
       minute: '2-digit'
     });
   };
+
+  // Image generation functions
+  const generateImagePrompt = (postContent: string) => {
+    // Extract key themes from post content to generate image prompt
+    const words = postContent.toLowerCase();
+    let prompt = "";
+    
+    if (words.includes('コーヒー') || words.includes('カフェ')) {
+      prompt = "a beautiful coffee cup, warm lighting, aesthetic cafe scene";
+    } else if (words.includes('本') || words.includes('読書')) {
+      prompt = "beautiful books, cozy reading scene, warm lighting";
+    } else if (words.includes('仕事') || words.includes('オフィス')) {
+      prompt = "modern workspace, laptop, clean desk, professional setting";
+    } else if (words.includes('旅行') || words.includes('旅')) {
+      prompt = "beautiful travel scene, scenic view, wanderlust";
+    } else if (words.includes('料理') || words.includes('食事')) {
+      prompt = "beautiful food photography, delicious meal, aesthetic presentation";
+    } else if (words.includes('夕日') || words.includes('夕焼け')) {
+      prompt = "beautiful sunset, golden hour, peaceful scenery";
+    } else if (words.includes('海') || words.includes('ビーチ')) {
+      prompt = "beautiful ocean view, peaceful beach scene, blue water";
+    } else {
+      prompt = "aesthetic minimalist scene, soft lighting, peaceful atmosphere";
+    }
+    
+    return prompt + ", high quality, professional photography, beautiful composition";
+  };
+
+  const generateImage = async (postId: string, prompt?: string) => {
+    const post = generatedPosts.find(p => p.id === postId);
+    if (!post) return;
+
+    const imagePrompt = prompt || imagePrompts[postId] || generateImagePrompt(post.content);
+    
+    setGeneratingImage(postId);
+    try {
+      const { data, error } = await supabase.functions.invoke('generate-image-stable-diffusion', {
+        body: {
+          prompt: imagePrompt,
+          negative_prompt: "cartoon, anime, low quality, blurry, distorted",
+          steps: 30,
+          guidance_scale: 7.5
+        }
+      });
+
+      if (error) throw error;
+
+      if (data.success && data.image) {
+        setGeneratedImages(prev => ({ ...prev, [postId]: data.image }));
+        setImagePrompts(prev => ({ ...prev, [postId]: imagePrompt }));
+        
+        toast({
+          title: "画像生成完了！",
+          description: "投稿用の画像を生成しました。",
+        });
+      } else {
+        throw new Error(data.details || 'Image generation failed');
+      }
+    } catch (error) {
+      console.error('Error generating image:', error);
+      toast({
+        title: "エラー",
+        description: "画像の生成に失敗しました。しばらく後でもう一度お試しください。",
+        variant: "destructive",
+      });
+    } finally {
+      setGeneratingImage(null);
+    }
+  };
+
+  const downloadImage = (imageDataUrl: string, postId: string) => {
+    const link = document.createElement('a');
+    link.href = imageDataUrl;
+    link.download = `post-image-${postId}.png`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Initialize image prompts when posts are generated
+  useEffect(() => {
+    if (generatedPosts.length > 0 && currentStep === 3) {
+      const newPrompts: {[key: string]: string} = {};
+      generatedPosts.forEach(post => {
+        if (!imagePrompts[post.id]) {
+          newPrompts[post.id] = generateImagePrompt(post.content);
+        }
+      });
+      if (Object.keys(newPrompts).length > 0) {
+        setImagePrompts(prev => ({ ...prev, ...newPrompts }));
+      }
+    }
+  }, [generatedPosts, currentStep]);
 
   if (loading && editPostId) {
     return (
@@ -634,25 +732,159 @@ const CreatePosts = () => {
                   画像生成
                 </CardTitle>
                 <CardDescription>
-                  投稿用の画像を生成します（今後実装予定）
+                  投稿内容に基づいて、AIが画像を自動生成します
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="text-center py-12">
-                  <Image className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-                  <h3 className="text-lg font-medium mb-2">画像生成機能</h3>
-                  <p className="text-muted-foreground mb-6">
-                    AIを使用して投稿に適した画像を自動生成する機能を準備中です。
-                  </p>
-                  <div className="flex justify-center gap-4">
-                    <Button onClick={() => setCurrentStep(2)} variant="outline">
-                      投稿編集に戻る
-                    </Button>
-                    <Button onClick={() => navigate('/scheduled-posts')} className="bg-primary text-primary-foreground">
-                      予約投稿を確認
+                {generatedPosts.length === 0 ? (
+                  <div className="text-center py-12">
+                    <Image className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+                    <h3 className="text-lg font-medium mb-2">投稿を先に生成してください</h3>
+                    <p className="text-muted-foreground mb-6">
+                      画像を生成するには、まず投稿内容を作成する必要があります。
+                    </p>
+                    <Button onClick={() => setCurrentStep(1)} variant="outline">
+                      投稿作成に戻る
                     </Button>
                   </div>
-                </div>
+                ) : (
+                  <div className="space-y-6">
+                    <div className="flex items-center gap-2 p-4 bg-blue-50 dark:bg-blue-950 rounded-lg">
+                      <div className="text-blue-600 dark:text-blue-400">
+                        <Image className="h-5 w-5" />
+                      </div>
+                      <div className="text-sm">
+                        <p className="font-medium text-blue-900 dark:text-blue-100">
+                          Stable Diffusion APIを使用しています
+                        </p>
+                        <p className="text-blue-700 dark:text-blue-300">
+                          投稿内容に基づいて自動的にプロンプトが生成されます。プロンプトは編集できます。
+                        </p>
+                      </div>
+                    </div>
+
+                    {generatedPosts.map((post) => (
+                      <Card key={post.id} className="overflow-hidden">
+                        <CardHeader>
+                          <div className="flex items-center gap-2">
+                            <Calendar className="h-4 w-4" />
+                            <span className="text-sm font-medium">
+                              {formatScheduledTime(post.scheduled_for)}
+                            </span>
+                          </div>
+                          <p className="text-sm text-muted-foreground line-clamp-2">
+                            {post.content}
+                          </p>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                          <div className="space-y-2">
+                            <Label htmlFor={`prompt-${post.id}`}>画像プロンプト</Label>
+                            <Textarea
+                              id={`prompt-${post.id}`}
+                              value={imagePrompts[post.id] || ""}
+                              onChange={(e) => setImagePrompts(prev => ({ ...prev, [post.id]: e.target.value }))}
+                              placeholder="画像生成のためのプロンプトを入力..."
+                              rows={2}
+                              className="resize-none"
+                            />
+                          </div>
+
+                          <div className="flex flex-col sm:flex-row gap-4">
+                            <div className="flex-1">
+                              {generatedImages[post.id] ? (
+                                <div className="space-y-3">
+                                  <div className="relative group">
+                                    <img 
+                                      src={generatedImages[post.id]} 
+                                      alt="Generated image"
+                                      className="w-full h-64 object-cover rounded-lg border"
+                                    />
+                                    <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all rounded-lg flex items-center justify-center">
+                                      <Button
+                                        onClick={() => downloadImage(generatedImages[post.id], post.id)}
+                                        className="opacity-0 group-hover:opacity-100 transition-opacity"
+                                        size="sm"
+                                        variant="secondary"
+                                      >
+                                        <Download className="h-4 w-4 mr-2" />
+                                        ダウンロード
+                                      </Button>
+                                    </div>
+                                  </div>
+                                  <div className="flex gap-2">
+                                    <Button
+                                      onClick={() => generateImage(post.id, imagePrompts[post.id])}
+                                      disabled={generatingImage === post.id}
+                                      variant="outline"
+                                      size="sm"
+                                    >
+                                      {generatingImage === post.id ? (
+                                        <>
+                                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                          再生成中...
+                                        </>
+                                      ) : (
+                                        <>
+                                          <RefreshCw className="h-4 w-4 mr-2" />
+                                          再生成
+                                        </>
+                                      )}
+                                    </Button>
+                                    <Button
+                                      onClick={() => downloadImage(generatedImages[post.id], post.id)}
+                                      size="sm"
+                                      variant="outline"
+                                    >
+                                      <Download className="h-4 w-4 mr-2" />
+                                      ダウンロード
+                                    </Button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="space-y-3">
+                                  <div className="w-full h-64 border-2 border-dashed border-muted-foreground/25 rounded-lg flex items-center justify-center">
+                                    <div className="text-center">
+                                      <Image className="h-12 w-12 text-muted-foreground mx-auto mb-2" />
+                                      <p className="text-sm text-muted-foreground">
+                                        画像を生成してください
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <Button
+                                    onClick={() => generateImage(post.id, imagePrompts[post.id])}
+                                    disabled={generatingImage === post.id}
+                                    className="w-full"
+                                  >
+                                    {generatingImage === post.id ? (
+                                      <>
+                                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                        画像生成中...
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Wand2 className="h-4 w-4 mr-2" />
+                                        画像を生成
+                                      </>
+                                    )}
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+
+                    <div className="flex justify-center gap-4 pt-6">
+                      <Button onClick={() => setCurrentStep(2)} variant="outline">
+                        投稿編集に戻る
+                      </Button>
+                      <Button onClick={() => navigate('/scheduled-posts')} className="bg-primary text-primary-foreground">
+                        予約投稿を確認
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
