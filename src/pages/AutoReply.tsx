@@ -289,10 +289,10 @@ const AutoReply = () => {
           </Card>
         </div>
 
-        <Tabs defaultValue="rules" className="space-y-6">
+        <Tabs defaultValue="rules" className="space-y-6" onValueChange={(value) => console.log('Tab changed to:', value)}>
           <TabsList>
             <TabsTrigger value="rules">返信ルール ({totalRules})</TabsTrigger>
-            <TabsTrigger value="add">新規作成</TabsTrigger>
+            <TabsTrigger value="add" onClick={() => console.log('Add tab clicked')}>新規作成</TabsTrigger>
           </TabsList>
 
           <TabsContent value="add" className="space-y-6">
