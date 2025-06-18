@@ -36,7 +36,11 @@ export async function getPersonaAvatar(persona_id: string): Promise<{ avatarBase
   }
 
   console.log('Converting avatar URL to base64:', persona.avatar_url)
-  return await convertImageToBase64(persona.avatar_url)
+  const result = await convertImageToBase64(persona.avatar_url)
+  if (result instanceof Response) {
+    return result
+  }
+  return result
 }
 
 export async function convertImageToBase64(imageUrl: string): Promise<{ avatarBase64: string } | Response> {

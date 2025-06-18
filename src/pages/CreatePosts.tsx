@@ -384,17 +384,15 @@ const CreatePosts = () => {
     
     setGeneratingImage(postId);
     try {
-      const { data, error } = await supabase.functions.invoke('generate-image-stable-diffusion', {
+      const { data, error } = await supabase.functions.invoke('generate-image-huggingface', {
         body: {
           prompt: imagePrompt,
-          negative_prompt: "cartoon, painting, illustration, (worst quality, low quality, normal quality:1.8), ugly, deformed",
-          num_inference_steps: 30,
-          guidance_scale: 5,
-          api_url: ngrokUrl.trim(),
-          persona_id: selectedPersona || personas[0]?.id,
+          negative_prompt: "glasses, hat",
+          guidance_scale: 8.0,
           ip_adapter_scale: ipAdapterScale,
-          width: 512,
-          height: 768
+          num_steps: 25,
+          api_url: ngrokUrl.trim(),
+          face_image: referenceImage
         }
       });
 
@@ -805,13 +803,10 @@ const CreatePosts = () => {
                       <CardHeader className="pb-3">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
-                            <Calendar className="h-4 w-4" />
-                            <Input
-                              type="datetime-local"
-                              value={new Date(post.scheduled_for).toISOString().slice(0, 16)}
-                              onChange={(e) => updatePostSchedule(post.id, new Date(e.target.value).toISOString())}
-                              className="w-auto text-sm"
-                            />
+                            <CalendarIcon className="h-4 w-4" />
+                            <span className="text-sm font-medium">
+                              {formatScheduledTime(post.scheduled_for)}
+                            </span>
                           </div>
                           {post.edited && (
                             <Badge variant="outline" className="text-orange-600 border-orange-200">
@@ -881,39 +876,39 @@ const CreatePosts = () => {
                   </div>
                 ) : (
                   <div className="space-y-6">
-                    {/* Google Colab ngrok URL Input */}
+                    {/* HuggingFace Spaces Setup */}
                     <Card className="border-green-200 bg-green-50 dark:bg-green-950 dark:border-green-800">
                       <CardHeader>
                         <CardTitle className="flex items-center gap-2 text-green-800 dark:text-green-200">
                           <Image className="h-5 w-5" />
-                          Google Colab セットアップ
+                          HuggingFace Spaces セットアップ
                         </CardTitle>
                         <CardDescription className="text-green-700 dark:text-green-300">
-                          Google ColabのStable Diffusion notebookを実行し、生成されたngrok URLを入力してください
+                          HuggingFace Spacesの画像生成アプリのURLを入力してください
                         </CardDescription>
                       </CardHeader>
                       <CardContent className="space-y-4">
                         <div className="space-y-2">
-                          <Label htmlFor="ngrokUrl">ngrok URL</Label>
+                          <Label htmlFor="huggingfaceUrl">HuggingFace Spaces URL</Label>
                           <Input
-                            id="ngrokUrl"
+                            id="huggingfaceUrl"
                             value={ngrokUrl}
                             onChange={(e) => setNgrokUrl(e.target.value)}
-                            placeholder="例: https://a9b0-34-16-133-110.ngrok-free.app"
+                            placeholder="例: https://huggingface.co/spaces/i0switch/my-image-generator"
                             className="bg-white dark:bg-gray-900"
                           />
                           <p className="text-sm text-green-700 dark:text-green-300">
-                            「NgrokTunnel: "https://..." -&gt; "http://localhost:5000"」の部分をコピーして貼り付けてください
+                            あなたのHuggingFace SpacesのURLを入力してください
                           </p>
                         </div>
                         
                         <div className="text-sm text-green-700 dark:text-green-300 space-y-2">
-                          <p className="font-medium">Google Colab実行手順:</p>
+                          <p className="font-medium">セットアップ手順:</p>
                           <ol className="list-decimal list-inside space-y-1 ml-2">
-                            <li>提供されたGoogle Colab notebookを開く</li>
-                            <li>ngrok Auth Tokenを設定する</li>
-                            <li>セルを実行してAPIサーバーを起動</li>
-                            <li>表示されたngrok URLをこちらに入力</li>
+                            <li>HuggingFace Spacesで画像生成アプリを作成・デプロイ</li>
+                            <li>アプリが正常に動作することを確認</li>
+                            <li>SpacesのURLをこちらに入力</li>
+                            <li>APIエンドポイント: /api/predict/generate</li>
                           </ol>
                         </div>
                       </CardContent>
@@ -996,10 +991,10 @@ const CreatePosts = () => {
                       </div>
                       <div className="text-sm">
                         <p className="font-medium text-blue-900 dark:text-blue-100">
-                          InstantID対応 Stable Diffusion + Gemini APIを使用しています
+                          HuggingFace Spaces + Gemini APIを使用しています
                         </p>
                         <p className="text-blue-700 dark:text-blue-300">
-                          投稿内容をGemini APIが解析し、RealBeautyMix向けに最適化されたプロンプトを自動生成します。リファレンス画像をアップロードすると、その人物の顔で画像が生成されます。
+                          投稿内容をGemini APIが解析し、画像生成プロンプトを自動生成します。リファレンス画像をアップロードすると、その人物の顔で画像が生成されます。
                         </p>
                       </div>
                     </div>
