@@ -80,34 +80,74 @@ serve(async (req) => {
     console.log('Num steps:', requestData.data[5]);
     console.log('===========================');
 
-    console.log('Calling Gradio API via /call/predict (two-step process)...');
+    console.log('First checking Gradio Space info...');
     
-    // Step 1: POST to /call/predict to get event_id
-    const response = await fetch(`${space_url}/call/predict`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(requestData)
-    });
-
-    console.log('Step 1 - POST response status:', response.status);
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Gradio API POST error response:', errorText);
-      throw new Error(`Gradio API POST error: ${response.status} - ${errorText}`);
+    // Check available APIs
+    const infoResponse = await fetch(`${space_url}/info`);
+    if (infoResponse.ok) {
+      const info = await infoResponse.json();
+      console.log('Gradio Space info:', JSON.stringify(info, null, 2));
+    } else {
+      console.log('Could not get Space info, proceeding with default...');
     }
 
-    const postResult = await response.json();
-    console.log('Step 1 - POST result:', JSON.stringify(postResult, null, 2));
+    // Try different endpoint formats
+    const endpoints = [
+      `/call/predict`,
+      `/api/predict`,
+      `/run/predict`,
+      `/call/generate`,
+      `/api/generate`
+    ];
+
+    let success = false;
+    let eventId = null;
     
-    if (!postResult.event_id) {
-      throw new Error('No event_id received from Gradio API');
+    for (const endpoint of endpoints) {
+      try {
+        console.log(`Trying endpoint: ${endpoint}`);
+        const response = await fetch(`${space_url}${endpoint}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(requestData)
+        });
+
+        console.log(`${endpoint} response status:`, response.status);
+        
+        if (response.ok) {
+          const result = await response.json();
+          console.log(`${endpoint} result:`, JSON.stringify(result, null, 2));
+          
+          if (result.event_id) {
+            eventId = result.event_id;
+            success = true;
+            console.log(`Success with ${endpoint}, event_id:`, eventId);
+            break;
+          } else if (result.data) {
+            // Direct result without event_id
+            console.log('Got direct result without event_id');
+            return new Response(
+              JSON.stringify({ 
+                success: true,
+                image_data: result.data[0],
+                message: 'Image generated successfully'
+              }),
+              {
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+              }
+            );
+          }
+        }
+      } catch (e) {
+        console.log(`${endpoint} failed:`, e.message);
+      }
     }
 
-    const eventId = postResult.event_id;
-    console.log('Step 2 - Got event_id:', eventId);
+    if (!success || !eventId) {
+      throw new Error('Could not find working Gradio API endpoint');
+    }
 
     // Step 2: GET the result using event_id
     const getResponse = await fetch(`${space_url}/call/predict/${eventId}`, {
