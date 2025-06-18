@@ -1,64 +1,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { Client } from "https://esm.sh/@gradio/client@0.10.1";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
-
-// Gradio API仕様を取得する関数
-async function getGradioConfig(spaceUrl: string) {
-  try {
-    const configResponse = await fetch(`${spaceUrl}/config`);
-    if (configResponse.ok) {
-      return await configResponse.json();
-    }
-  } catch (error) {
-    console.log('Config endpoint not available, trying info endpoint:', error.message);
-  }
-  
-  try {
-    const infoResponse = await fetch(`${spaceUrl}/info`);
-    if (infoResponse.ok) {
-      return await infoResponse.json();
-    }
-  } catch (error) {
-    console.log('Info endpoint not available:', error.message);
-  }
-  
-  return null;
-}
-
-// Gradio API仕様に基づいてリクエストを構築する関数
-async function buildGradioRequest(spaceUrl: string, config: any, params: any) {
-  const { face_image, prompt, negative_prompt, guidance_scale, ip_adapter_scale, num_steps } = params;
-  
-  // HuggingFace側の実装に合わせて /api/predict/ を使用（末尾スラッシュ付き）
-  console.log('Using endpoint: /api/predict/');
-  
-  const requestData = {
-    data: [
-      `data:image/jpeg;base64,${face_image}`, // face_image_numpy
-      prompt,                                  // user_prompt  
-      negative_prompt,                         // user_negative_prompt
-      guidance_scale,                          // guidance_scale
-      ip_adapter_scale,                        // ip_adapter_scale
-      num_steps                               // num_steps
-    ]
-  };
-  
-  console.log('=== REQUEST DATA DEBUG ===');
-  console.log('Data array length:', requestData.data.length);
-  console.log('Face image data type:', typeof requestData.data[0]);
-  console.log('Face image prefix:', requestData.data[0].substring(0, 30));
-  console.log('Prompt:', requestData.data[1]);
-  console.log('Negative prompt:', requestData.data[2]);
-  console.log('Guidance scale:', requestData.data[3]);
-  console.log('IP adapter scale:', requestData.data[4]);
-  console.log('Num steps:', requestData.data[5]);
-  console.log('===========================');
-  
-  return { endpoint: '/api/predict/', requestData };
-}
 
 serve(async (req) => {
   console.log('Function called with method:', req.method);
@@ -112,69 +58,34 @@ serve(async (req) => {
     console.log('Prompt length:', prompt.length);
     console.log('Face image length:', face_image.length);
 
-    // First, test if the Space URL is accessible
-    console.log('Testing Space accessibility...');
-    try {
-      const testResponse = await fetch(space_url);
-      console.log('Space accessibility test status:', testResponse.status);
-      if (!testResponse.ok) {
-        throw new Error(`Space not accessible: ${testResponse.status} ${testResponse.statusText}`);
-      }
-    } catch (error) {
-      console.error('Space accessibility test failed:', error);
-      throw new Error(`Cannot access HuggingFace Space: ${error.message}`);
-    }
-
-    // Gradio API仕様を自動取得して適応
-    console.log('Getting Gradio API configuration...');
-    const config = await getGradioConfig(space_url);
-    if (config) {
-      console.log('Gradio config retrieved:', Object.keys(config));
-    } else {
-      console.log('No config found, using endpoint discovery');
-    }
-
-    // 動的にエンドポイントとリクエストを構築
-    console.log('Building Gradio request with corrected endpoint...');
-    const { endpoint, requestData } = await buildGradioRequest(space_url, config, {
-      face_image,
-      prompt,
-      negative_prompt,
-      guidance_scale,
-      ip_adapter_scale,
-      num_steps
+    console.log('Initializing Gradio client...');
+    const client = await Client.connect(space_url, {
+      hf_token: Deno.env.get('HF_TOKEN')
     });
+    
+    console.log('=== REQUEST DATA DEBUG ===');
+    console.log('Face image data type:', typeof face_image);
+    console.log('Face image prefix:', face_image.substring(0, 30));
+    console.log('Prompt:', prompt);
+    console.log('Negative prompt:', negative_prompt);
+    console.log('Guidance scale:', guidance_scale);
+    console.log('IP adapter scale:', ip_adapter_scale);
+    console.log('Num steps:', num_steps);
+    console.log('===========================');
 
-    console.log(`Calling Gradio API via ${endpoint}...`);
-    console.log('Request data structure:', Object.keys(requestData));
-    
-    // HuggingFace認証トークンを取得
-    const hfToken = Deno.env.get('HF_TOKEN');
-    if (!hfToken) {
-      throw new Error('Server configuration error: HF_TOKEN is missing.');
-    }
-    
-    const response = await fetch(`${space_url}${endpoint}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${hfToken}`
-      },
-      body: JSON.stringify(requestData)
-    });
+    console.log('Calling Gradio API via client...');
+    const result = await client.predict("/predict", [
+      `data:image/jpeg;base64,${face_image}`, // face_image_numpy
+      prompt,                                  // user_prompt  
+      negative_prompt,                         // user_negative_prompt
+      guidance_scale,                          // guidance_scale
+      ip_adapter_scale,                        // ip_adapter_scale
+      num_steps                               // num_steps
+    ]);
 
-    console.log('Gradio API response status:', response.status);
+    console.log('Gradio API response received:', result);
     
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Gradio API error response:', errorText);
-      throw new Error(`Gradio API error: ${response.status} - ${errorText}`);
-    }
-
-    const result = await response.json();
-    console.log('Gradio API response received, data keys:', Object.keys(result));
-    
-    // Gradio typically returns data in result.data array
+    // Gradio client returns result.data array
     if (result.data && result.data.length > 0) {
       const imageData = result.data[0];
       let base64Image;
@@ -207,7 +118,7 @@ serve(async (req) => {
         JSON.stringify({ 
           success: true,
           image_data: base64Image,
-          message: 'Image generated successfully via Gradio API'
+          message: 'Image generated successfully via Gradio Client'
         }),
         {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
