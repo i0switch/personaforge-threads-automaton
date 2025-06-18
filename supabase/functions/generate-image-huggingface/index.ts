@@ -70,26 +70,70 @@ serve(async (req) => {
       throw new Error(`Cannot access HuggingFace Space: ${error.message}`);
     }
 
-    // Call the correct Gradio API endpoint - matching Python code
-    console.log('Calling /api/predict with api_name="/generate"...');
+    // Try multiple Gradio API endpoints to find the correct one
+    console.log('Attempting to call Gradio API...');
     
-    const response = await fetch(`${space_url}/api/predict`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        api_name: "/generate",
-        data: [
-          `data:image/jpeg;base64,${face_image}`, // face_image_numpy
-          prompt, // user_prompt
-          negative_prompt, // user_negative_prompt
-          guidance_scale, // guidance_scale
-          ip_adapter_scale, // ip_adapter_scale
-          num_steps // num_steps
-        ]
-      })
-    });
+    let response;
+    let lastError;
+
+    // Method 1: Modern Gradio /run/predict endpoint
+    try {
+      console.log('Trying /run/predict endpoint...');
+      response = await fetch(`${space_url}/run/predict/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          data: [
+            `data:image/jpeg;base64,${face_image}`,
+            prompt,
+            negative_prompt,
+            guidance_scale,
+            ip_adapter_scale,
+            num_steps
+          ]
+        })
+      });
+      
+      if (response.ok) {
+        console.log('Success with /run/predict/');
+      } else {
+        throw new Error(`/run/predict failed: ${response.status}`);
+      }
+    } catch (error) {
+      lastError = error;
+      console.log('/run/predict failed:', error.message);
+      
+      // Method 2: Legacy API with api_name
+      try {
+        console.log('Trying /api/predict with api_name...');
+        response = await fetch(`${space_url}/api/predict/`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            api_name: "/generate",
+            data: [
+              `data:image/jpeg;base64,${face_image}`,
+              prompt,
+              negative_prompt,
+              guidance_scale,
+              ip_adapter_scale,
+              num_steps
+            ]
+          })
+        });
+        
+        if (!response.ok) {
+          throw new Error(`/api/predict failed: ${response.status}`);
+        }
+      } catch (error2) {
+        console.log('/api/predict also failed:', error2.message);
+        throw new Error(`All API endpoints failed. Last error: ${error2.message}`);
+      }
+    }
 
     console.log('Gradio API response status:', response.status);
     
