@@ -1038,14 +1038,14 @@ const CreatePosts = () => {
                             <div className="flex-1">
                               {generatedImages[post.id] ? (
                                 <div className="space-y-3">
-                                  <div className="relative group">
-                                    <img 
-                                      src={generatedImages[post.id]} 
-                                      alt="Generated image"
-                                      className="w-full h-64 object-cover rounded-lg border"
-                                    />
-                                    <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all rounded-lg flex items-center justify-center">
-                                      <Button
+                                   <div className="relative group">
+                                     <img 
+                                       src={generatedImages[post.id]} 
+                                       alt="Generated image"
+                                       className="w-full h-auto rounded-lg shadow-lg border"
+                                     />
+                                     <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all rounded-lg flex items-center justify-center">
+                                       <Button
                                         onClick={() => downloadImage(generatedImages[post.id], post.id)}
                                         className="opacity-0 group-hover:opacity-100 transition-opacity"
                                         size="sm"
