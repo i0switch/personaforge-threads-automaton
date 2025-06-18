@@ -70,81 +70,88 @@ serve(async (req) => {
       throw new Error(`Cannot access HuggingFace Space: ${error.message}`);
     }
 
-    // Try different API endpoints
-    const apiEndpoints = ['/api/predict', '/predict', '/api/v1/predict'];
-    let successfulResponse = null;
-    let lastError = null;
-
-    for (const endpoint of apiEndpoints) {
-      try {
-        console.log(`Trying endpoint: ${space_url}${endpoint}`);
-        
-        const response = await fetch(`${space_url}${endpoint}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            data: [
-              `data:image/jpeg;base64,${face_image}`,
-              prompt,
-              negative_prompt,
-              guidance_scale,
-              ip_adapter_scale,
-              num_steps
-            ]
-          })
-        });
-
-        console.log(`Response status for ${endpoint}:`, response.status);
-        
-        if (response.ok) {
-          successfulResponse = await response.json();
-          console.log('Successful response received from:', endpoint);
-          break;
-        } else {
-          console.log(`Endpoint ${endpoint} failed with status:`, response.status);
-          lastError = new Error(`API endpoint ${endpoint} returned: ${response.status} ${response.statusText}`);
-        }
-      } catch (error) {
-        console.error(`Error with endpoint ${endpoint}:`, error);
-        lastError = error;
-      }
-    }
-
-    if (!successfulResponse) {
-      console.error('All API endpoints failed. Last error:', lastError);
-      throw new Error(`All API endpoints failed. Last error: ${lastError?.message || 'Unknown error'}`);
-    }
-
-    console.log('Processing successful response...');
+    // Try Gradio API format
+    console.log('Attempting Gradio API call...');
     
-    if (successfulResponse.data && successfulResponse.data[0]) {
-      // Extract base64 image data from the response
-      const imageData = successfulResponse.data[0];
-      let base64Image;
+    try {
+      const response = await fetch(`${space_url}/api/predict`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          fn_index: 0, // Usually the first function in Gradio
+          data: [
+            face_image, // Just the base64 data without prefix
+            prompt,
+            negative_prompt,
+            guidance_scale,
+            ip_adapter_scale,
+            num_steps
+          ]
+        })
+      });
+
+      console.log('Gradio API response status:', response.status);
       
-      if (imageData.startsWith('data:image/')) {
-        // Remove data URL prefix if present
-        base64Image = imageData.split(',')[1];
-      } else {
-        base64Image = imageData;
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Gradio API error response:', errorText);
+        throw new Error(`Gradio API error: ${response.status} - ${errorText}`);
       }
 
-      console.log('Image generation successful');
-      return new Response(
-        JSON.stringify({ 
-          success: true,
-          image_data: base64Image,
-          message: 'Image generated successfully'
-        }),
-        {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      const result = await response.json();
+      console.log('Gradio API response received, data keys:', Object.keys(result));
+      
+      // Gradio typically returns data in result.data array
+      if (result.data && result.data.length > 0) {
+        const imageData = result.data[0];
+        let base64Image;
+        
+        if (typeof imageData === 'string') {
+          // If it's a URL or base64 string
+          if (imageData.startsWith('data:image/')) {
+            base64Image = imageData.split(',')[1];
+          } else if (imageData.startsWith('http')) {
+            // If it's a URL, we need to fetch and convert to base64
+            console.log('Fetching image from URL:', imageData);
+            const imageResponse = await fetch(imageData);
+            if (imageResponse.ok) {
+              const arrayBuffer = await imageResponse.arrayBuffer();
+              base64Image = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+            } else {
+              throw new Error('Failed to fetch generated image from URL');
+            }
+          } else {
+            // Assume it's already base64
+            base64Image = imageData;
+          }
+        } else {
+          console.error('Unexpected image data format:', typeof imageData);
+          throw new Error('Unexpected image data format received');
         }
-      );
-    } else {
-      console.error('No image data in response:', successfulResponse);
-      throw new Error('No image data received from HuggingFace API');
+
+        console.log('Image processing successful');
+        return new Response(
+          JSON.stringify({ 
+            success: true,
+            image_data: base64Image,
+            message: 'Image generated successfully via Gradio API'
+          }),
+          {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          }
+        );
+      } else {
+        console.error('No data in Gradio response:', result);
+        throw new Error('No image data received from Gradio API');
+      }
+      
+    } catch (error) {
+      console.error('Gradio API failed:', error);
+      
+      // Fallback: Return a more detailed error message
+      throw new Error(`Failed to generate image. Error: ${error.message}. Please check if your HuggingFace Space URL is correct and the Space is running.`);
     }
 
   } catch (error) {
