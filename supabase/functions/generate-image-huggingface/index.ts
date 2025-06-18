@@ -57,38 +57,71 @@ serve(async (req) => {
     console.log('Prompt length:', prompt.length);
     console.log('Face image length:', face_image.length);
 
-    // Call HuggingFace Space API
-    console.log('Making request to HuggingFace Space...');
-    const response = await fetch(`${space_url}/api/predict`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        data: [
-          `data:image/jpeg;base64,${face_image}`,
-          prompt,
-          negative_prompt,
-          guidance_scale,
-          ip_adapter_scale,
-          num_steps
-        ]
-      })
-    });
-
-    console.log('Response status:', response.status);
-    
-    if (!response.ok) {
-      console.error('HuggingFace API error:', response.statusText);
-      throw new Error(`HuggingFace API error: ${response.status} ${response.statusText}`);
+    // First, test if the Space URL is accessible
+    console.log('Testing Space accessibility...');
+    try {
+      const testResponse = await fetch(space_url);
+      console.log('Space accessibility test status:', testResponse.status);
+      if (!testResponse.ok) {
+        throw new Error(`Space not accessible: ${testResponse.status} ${testResponse.statusText}`);
+      }
+    } catch (error) {
+      console.error('Space accessibility test failed:', error);
+      throw new Error(`Cannot access HuggingFace Space: ${error.message}`);
     }
 
-    const result = await response.json();
-    console.log('HuggingFace response received');
+    // Try different API endpoints
+    const apiEndpoints = ['/api/predict', '/predict', '/api/v1/predict'];
+    let successfulResponse = null;
+    let lastError = null;
 
-    if (result.data && result.data[0]) {
+    for (const endpoint of apiEndpoints) {
+      try {
+        console.log(`Trying endpoint: ${space_url}${endpoint}`);
+        
+        const response = await fetch(`${space_url}${endpoint}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            data: [
+              `data:image/jpeg;base64,${face_image}`,
+              prompt,
+              negative_prompt,
+              guidance_scale,
+              ip_adapter_scale,
+              num_steps
+            ]
+          })
+        });
+
+        console.log(`Response status for ${endpoint}:`, response.status);
+        
+        if (response.ok) {
+          successfulResponse = await response.json();
+          console.log('Successful response received from:', endpoint);
+          break;
+        } else {
+          console.log(`Endpoint ${endpoint} failed with status:`, response.status);
+          lastError = new Error(`API endpoint ${endpoint} returned: ${response.status} ${response.statusText}`);
+        }
+      } catch (error) {
+        console.error(`Error with endpoint ${endpoint}:`, error);
+        lastError = error;
+      }
+    }
+
+    if (!successfulResponse) {
+      console.error('All API endpoints failed. Last error:', lastError);
+      throw new Error(`All API endpoints failed. Last error: ${lastError?.message || 'Unknown error'}`);
+    }
+
+    console.log('Processing successful response...');
+    
+    if (successfulResponse.data && successfulResponse.data[0]) {
       // Extract base64 image data from the response
-      const imageData = result.data[0];
+      const imageData = successfulResponse.data[0];
       let base64Image;
       
       if (imageData.startsWith('data:image/')) {
@@ -110,7 +143,7 @@ serve(async (req) => {
         }
       );
     } else {
-      console.error('No image data in response:', result);
+      console.error('No image data in response:', successfulResponse);
       throw new Error('No image data received from HuggingFace API');
     }
 
