@@ -1004,9 +1004,8 @@ const CreatePosts = () => {
                       <Card key={post.id} className="overflow-hidden">
                         <CardHeader>
                           <div className="flex items-center gap-2">
-                            <Calendar className="h-4 w-4" />
-                            <span className="text-sm font-medium">
-                              {formatScheduledTime(post.scheduled_for)}
+                            <span className="text-sm font-medium text-muted-foreground">
+                              投稿予定: {formatScheduledTime(post.scheduled_for)}
                             </span>
                           </div>
                           <p className="text-sm text-muted-foreground line-clamp-2">
