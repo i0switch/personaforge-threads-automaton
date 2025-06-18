@@ -58,7 +58,7 @@ serve(async (req) => {
       ]
     };
 
-    const apiUrl = `${space_url}/run/generate`;
+    const apiUrl = `${space_url}/api/predict/generate`;
     console.log('Calling API:', apiUrl);
     
     const response = await fetch(apiUrl, {
