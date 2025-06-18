@@ -353,7 +353,7 @@ const CreatePosts = () => {
     } catch (error) {
       console.error('Error generating image prompt with Gemini:', error);
       // Fallback to simple prompt if Gemini fails
-      return "Beautiful woman, Japanese actress, looking us and smiling, upper half of the body, incredibly detailed face, incredibly detailed beautiful eye, focus on face, masterpiece, high quality, best quality, highly detailed, insanely detailed, 4K";
+      return "Portrait, casual outfit, confident smile, natural lighting, urban background, engaging pose";
     }
   };
 
@@ -378,7 +378,7 @@ const CreatePosts = () => {
         imagePrompt = await generateImagePrompt(post.content);
       } catch (error) {
         console.error('Failed to generate prompt with Gemini:', error);
-        imagePrompt = "Beautiful woman, Japanese actress, looking us and smiling, upper half of the body, incredibly detailed face, incredibly detailed beautiful eye, focus on face, masterpiece, high quality, best quality, highly detailed, insanely detailed, 4K";
+        imagePrompt = "Portrait, casual outfit, confident smile, natural lighting, urban background, engaging pose";
       }
     }
     
@@ -459,7 +459,7 @@ const CreatePosts = () => {
             } catch (error) {
               console.error('Failed to generate prompt for post:', post.id, error);
               // Use fallback prompt
-              newPrompts[post.id] = "Beautiful woman, Japanese actress, looking us and smiling, upper half of the body, incredibly detailed face, incredibly detailed beautiful eye, focus on face, masterpiece, high quality, best quality, highly detailed, insanely detailed, 4K";
+              newPrompts[post.id] = "Portrait, casual outfit, confident smile, natural lighting, urban background, engaging pose";
             }
           }
         }
