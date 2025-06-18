@@ -352,6 +352,14 @@ const CreatePosts = () => {
       }
     } catch (error) {
       console.error('Error generating image prompt with Gemini:', error);
+      
+      // Show error message to user
+      toast({
+        title: "プロンプト生成に失敗",
+        description: "Gemini APIによる画像プロンプトの自動生成に失敗しました。デフォルトプロンプトを使用します。",
+        variant: "destructive",
+      });
+      
       // Fallback to simple prompt if Gemini fails
       return "Portrait, casual outfit, confident smile, natural lighting, urban background, engaging pose";
     }
@@ -378,6 +386,7 @@ const CreatePosts = () => {
         imagePrompt = await generateImagePrompt(post.content);
       } catch (error) {
         console.error('Failed to generate prompt with Gemini:', error);
+        // Note: Error is already shown in generateImagePrompt function
         imagePrompt = "Portrait, casual outfit, confident smile, natural lighting, urban background, engaging pose";
       }
     }
