@@ -70,10 +70,10 @@ serve(async (req) => {
       throw new Error(`Cannot access HuggingFace Space: ${error.message}`);
     }
 
-    // Use Gradio client-like approach via HTTP POST to /api/predict
-    console.log('Calling Gradio API via /api/predict with gradio client format...');
+    // Use /api/generate endpoint as specified
+    console.log('Calling Gradio API via /api/generate endpoint...');
     
-    const response = await fetch(`${space_url}/api/predict`, {
+    const response = await fetch(`${space_url}/api/generate`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -86,11 +86,7 @@ serve(async (req) => {
           guidance_scale,                          // guidance_scale
           ip_adapter_scale,                        // ip_adapter_scale
           num_steps                               // num_steps
-        ],
-        event_data: null,
-        fn_index: 0,
-        trigger_id: Math.floor(Math.random() * 1000000),
-        session_hash: Math.random().toString(36).substring(2)
+        ]
       })
     });
 
