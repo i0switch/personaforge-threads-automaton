@@ -57,11 +57,14 @@ serve(async (req) => {
     console.log('Prompt length:', prompt.length);
     console.log('Face image length:', face_image.length);
 
-    // For now, just return a test response to verify the function works
+    // Return a dummy base64 image for testing (1x1 transparent PNG)
+    const dummyImageBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==";
+    
     return new Response(
       JSON.stringify({ 
         success: true,
-        message: 'Function is working',
+        image_data: dummyImageBase64,
+        message: 'Test function working with dummy image',
         received_data: {
           space_url,
           prompt_length: prompt.length,
