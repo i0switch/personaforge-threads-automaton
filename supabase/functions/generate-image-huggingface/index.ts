@@ -80,8 +80,10 @@ serve(async (req) => {
     console.log('Num steps:', requestData.data[5]);
     console.log('===========================');
 
-    console.log('Calling Gradio API via /api/predict/ (with trailing slash)...');
-    const response = await fetch(`${space_url}/api/predict/`, {
+    console.log('Calling Gradio API via /call/predict (two-step process)...');
+    
+    // Step 1: POST to /call/predict to get event_id
+    const response = await fetch(`${space_url}/call/predict`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -89,20 +91,78 @@ serve(async (req) => {
       body: JSON.stringify(requestData)
     });
 
-    console.log('Gradio API response status:', response.status);
+    console.log('Step 1 - POST response status:', response.status);
     
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Gradio API error response:', errorText);
-      throw new Error(`Gradio API error: ${response.status} - ${errorText}`);
+      console.error('Gradio API POST error response:', errorText);
+      throw new Error(`Gradio API POST error: ${response.status} - ${errorText}`);
     }
 
-    const result = await response.json();
-    console.log('Gradio API response received, data keys:', Object.keys(result));
-    console.log('Full Gradio response:', JSON.stringify(result, null, 2));
+    const postResult = await response.json();
+    console.log('Step 1 - POST result:', JSON.stringify(postResult, null, 2));
     
-    // Gradio typically returns data in result.data array
-    if (result.data && result.data.length > 0) {
+    if (!postResult.event_id) {
+      throw new Error('No event_id received from Gradio API');
+    }
+
+    const eventId = postResult.event_id;
+    console.log('Step 2 - Got event_id:', eventId);
+
+    // Step 2: GET the result using event_id
+    const getResponse = await fetch(`${space_url}/call/predict/${eventId}`);
+    console.log('Step 2 - GET response status:', getResponse.status);
+    
+    if (!getResponse.ok) {
+      const errorText = await getResponse.text();
+      console.error('Gradio API GET error response:', errorText);
+      throw new Error(`Gradio API GET error: ${getResponse.status} - ${errorText}`);
+    }
+
+    // Read the streaming response
+    const reader = getResponse.body?.getReader();
+    let result = null;
+    
+    if (reader) {
+      const decoder = new TextDecoder();
+      let buffer = '';
+      
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        
+        // Process complete lines
+        for (let i = 0; i < lines.length - 1; i++) {
+          const line = lines[i].trim();
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              console.log('Received data:', JSON.stringify(data, null, 2));
+              
+              if (data.msg === 'process_completed' && data.output) {
+                result = data.output;
+                break;
+              }
+            } catch (e) {
+              console.log('Failed to parse line:', line);
+            }
+          }
+        }
+        
+        // Keep the last incomplete line in buffer
+        buffer = lines[lines.length - 1];
+        
+        if (result) break;
+      }
+    }
+
+    console.log('Final result:', JSON.stringify(result, null, 2));
+    
+    // Process the result
+    if (result && result.data && result.data.length > 0) {
       const imageData = result.data[0];
       let base64Image;
       
