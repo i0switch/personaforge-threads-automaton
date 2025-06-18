@@ -163,10 +163,17 @@ serve(async (req) => {
     console.log(`Calling Gradio API via ${endpoint}...`);
     console.log('Request data structure:', Object.keys(requestData));
     
+    // HuggingFace認証トークンを取得
+    const hfToken = Deno.env.get('HF_TOKEN');
+    if (!hfToken) {
+      throw new Error('Server configuration error: HF_TOKEN is missing.');
+    }
+    
     const response = await fetch(`${space_url}${endpoint}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${hfToken}`
       },
       body: JSON.stringify(requestData)
     });
