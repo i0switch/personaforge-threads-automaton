@@ -5,6 +5,76 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Gradio API仕様を取得する関数
+async function getGradioConfig(spaceUrl: string) {
+  try {
+    const configResponse = await fetch(`${spaceUrl}/config`);
+    if (configResponse.ok) {
+      return await configResponse.json();
+    }
+  } catch (error) {
+    console.log('Config endpoint not available, trying info endpoint:', error.message);
+  }
+  
+  try {
+    const infoResponse = await fetch(`${spaceUrl}/info`);
+    if (infoResponse.ok) {
+      return await infoResponse.json();
+    }
+  } catch (error) {
+    console.log('Info endpoint not available:', error.message);
+  }
+  
+  return null;
+}
+
+// Gradio API仕様に基づいてリクエストを構築する関数
+async function buildGradioRequest(spaceUrl: string, config: any, params: any) {
+  const { face_image, prompt, negative_prompt, guidance_scale, ip_adapter_scale, num_steps } = params;
+  
+  // 利用可能なエンドポイントを確認
+  const endpoints = ['/api/predict', '/api/generate', '/call/predict', '/call/generate'];
+  let workingEndpoint = null;
+  
+  for (const endpoint of endpoints) {
+    try {
+      // OPTIONS リクエストでエンドポイントの存在確認
+      const testResponse = await fetch(`${spaceUrl}${endpoint}`, { method: 'OPTIONS' });
+      if (testResponse.status !== 404) {
+        workingEndpoint = endpoint;
+        console.log(`Found working endpoint: ${endpoint}`);
+        break;
+      }
+    } catch (error) {
+      console.log(`Endpoint ${endpoint} not available:`, error.message);
+    }
+  }
+  
+  if (!workingEndpoint) {
+    throw new Error('No working API endpoint found');
+  }
+  
+  // Gradio API呼び出し用のデータ構造を構築
+  const requestData = {
+    data: [
+      `data:image/jpeg;base64,${face_image}`, // face_image_numpy
+      prompt,                                  // user_prompt  
+      negative_prompt,                         // user_negative_prompt
+      guidance_scale,                          // guidance_scale
+      ip_adapter_scale,                        // ip_adapter_scale
+      num_steps                               // num_steps
+    ]
+  };
+  
+  // 追加のGradio固有パラメータ（エンドポイントによって必要な場合）
+  if (workingEndpoint.includes('predict')) {
+    requestData.fn_index = 0;
+    requestData.session_hash = Math.random().toString(36).substring(2);
+  }
+  
+  return { endpoint: workingEndpoint, requestData };
+}
+
 serve(async (req) => {
   console.log('Function called with method:', req.method);
   
@@ -70,24 +140,35 @@ serve(async (req) => {
       throw new Error(`Cannot access HuggingFace Space: ${error.message}`);
     }
 
-    // Use /api/generate endpoint as specified
-    console.log('Calling Gradio API via /api/generate endpoint...');
+    // Gradio API仕様を自動取得して適応
+    console.log('Getting Gradio API configuration...');
+    const config = await getGradioConfig(space_url);
+    if (config) {
+      console.log('Gradio config retrieved:', Object.keys(config));
+    } else {
+      console.log('No config found, using endpoint discovery');
+    }
+
+    // 動的にエンドポイントとリクエストを構築
+    console.log('Building Gradio request with auto-adaptation...');
+    const { endpoint, requestData } = await buildGradioRequest(space_url, config, {
+      face_image,
+      prompt,
+      negative_prompt,
+      guidance_scale,
+      ip_adapter_scale,
+      num_steps
+    });
+
+    console.log(`Calling Gradio API via ${endpoint}...`);
+    console.log('Request data structure:', Object.keys(requestData));
     
-    const response = await fetch(`${space_url}/api/generate`, {
+    const response = await fetch(`${space_url}${endpoint}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        data: [
-          `data:image/jpeg;base64,${face_image}`, // face_image_numpy
-          prompt,                                  // user_prompt  
-          negative_prompt,                         // user_negative_prompt
-          guidance_scale,                          // guidance_scale
-          ip_adapter_scale,                        // ip_adapter_scale
-          num_steps                               // num_steps
-        ]
-      })
+      body: JSON.stringify(requestData)
     });
 
     console.log('Gradio API response status:', response.status);
