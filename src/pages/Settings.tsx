@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, User, Shield, Trash2, Save, Loader2, Upload, Key } from "lucide-react";
+import { ArrowLeft, User, Shield, Save, Loader2, Upload, Key } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -143,25 +143,6 @@ const Settings = () => {
     }
   };
 
-  const deleteAccount = async () => {
-    if (confirm("本当にアカウントを削除しますか？この操作は取り消せません。")) {
-      try {
-        // In a real app, you would implement account deletion
-        toast({
-          title: "アカウント削除",
-          description: "この機能は現在開発中です。",
-          variant: "destructive",
-        });
-      } catch (error) {
-        console.error('Error deleting account:', error);
-        toast({
-          title: "エラー",
-          description: "アカウントの削除に失敗しました。",
-          variant: "destructive",
-        });
-      }
-    }
-  };
 
   const saveApiKeys = async () => {
     if (!apiKeys.gemini_api_key.trim()) {
@@ -421,31 +402,6 @@ const Settings = () => {
                     </div>
                   </div>
 
-                  <Separator />
-
-                  <div>
-                    <h3 className="font-medium mb-2 text-destructive">危険な操作</h3>
-                    <div className="space-y-4">
-                      <div className="border border-destructive/20 p-4 rounded-lg">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="text-sm font-medium">アカウント削除</p>
-                            <p className="text-xs text-muted-foreground">
-                              すべてのデータが永久に削除されます。この操作は取り消せません。
-                            </p>
-                          </div>
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            onClick={deleteAccount}
-                          >
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            削除
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
                 </div>
               </CardContent>
             </Card>

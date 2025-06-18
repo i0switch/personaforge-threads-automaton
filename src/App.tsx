@@ -10,6 +10,7 @@ import PersonaSetup from "./pages/PersonaSetup";
 import CreatePosts from "./pages/CreatePosts";
 import ScheduledPosts from "./pages/ScheduledPosts";
 import AutoReply from "./pages/AutoReply";
+import ImageGeneration from "./pages/ImageGeneration";
 import Settings from "./pages/Settings";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
@@ -30,6 +31,7 @@ const App = () => (
             <Route path="/create-posts" element={<ProtectedRoute><CreatePosts /></ProtectedRoute>} />
             <Route path="/scheduled-posts" element={<ProtectedRoute><ScheduledPosts /></ProtectedRoute>} />
             <Route path="/auto-reply" element={<ProtectedRoute><AutoReply /></ProtectedRoute>} />
+            <Route path="/image-generation" element={<ProtectedRoute><ImageGeneration /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />

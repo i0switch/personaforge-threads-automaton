@@ -94,6 +94,13 @@ const Index = () => {
       path: "/create-posts"
     },
     {
+      title: "AI画像生成",
+      description: "顔画像からAI画像生成",
+      icon: Image,
+      color: "bg-pink-500",
+      path: "/image-generation"
+    },
+    {
       title: "ペルソナ設定",
       description: "キャラクター設定を管理",
       icon: Users,
