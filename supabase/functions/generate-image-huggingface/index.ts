@@ -70,70 +70,29 @@ serve(async (req) => {
       throw new Error(`Cannot access HuggingFace Space: ${error.message}`);
     }
 
-    // Try multiple Gradio API endpoints to find the working one
-    console.log('Trying multiple Gradio API endpoints...');
+    // Use Gradio client-like approach via HTTP POST to /api/predict
+    console.log('Calling Gradio API via /api/predict with gradio client format...');
     
-    const apiPaths = [
-      '/api/predict',
-      '/api/generate', 
-      '/run/predict'
-    ];
-    
-    let response;
-    let lastError;
-    
-    for (const apiPath of apiPaths) {
-      try {
-        console.log(`Trying endpoint: ${space_url}${apiPath}`);
-        
-        const requestBody = apiPath === '/api/predict' ? {
-          data: [
-            `data:image/jpeg;base64,${face_image}`,
-            prompt,
-            negative_prompt,
-            guidance_scale,
-            ip_adapter_scale,
-            num_steps
-          ],
-          fn_index: 0
-        } : {
-          data: [
-            `data:image/jpeg;base64,${face_image}`,
-            prompt,
-            negative_prompt,
-            guidance_scale,
-            ip_adapter_scale,
-            num_steps
-          ]
-        };
-        
-        response = await fetch(`${space_url}${apiPath}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(requestBody)
-        });
-        
-        console.log(`${apiPath} response status:`, response.status);
-        
-        if (response.ok) {
-          console.log(`Success with ${apiPath}`);
-          break;
-        } else {
-          const errorText = await response.text();
-          console.log(`${apiPath} failed:`, response.status, errorText);
-          lastError = new Error(`${apiPath} failed: ${response.status} - ${errorText}`);
-        }
-      } catch (error) {
-        console.log(`${apiPath} error:`, error.message);
-        lastError = error;
-      }
-    }
-    
-    if (!response || !response.ok) {
-      throw new Error(`All API endpoints failed. Last error: ${lastError?.message}`);
-    }
+    const response = await fetch(`${space_url}/api/predict`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        data: [
+          `data:image/jpeg;base64,${face_image}`, // face_image_numpy
+          prompt,                                  // user_prompt  
+          negative_prompt,                         // user_negative_prompt
+          guidance_scale,                          // guidance_scale
+          ip_adapter_scale,                        // ip_adapter_scale
+          num_steps                               // num_steps
+        ],
+        event_data: null,
+        fn_index: 0,
+        trigger_id: Math.floor(Math.random() * 1000000),
+        session_hash: Math.random().toString(36).substring(2)
+      })
+    });
 
     console.log('Gradio API response status:', response.status);
     
