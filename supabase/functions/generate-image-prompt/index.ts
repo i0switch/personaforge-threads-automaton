@@ -35,6 +35,7 @@ serve(async (req) => {
 ベースモデル: RealBeautyMix (Civitaiからダウンロード)
 人物固定技術: IP-Adapter-FaceID-PlusV2
 
+
 必須キーワード：Beautiful woman（美しい女性）、Japanese actress（日本人女優）、incredibly detailed face/eye（極めて詳細な顔・瞳）、focus on face（顔にフォーカス）、best quality/high quality/masterpiece（高品質）、4K、ultra detailed、RAW photo、ultra high res、depth of field（被写界深度）
 
 構文ポイント：カンマで区切りつつ、写真的表現（photograph, professional photograph）、照明・背景（Bokeh, city night, diffused light）などを追加し、特定の服装・ポーズ（例：off shoulder dress, swimsuit）を明示する
