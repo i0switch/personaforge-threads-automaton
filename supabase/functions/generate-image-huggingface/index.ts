@@ -61,7 +61,7 @@ serve(async (req) => {
     console.log('Connecting to Gradio Space using gradio_client...');
     
     // Import gradio_client dynamically
-    const { Client } = await import("https://cdn.jsdelivr.net/npm/@gradio/client@1.0.1/dist/index.js");
+    const { Client } = await import("https://esm.sh/@gradio/client@1.0.1");
     
     console.log('Creating Gradio client...');
     const client = await Client.connect(space_url);
