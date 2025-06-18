@@ -42,13 +42,39 @@ serve(async (req) => {
       );
     }
 
-    console.log('Generating image with Hugging Face Space API...');
-    console.log('Original prompt length:', prompt.length);
-    console.log('Using prompt:', prompt);
-    console.log('Face image length:', face_image.length);
+    console.log('=== DEBUG INFO ===');
     console.log('Space URL:', space_url);
+    console.log('Prompt:', prompt);
+    console.log('Face image length:', face_image.length);
+    console.log('Guidance scale:', guidance_scale);
+    console.log('IP adapter scale:', ip_adapter_scale);
+    console.log('Num steps:', num_steps);
 
-    // Gradio Client compatible payload - use simple array format exactly like the example
+    // First, let's test if the space URL is accessible
+    try {
+      const testResponse = await fetch(space_url, {
+        method: 'GET',
+        headers: {
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+        }
+      });
+      console.log('Space URL test response status:', testResponse.status);
+    } catch (testError) {
+      console.error('Space URL not accessible:', testError.message);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Space URL not accessible', 
+          details: testError.message,
+          space_url: space_url
+        }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
+    }
+
+    // Prepare payload exactly like the example
     const payload = {
       data: [
         face_image,          // faceImageB64 (base64 without data URL prefix)
@@ -60,7 +86,18 @@ serve(async (req) => {
       ]
     };
 
-    console.log('Payload structure:', JSON.stringify(payload, null, 2));
+    console.log('Payload data array length:', payload.data.length);
+    console.log('Payload preview:', JSON.stringify({
+      ...payload,
+      data: [
+        `[BASE64 IMAGE ${face_image.length} chars]`,
+        prompt,
+        negative_prompt,
+        guidance_scale,
+        ip_adapter_scale,
+        num_steps
+      ]
+    }, null, 2));
 
     const apiUrl = `${space_url}/api/predict/generate`;
     console.log('Calling API:', apiUrl);
