@@ -1,69 +1,34 @@
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Slider } from "@/components/ui/slider";
-import { Loader2, Upload, Download, Image as ImageIcon } from "lucide-react";
+import { Loader2, Download, Image as ImageIcon } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 
 const ImageGenerator = () => {
   const { toast } = useToast();
-  const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [spaceUrl, setSpaceUrl] = useState("https://huggingface.co/spaces/multimodalart/face-to-all");
-  const [faceImage, setFaceImage] = useState<string>("");
+  const [personaId, setPersonaId] = useState<string>("");
   const [prompt, setPrompt] = useState("");
   const [negativePrompt, setNegativePrompt] = useState("");
   const [guidanceScale, setGuidanceScale] = useState([8.0]);
   const [ipAdapterScale, setIpAdapterScale] = useState([0.6]);
   const [numSteps, setNumSteps] = useState([25]);
+  const [width, setWidth] = useState([512]);
+  const [height, setHeight] = useState([768]);
   const [generating, setGenerating] = useState(false);
   const [generatedImage, setGeneratedImage] = useState<string>("");
-  const [uploading, setUploading] = useState(false);
-
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    if (!file.type.startsWith('image/')) {
-      toast({
-        title: "エラー",
-        description: "画像ファイルを選択してください。",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setUploading(true);
-    try {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const base64 = e.target?.result as string;
-        // Remove data URL prefix to get pure base64
-        const base64Data = base64.split(',')[1];
-        setFaceImage(base64Data);
-        setUploading(false);
-      };
-      reader.readAsDataURL(file);
-    } catch (error) {
-      console.error('Error reading file:', error);
-      toast({
-        title: "エラー",
-        description: "ファイルの読み込みに失敗しました。",
-        variant: "destructive",
-      });
-      setUploading(false);
-    }
-  };
 
   const generateImage = async () => {
-    if (!faceImage || !prompt) {
+    if (!personaId || !prompt) {
       toast({
         title: "エラー",
-        description: "顔画像とプロンプトを入力してください。",
+        description: "ペルソナIDとプロンプトを入力してください。",
         variant: "destructive",
       });
       return;
@@ -71,22 +36,24 @@ const ImageGenerator = () => {
 
     setGenerating(true);
     try {
-      const { data, error } = await supabase.functions.invoke('generate-image-huggingface', {
+      const { data, error } = await supabase.functions.invoke('generate-image-stable-diffusion', {
         body: {
-          space_url: spaceUrl,
-          face_image: faceImage,
+          api_url: spaceUrl,
+          persona_id: personaId,
           prompt: prompt,
           negative_prompt: negativePrompt,
           guidance_scale: guidanceScale[0],
           ip_adapter_scale: ipAdapterScale[0],
-          num_steps: numSteps[0]
+          num_inference_steps: numSteps[0],
+          width: width[0],
+          height: height[0]
         }
       });
 
       if (error) throw error;
 
-      if (data.success && data.image_data) {
-        setGeneratedImage(`data:image/png;base64,${data.image_data}`);
+      if (data.success && data.image) {
+        setGeneratedImage(`data:image/png;base64,${data.image}`);
         toast({
           title: "生成完了",
           description: "画像が正常に生成されました。",
@@ -141,40 +108,15 @@ const ImageGenerator = () => {
             />
           </div>
 
-          {/* Face Image Upload */}
+          {/* Persona ID */}
           <div className="space-y-2">
-            <Label>顔画像</Label>
-            <div className="flex items-center gap-4">
-              <Button
-                onClick={() => fileInputRef.current?.click()}
-                variant="outline"
-                disabled={uploading}
-              >
-                {uploading ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    アップロード中...
-                  </>
-                ) : (
-                  <>
-                    <Upload className="h-4 w-4 mr-2" />
-                    画像を選択
-                  </>
-                )}
-              </Button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={handleFileUpload}
-              />
-              {faceImage && (
-                <span className="text-sm text-muted-foreground">
-                  画像がアップロードされました
-                </span>
-              )}
-            </div>
+            <Label htmlFor="persona-id">ペルソナID</Label>
+            <Input
+              id="persona-id"
+              value={personaId}
+              onChange={(e) => setPersonaId(e.target.value)}
+              placeholder="ペルソナIDを入力してください"
+            />
           </div>
 
           {/* Prompt */}
@@ -202,7 +144,7 @@ const ImageGenerator = () => {
           </div>
 
           {/* Advanced Settings */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             <div className="space-y-2">
               <Label>プロンプトへの忠実度 (Guidance Scale): {guidanceScale[0]}</Label>
               <Slider
@@ -238,11 +180,35 @@ const ImageGenerator = () => {
                 className="w-full"
               />
             </div>
+
+            <div className="space-y-2">
+              <Label>幅 (Width): {width[0]}px</Label>
+              <Slider
+                value={width}
+                onValueChange={setWidth}
+                min={256}
+                max={1024}
+                step={64}
+                className="w-full"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>高さ (Height): {height[0]}px</Label>
+              <Slider
+                value={height}
+                onValueChange={setHeight}
+                min={256}
+                max={1024}
+                step={64}
+                className="w-full"
+              />
+            </div>
           </div>
 
           <Button
             onClick={generateImage}
-            disabled={generating || !faceImage || !prompt}
+            disabled={generating || !personaId || !prompt}
             className="w-full"
             size="lg"
           >
