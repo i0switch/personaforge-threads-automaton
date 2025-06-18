@@ -44,11 +44,18 @@ serve(async (req) => {
 
     console.log('Generating image with Hugging Face Space API...');
 
+    // Truncate prompt to avoid CLIP token limit (77 tokens)
+    const truncatedPrompt = prompt.length > 200 ? prompt.substring(0, 200) + "..." : prompt;
+    const truncatedNegativePrompt = negative_prompt.length > 100 ? negative_prompt.substring(0, 100) + "..." : negative_prompt;
+
+    console.log('Original prompt length:', prompt.length);
+    console.log('Truncated prompt:', truncatedPrompt);
+
     const payload = {
       data: [
         face_image,
-        prompt,
-        negative_prompt,
+        truncatedPrompt,
+        truncatedNegativePrompt,
         guidance_scale,
         ip_adapter_scale,
         num_steps
