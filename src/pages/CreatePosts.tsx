@@ -386,20 +386,21 @@ const CreatePosts = () => {
     try {
       const { data, error } = await supabase.functions.invoke('generate-image-huggingface', {
         body: {
+          space_url: ngrokUrl.trim(),
+          face_image: referenceImage,
           prompt: imagePrompt,
           negative_prompt: "glasses, hat",
           guidance_scale: 8.0,
           ip_adapter_scale: ipAdapterScale,
-          num_steps: 25,
-          api_url: ngrokUrl.trim(),
-          face_image: referenceImage
+          num_steps: 25
         }
       });
 
       if (error) throw error;
 
-      if (data.success && data.image) {
-        setGeneratedImages(prev => ({ ...prev, [postId]: data.image }));
+      if (data.success && data.image_data) {
+        const imageDataUrl = `data:image/png;base64,${data.image_data}`;
+        setGeneratedImages(prev => ({ ...prev, [postId]: imageDataUrl }));
         setImagePrompts(prev => ({ ...prev, [postId]: imagePrompt }));
         
         toast({

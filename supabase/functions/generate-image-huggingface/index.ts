@@ -44,9 +44,9 @@ serve(async (req) => {
 
     console.log('Generating image with Hugging Face Space API...');
 
-    // Truncate prompt to 50 tokens (approximately 150 characters for safety)
-    const truncatedPrompt = prompt.length > 150 ? prompt.substring(0, 150) + "..." : prompt;
-    const truncatedNegativePrompt = negative_prompt.length > 75 ? negative_prompt.substring(0, 75) + "..." : negative_prompt;
+    // Truncate prompt aggressively for 50 tokens (approximately 100 characters)
+    const truncatedPrompt = prompt.length > 100 ? prompt.substring(0, 100) + "..." : prompt;
+    const truncatedNegativePrompt = negative_prompt.length > 50 ? negative_prompt.substring(0, 50) + "..." : negative_prompt;
 
     console.log('Original prompt length:', prompt.length);
     console.log('Truncated prompt:', truncatedPrompt);
