@@ -45,18 +45,22 @@ serve(async (req) => {
     console.log('Generating image with Hugging Face Space API...');
     console.log('Original prompt length:', prompt.length);
     console.log('Using prompt:', prompt);
+    console.log('Face image length:', face_image.length);
+    console.log('Space URL:', space_url);
 
-    // Gradio Client compatible payload - use simple array format
+    // Gradio Client compatible payload - use simple array format exactly like the example
     const payload = {
       data: [
-        face_image,          // face_image_numpy (base64 without data URL prefix)
+        face_image,          // faceImageB64 (base64 without data URL prefix)
         prompt,              // user_prompt
-        negative_prompt,     // user_negative_prompt
+        negative_prompt,     // negative_prompt
         guidance_scale,      // guidance_scale
         ip_adapter_scale,    // ip_adapter_scale
         num_steps           // num_steps
       ]
     };
+
+    console.log('Payload structure:', JSON.stringify(payload, null, 2));
 
     const apiUrl = `${space_url}/api/predict/generate`;
     console.log('Calling API:', apiUrl);
@@ -69,21 +73,57 @@ serve(async (req) => {
       body: JSON.stringify(payload),
     });
 
+    console.log('Response status:', response.status);
+    console.log('Response headers:', Object.fromEntries(response.headers.entries()));
+
     if (!response.ok) {
       const errorText = await response.text();
       console.error('Hugging Face API error:', errorText);
-      throw new Error(`API request failed: ${response.status} ${response.statusText}`);
+      console.error('Response status:', response.status);
+      console.error('Response statusText:', response.statusText);
+      
+      return new Response(
+        JSON.stringify({ 
+          error: 'API request failed', 
+          details: `${response.status} ${response.statusText}: ${errorText}`,
+          status: response.status,
+          url: apiUrl
+        }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
     }
 
     const result = await response.json();
-    console.log('Image generation result:', result);
+    console.log('Image generation result:', JSON.stringify(result, null, 2));
+
+    // Check if result has data array
+    if (!result.data || !Array.isArray(result.data) || result.data.length === 0) {
+      console.error('Invalid response format:', result);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Invalid response format from API',
+          details: 'Expected data array in response',
+          response: result
+        }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
+    }
 
     // Extract base64 image data
     let imageData = result.data[0];
+    console.log('Raw image data type:', typeof imageData);
+    console.log('Raw image data preview:', typeof imageData === 'string' ? imageData.substring(0, 100) : imageData);
     
     // If the response contains a data URL, extract the base64 part
     if (typeof imageData === 'string' && imageData.includes(',')) {
       imageData = imageData.split(',')[1];
+      console.log('Extracted base64 data length:', imageData.length);
     }
 
     return new Response(
