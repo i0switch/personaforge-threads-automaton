@@ -70,25 +70,70 @@ serve(async (req) => {
       throw new Error(`Cannot access HuggingFace Space: ${error.message}`);
     }
 
-    // Use the correct Gradio API endpoint that matches Python client api_name="/generate"
-    console.log('Calling Gradio API with /api/generate...');
+    // Try multiple Gradio API endpoints to find the working one
+    console.log('Trying multiple Gradio API endpoints...');
     
-    const response = await fetch(`${space_url}/api/generate`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        data: [
-          `data:image/jpeg;base64,${face_image}`, // face_image_numpy
-          prompt,                                  // user_prompt  
-          negative_prompt,                         // user_negative_prompt
-          guidance_scale,                          // guidance_scale
-          ip_adapter_scale,                        // ip_adapter_scale
-          num_steps                               // num_steps
-        ]
-      })
-    });
+    const apiPaths = [
+      '/api/predict',
+      '/api/generate', 
+      '/run/predict'
+    ];
+    
+    let response;
+    let lastError;
+    
+    for (const apiPath of apiPaths) {
+      try {
+        console.log(`Trying endpoint: ${space_url}${apiPath}`);
+        
+        const requestBody = apiPath === '/api/predict' ? {
+          data: [
+            `data:image/jpeg;base64,${face_image}`,
+            prompt,
+            negative_prompt,
+            guidance_scale,
+            ip_adapter_scale,
+            num_steps
+          ],
+          fn_index: 0
+        } : {
+          data: [
+            `data:image/jpeg;base64,${face_image}`,
+            prompt,
+            negative_prompt,
+            guidance_scale,
+            ip_adapter_scale,
+            num_steps
+          ]
+        };
+        
+        response = await fetch(`${space_url}${apiPath}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(requestBody)
+        });
+        
+        console.log(`${apiPath} response status:`, response.status);
+        
+        if (response.ok) {
+          console.log(`Success with ${apiPath}`);
+          break;
+        } else {
+          const errorText = await response.text();
+          console.log(`${apiPath} failed:`, response.status, errorText);
+          lastError = new Error(`${apiPath} failed: ${response.status} - ${errorText}`);
+        }
+      } catch (error) {
+        console.log(`${apiPath} error:`, error.message);
+        lastError = error;
+      }
+    }
+    
+    if (!response || !response.ok) {
+      throw new Error(`All API endpoints failed. Last error: ${lastError?.message}`);
+    }
 
     console.log('Gradio API response status:', response.status);
     
