@@ -29,18 +29,9 @@ serve(async (req) => {
     console.log('Generating image prompt for post:', postContent)
 
     const prompt = `"${postContent}"
-上記のポスト文章に合う、自撮り風プロンプトを５０トークン以内で生成してください。
-
-使用しているモデルはSD1.5 RealBeautyMix https://civitai.com/models/85156/realbeautymixです。
-ベースモデル: RealBeautyMix (Civitaiからダウンロード)
-人物固定技術: IP-Adapter-FaceID-PlusV2
-
-
-必須キーワード：Beautiful woman（美しい女性）、Japanese actress（日本人女優）、incredibly detailed face/eye（極めて詳細な顔・瞳）、focus on face（顔にフォーカス）、best quality/high quality/masterpiece（高品質）、4K、ultra detailed、RAW photo、ultra high res、depth of field（被写界深度）
+上記のポスト文章に合う、自撮り風プロンプトを英語で５０トークン以内で生成してください。
 
 構文ポイント：カンマで区切りつつ、写真的表現（photograph, professional photograph）、照明・背景（Bokeh, city night, diffused light）などを追加し、特定の服装・ポーズ（例：off shoulder dress, swimsuit）を明示する
-
-投稿内容に応じて適切な服装、背景、シチュエーションを選択し、魅力的な女性のポートレート写真になるようなプロンプトを５０トークン以内で英語で生成してください。投稿内容の雰囲気に合うプロンプトのみを返答してください。説明文は不要です。
 
 下記プロンプトはシステムですでに設定されている固定プロンプトのため不要です。
 (masterpiece:1.2)
