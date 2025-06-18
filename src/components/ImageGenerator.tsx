@@ -13,6 +13,7 @@ const ImageGenerator = () => {
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   
+  const [spaceUrl, setSpaceUrl] = useState("https://huggingface.co/spaces/i0switch/my-image-generator");
   const [faceImage, setFaceImage] = useState<string>("");
   const [prompt, setPrompt] = useState("");
   const [negativePrompt, setNegativePrompt] = useState("");
@@ -72,6 +73,7 @@ const ImageGenerator = () => {
     try {
       const { data, error } = await supabase.functions.invoke('generate-image-huggingface', {
         body: {
+          space_url: spaceUrl,
           face_image: faceImage,
           prompt: prompt,
           negative_prompt: negativePrompt,
@@ -128,6 +130,17 @@ const ImageGenerator = () => {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
+          {/* Space URL */}
+          <div className="space-y-2">
+            <Label htmlFor="space-url">HuggingFace Space URL</Label>
+            <Input
+              id="space-url"
+              value={spaceUrl}
+              onChange={(e) => setSpaceUrl(e.target.value)}
+              placeholder="https://huggingface.co/spaces/username/space-name"
+            />
+          </div>
+
           {/* Face Image Upload */}
           <div className="space-y-2">
             <Label>顔画像</Label>

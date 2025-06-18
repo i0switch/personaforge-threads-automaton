@@ -13,6 +13,7 @@ serve(async (req) => {
 
   try {
     const { 
+      space_url,
       face_image, 
       prompt, 
       negative_prompt = "", 
@@ -24,6 +25,16 @@ serve(async (req) => {
     if (!face_image || !prompt) {
       return new Response(
         JSON.stringify({ error: "face_image and prompt are required" }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    if (!space_url) {
+      return new Response(
+        JSON.stringify({ error: "space_url is required" }),
         { 
           status: 400, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -44,7 +55,10 @@ serve(async (req) => {
       ]
     };
 
-    const response = await fetch("https://huggingface.co/spaces/i0switch/my-image-generator/api/predict/generate", {
+    const apiUrl = `${space_url}/api/predict/generate`;
+    console.log('Calling API:', apiUrl);
+    
+    const response = await fetch(apiUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
