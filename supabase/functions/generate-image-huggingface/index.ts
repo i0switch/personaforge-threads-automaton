@@ -32,29 +32,9 @@ async function getGradioConfig(spaceUrl: string) {
 async function buildGradioRequest(spaceUrl: string, config: any, params: any) {
   const { face_image, prompt, negative_prompt, guidance_scale, ip_adapter_scale, num_steps } = params;
   
-  // 利用可能なエンドポイントを確認
-  const endpoints = ['/api/predict', '/api/generate', '/call/predict', '/call/generate'];
-  let workingEndpoint = null;
+  // まず /api/predict を試す（標準的なGradio APIエンドポイント）
+  console.log('Trying standard Gradio API endpoints...');
   
-  for (const endpoint of endpoints) {
-    try {
-      // OPTIONS リクエストでエンドポイントの存在確認
-      const testResponse = await fetch(`${spaceUrl}${endpoint}`, { method: 'OPTIONS' });
-      if (testResponse.status !== 404) {
-        workingEndpoint = endpoint;
-        console.log(`Found working endpoint: ${endpoint}`);
-        break;
-      }
-    } catch (error) {
-      console.log(`Endpoint ${endpoint} not available:`, error.message);
-    }
-  }
-  
-  if (!workingEndpoint) {
-    throw new Error('No working API endpoint found');
-  }
-  
-  // Gradio API呼び出し用のデータ構造を構築
   const requestData = {
     data: [
       `data:image/jpeg;base64,${face_image}`, // face_image_numpy
@@ -63,16 +43,22 @@ async function buildGradioRequest(spaceUrl: string, config: any, params: any) {
       guidance_scale,                          // guidance_scale
       ip_adapter_scale,                        // ip_adapter_scale
       num_steps                               // num_steps
-    ]
+    ],
+    fn_index: 0
   };
   
-  // 追加のGradio固有パラメータ（エンドポイントによって必要な場合）
-  if (workingEndpoint.includes('predict')) {
-    requestData.fn_index = 0;
-    requestData.session_hash = Math.random().toString(36).substring(2);
-  }
+  console.log('=== REQUEST DATA DEBUG ===');
+  console.log('Data array length:', requestData.data.length);
+  console.log('Face image data type:', typeof requestData.data[0]);
+  console.log('Face image prefix:', requestData.data[0].substring(0, 30));
+  console.log('Prompt:', requestData.data[1]);
+  console.log('Negative prompt:', requestData.data[2]);
+  console.log('Guidance scale:', requestData.data[3]);
+  console.log('IP adapter scale:', requestData.data[4]);
+  console.log('Num steps:', requestData.data[5]);
+  console.log('===========================');
   
-  return { endpoint: workingEndpoint, requestData };
+  return { endpoint: '/api/predict', requestData };
 }
 
 serve(async (req) => {
