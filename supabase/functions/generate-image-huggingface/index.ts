@@ -1,5 +1,4 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { Client } from "https://esm.sh/@gradio/client@0.10.1";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -58,34 +57,50 @@ serve(async (req) => {
     console.log('Prompt length:', prompt.length);
     console.log('Face image length:', face_image.length);
 
-    console.log('Initializing Gradio client...');
-    const client = await Client.connect(space_url, {
-      hf_token: Deno.env.get('HF_TOKEN')
-    });
+    // 準備されたリクエストデータ
+    const requestData = {
+      data: [
+        `data:image/jpeg;base64,${face_image}`, // face_image_numpy
+        prompt,                                  // user_prompt  
+        negative_prompt,                         // user_negative_prompt
+        guidance_scale,                          // guidance_scale
+        ip_adapter_scale,                        // ip_adapter_scale
+        num_steps                               // num_steps
+      ]
+    };
     
     console.log('=== REQUEST DATA DEBUG ===');
-    console.log('Face image data type:', typeof face_image);
-    console.log('Face image prefix:', face_image.substring(0, 30));
-    console.log('Prompt:', prompt);
-    console.log('Negative prompt:', negative_prompt);
-    console.log('Guidance scale:', guidance_scale);
-    console.log('IP adapter scale:', ip_adapter_scale);
-    console.log('Num steps:', num_steps);
+    console.log('Data array length:', requestData.data.length);
+    console.log('Face image data type:', typeof requestData.data[0]);
+    console.log('Face image prefix:', requestData.data[0].substring(0, 30));
+    console.log('Prompt:', requestData.data[1]);
+    console.log('Negative prompt:', requestData.data[2]);
+    console.log('Guidance scale:', requestData.data[3]);
+    console.log('IP adapter scale:', requestData.data[4]);
+    console.log('Num steps:', requestData.data[5]);
     console.log('===========================');
 
-    console.log('Calling Gradio API via client...');
-    const result = await client.predict("/predict", [
-      `data:image/jpeg;base64,${face_image}`, // face_image_numpy
-      prompt,                                  // user_prompt  
-      negative_prompt,                         // user_negative_prompt
-      guidance_scale,                          // guidance_scale
-      ip_adapter_scale,                        // ip_adapter_scale
-      num_steps                               // num_steps
-    ]);
+    console.log('Calling Gradio API via /api/predict/...');
+    const response = await fetch(`${space_url}/api/predict/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestData)
+    });
 
-    console.log('Gradio API response received:', result);
+    console.log('Gradio API response status:', response.status);
     
-    // Gradio client returns result.data array
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Gradio API error response:', errorText);
+      throw new Error(`Gradio API error: ${response.status} - ${errorText}`);
+    }
+
+    const result = await response.json();
+    console.log('Gradio API response received, data keys:', Object.keys(result));
+    
+    // Gradio typically returns data in result.data array
     if (result.data && result.data.length > 0) {
       const imageData = result.data[0];
       let base64Image;
@@ -118,7 +133,7 @@ serve(async (req) => {
         JSON.stringify({ 
           success: true,
           image_data: base64Image,
-          message: 'Image generated successfully via Gradio Client'
+          message: 'Image generated successfully via Gradio API'
         }),
         {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
