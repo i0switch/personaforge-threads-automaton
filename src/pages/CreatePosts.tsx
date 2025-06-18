@@ -394,11 +394,15 @@ const CreatePosts = () => {
     }
     
     setGeneratingImage(postId);
+    
+    console.log('Generating image with selectedPersona:', selectedPersona);
+    console.log('ngrokUrl:', ngrokUrl);
+    
     try {
       const { data, error } = await supabase.functions.invoke('generate-image-stable-diffusion', {
         body: {
           api_url: ngrokUrl.trim(),
-          persona_id: selectedPersona,
+          persona_id: selectedPersona || '86b5681a-8fe6-4d26-ba57-58828167499b', // Use actual persona ID
           prompt: imagePrompt,
           negative_prompt: '',
           guidance_scale: 7.5,
