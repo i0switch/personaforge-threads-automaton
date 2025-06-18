@@ -110,7 +110,11 @@ serve(async (req) => {
     console.log('Step 2 - Got event_id:', eventId);
 
     // Step 2: GET the result using event_id
-    const getResponse = await fetch(`${space_url}/call/predict/${eventId}`);
+    const getResponse = await fetch(`${space_url}/call/predict/${eventId}`, {
+      headers: {
+        'Accept': 'text/event-stream',
+      }
+    });
     console.log('Step 2 - GET response status:', getResponse.status);
     
     if (!getResponse.ok) {
@@ -119,43 +123,28 @@ serve(async (req) => {
       throw new Error(`Gradio API GET error: ${getResponse.status} - ${errorText}`);
     }
 
-    // Read the streaming response
-    const reader = getResponse.body?.getReader();
+    // Read the full response as text
+    const responseText = await getResponse.text();
+    console.log('Full response text:', responseText);
+    
+    // Parse the server-sent events
+    const lines = responseText.split('\n');
     let result = null;
     
-    if (reader) {
-      const decoder = new TextDecoder();
-      let buffer = '';
-      
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        
-        // Process complete lines
-        for (let i = 0; i < lines.length - 1; i++) {
-          const line = lines[i].trim();
-          if (line.startsWith('data: ')) {
-            try {
-              const data = JSON.parse(line.slice(6));
-              console.log('Received data:', JSON.stringify(data, null, 2));
-              
-              if (data.msg === 'process_completed' && data.output) {
-                result = data.output;
-                break;
-              }
-            } catch (e) {
-              console.log('Failed to parse line:', line);
-            }
+    for (const line of lines) {
+      const trimmedLine = line.trim();
+      if (trimmedLine.startsWith('data: ')) {
+        try {
+          const data = JSON.parse(trimmedLine.slice(6));
+          console.log('Parsed data:', JSON.stringify(data, null, 2));
+          
+          if (data.msg === 'process_completed' && data.output) {
+            result = data.output;
+            break;
           }
+        } catch (e) {
+          console.log('Failed to parse line:', trimmedLine);
         }
-        
-        // Keep the last incomplete line in buffer
-        buffer = lines[lines.length - 1];
-        
-        if (result) break;
       }
     }
 
