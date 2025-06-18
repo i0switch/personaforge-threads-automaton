@@ -27,6 +27,7 @@ type GeneratedPost = {
   hashtags: string[];
   scheduled_for: string;
   edited: boolean;
+  persona_id?: string;
 };
 
 const CreatePosts = () => {
@@ -63,6 +64,8 @@ const CreatePosts = () => {
   const [referenceImage, setReferenceImage] = useState<string>("");
   const [ipAdapterScale, setIpAdapterScale] = useState<number>(0.8);
   const [controlWeight, setControlWeight] = useState<number>(0.8);
+  const [imageWidth, setImageWidth] = useState(512);
+  const [imageHeight, setImageHeight] = useState(768);
 
   useEffect(() => {
     loadPersonas();
@@ -205,7 +208,8 @@ const CreatePosts = () => {
       const postsWithIds = data.posts.map((post: any, index: number) => ({
         ...post,
         id: `generated-${index}`,
-        edited: false
+        edited: false,
+        persona_id: selectedPersona // Add persona_id to generated posts
       }));
 
       setGeneratedPosts(postsWithIds);
@@ -258,7 +262,7 @@ const CreatePosts = () => {
           content: post.content,
           hashtags: [],
           scheduled_for: post.scheduled_for,
-          persona_id: selectedPersona,
+          persona_id: post.persona_id, // Use the persona_id from the generated post
           user_id: user?.id,
           status: 'scheduled' as const,
           platform: 'threads'
@@ -393,22 +397,24 @@ const CreatePosts = () => {
     
     setGeneratingImage(postId);
     try {
-      const { data, error } = await supabase.functions.invoke('generate-image-huggingface', {
+      const { data, error } = await supabase.functions.invoke('generate-image-stable-diffusion', {
         body: {
-          space_url: ngrokUrl.trim(),
-          face_image: referenceImage,
+          api_url: ngrokUrl.trim(),
+          persona_id: post.persona_id || selectedPersona,
           prompt: imagePrompt,
           negative_prompt: "glasses, hat",
           guidance_scale: 8.0,
           ip_adapter_scale: ipAdapterScale,
-          num_steps: 25
+          num_inference_steps: 25,
+          width: imageWidth,
+          height: imageHeight
         }
       });
 
       if (error) throw error;
 
-      if (data.success && data.image_data) {
-        const imageDataUrl = `data:image/png;base64,${data.image_data}`;
+      if (data.success && data.image) {
+        const imageDataUrl = `data:image/png;base64,${data.image}`;
         setGeneratedImages(prev => ({ ...prev, [postId]: imageDataUrl }));
         setImagePrompts(prev => ({ ...prev, [postId]: imagePrompt }));
         
@@ -990,6 +996,46 @@ const CreatePosts = () => {
                             <p className="text-xs text-purple-700 dark:text-purple-300">
                               デフォルト: 0.8
                             </p>
+                          </div>
+                        </div>
+
+                        {/* Resolution Settings */}
+                        <div className="space-y-4">
+                          <h4 className="text-sm font-medium text-purple-800 dark:text-purple-200">解像度設定</h4>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                              <Label htmlFor="imageWidth">幅: {imageWidth}px</Label>
+                              <input
+                                id="imageWidth"
+                                type="range"
+                                min="256"
+                                max="1024"
+                                step="64"
+                                value={imageWidth}
+                                onChange={(e) => setImageWidth(parseInt(e.target.value))}
+                                className="w-full"
+                              />
+                              <p className="text-xs text-purple-700 dark:text-purple-300">
+                                64の倍数で設定
+                              </p>
+                            </div>
+                            
+                            <div className="space-y-2">
+                              <Label htmlFor="imageHeight">高さ: {imageHeight}px</Label>
+                              <input
+                                id="imageHeight"
+                                type="range"
+                                min="256"
+                                max="1024"
+                                step="64"
+                                value={imageHeight}
+                                onChange={(e) => setImageHeight(parseInt(e.target.value))}
+                                className="w-full"
+                              />
+                              <p className="text-xs text-purple-700 dark:text-purple-300">
+                                64の倍数で設定
+                              </p>
+                            </div>
                           </div>
                         </div>
                       </CardContent>
