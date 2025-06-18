@@ -275,7 +275,7 @@ const ImageGenerator = () => {
               <img
                 src={generatedImage}
                 alt="Generated"
-                className="w-full max-w-2xl h-auto rounded-lg shadow-lg"
+                className="w-full h-auto rounded-lg shadow-lg"
               />
             </div>
             <Button onClick={downloadImage} variant="outline" className="w-full">
