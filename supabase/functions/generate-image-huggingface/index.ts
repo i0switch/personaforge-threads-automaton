@@ -46,22 +46,19 @@ serve(async (req) => {
     console.log('Original prompt length:', prompt.length);
     console.log('Using prompt:', prompt);
 
-    // Gradio Client compatible payload
+    // Gradio Client compatible payload - use simple array format
     const payload = {
       data: [
-        `data:image/png;base64,${face_image}`, // face_image_numpy
-        prompt,                               // user_prompt
-        negative_prompt,                      // user_negative_prompt
-        guidance_scale,                       // guidance_scale
-        ip_adapter_scale,                     // ip_adapter_scale
-        num_steps                             // num_steps
-      ],
-      event_data: null,
-      fn_index: 0,
-      trigger_id: Math.floor(Math.random() * 1000000)
+        face_image,          // face_image_numpy (base64 without data URL prefix)
+        prompt,              // user_prompt
+        negative_prompt,     // user_negative_prompt
+        guidance_scale,      // guidance_scale
+        ip_adapter_scale,    // ip_adapter_scale
+        num_steps           // num_steps
+      ]
     };
 
-    const apiUrl = `${space_url}/api/generate`;
+    const apiUrl = `${space_url}/api/predict`;
     console.log('Calling API:', apiUrl);
     
     const response = await fetch(apiUrl, {
