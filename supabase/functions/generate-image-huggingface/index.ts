@@ -70,19 +70,23 @@ serve(async (req) => {
       throw new Error(`Cannot access HuggingFace Space: ${error.message}`);
     }
 
-    // Try Gradio API format with specific endpoint
-    console.log('Attempting Gradio API call with /generate endpoint...');
+    // Try multiple Gradio API formats
+    console.log('Attempting Gradio API call...');
     
+    let response;
+    
+    // Try method 1: /api/predict with fn_index
     try {
-      const response = await fetch(`${space_url}/api/predict`, {
+      console.log('Trying /api/predict with fn_index=0...');
+      response = await fetch(`${space_url}/api/predict`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          api_name: "/generate", // Specific API endpoint
+          fn_index: 0,
           data: [
-            `data:image/jpeg;base64,${face_image}`, // Full data URL format
+            `data:image/jpeg;base64,${face_image}`,
             prompt,
             negative_prompt,
             guidance_scale,
@@ -91,6 +95,59 @@ serve(async (req) => {
           ]
         })
       });
+      
+      if (!response.ok) {
+        throw new Error(`fn_index method failed: ${response.status}`);
+      }
+    } catch (fnIndexError) {
+      console.log('fn_index method failed:', fnIndexError.message);
+      
+      // Try method 2: /call/generate endpoint
+      try {
+        console.log('Trying /call/generate endpoint...');
+        response = await fetch(`${space_url}/call/generate`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            data: [
+              `data:image/jpeg;base64,${face_image}`,
+              prompt,
+              negative_prompt,
+              guidance_scale,
+              ip_adapter_scale,
+              num_steps
+            ]
+          })
+        });
+        
+        if (!response.ok) {
+          throw new Error(`/call/generate method failed: ${response.status}`);
+        }
+      } catch (callError) {
+        console.log('/call/generate method failed:', callError.message);
+        
+        // Try method 3: direct gradio client format
+        console.log('Trying gradio client format...');
+        response = await fetch(`${space_url}/run/predict`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            data: [
+              face_image, // Just base64 without prefix
+              prompt,
+              negative_prompt,
+              guidance_scale,
+              ip_adapter_scale,
+              num_steps
+            ]
+          })
+        });
+      }
+    }
 
       console.log('Gradio API response status:', response.status);
       
