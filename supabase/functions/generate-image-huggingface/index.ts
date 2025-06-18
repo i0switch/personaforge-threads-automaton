@@ -82,30 +82,37 @@ serve(async (req) => {
 
     console.log('First checking Gradio Space info...');
     
-    // Check available APIs
-    const infoResponse = await fetch(`${space_url}/info`);
-    if (infoResponse.ok) {
-      const info = await infoResponse.json();
-      console.log('Gradio Space info:', JSON.stringify(info, null, 2));
-    } else {
-      console.log('Could not get Space info, proceeding with default...');
+    // Check available APIs safely
+    try {
+      const infoResponse = await fetch(`${space_url}/info`);
+      if (infoResponse.ok) {
+        const contentType = infoResponse.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          const info = await infoResponse.json();
+          console.log('Gradio Space info:', JSON.stringify(info, null, 2));
+        } else {
+          console.log('Info endpoint returned non-JSON:', contentType);
+        }
+      }
+    } catch (e) {
+      console.log('Could not get Space info:', e.message);
     }
 
-    // Try different endpoint formats
+    // Try different endpoint formats with safer error handling
     const endpoints = [
       `/call/predict`,
-      `/api/predict`,
+      `/api/predict`, 
       `/run/predict`,
-      `/call/generate`,
-      `/api/generate`
+      `/call/generate`
     ];
 
     let success = false;
     let eventId = null;
+    let workingEndpoint = null;
     
     for (const endpoint of endpoints) {
       try {
-        console.log(`Trying endpoint: ${endpoint}`);
+        console.log(`Trying endpoint: ${space_url}${endpoint}`);
         const response = await fetch(`${space_url}${endpoint}`, {
           method: 'POST',
           headers: {
@@ -115,30 +122,49 @@ serve(async (req) => {
         });
 
         console.log(`${endpoint} response status:`, response.status);
+        console.log(`${endpoint} content-type:`, response.headers.get('content-type'));
         
         if (response.ok) {
-          const result = await response.json();
-          console.log(`${endpoint} result:`, JSON.stringify(result, null, 2));
+          const contentType = response.headers.get('content-type');
           
-          if (result.event_id) {
-            eventId = result.event_id;
-            success = true;
-            console.log(`Success with ${endpoint}, event_id:`, eventId);
-            break;
-          } else if (result.data) {
-            // Direct result without event_id
-            console.log('Got direct result without event_id');
-            return new Response(
-              JSON.stringify({ 
-                success: true,
-                image_data: result.data[0],
-                message: 'Image generated successfully'
-              }),
-              {
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          if (contentType && contentType.includes('application/json')) {
+            const result = await response.json();
+            console.log(`${endpoint} result:`, JSON.stringify(result, null, 2));
+            
+            if (result.event_id) {
+              eventId = result.event_id;
+              success = true;
+              workingEndpoint = endpoint;
+              console.log(`Success with ${endpoint}, event_id:`, eventId);
+              break;
+            } else if (result.data) {
+              // Direct result without event_id
+              console.log('Got direct result without event_id');
+              const imageData = result.data[0];
+              let base64Image = imageData;
+              
+              if (typeof imageData === 'string' && imageData.startsWith('data:image/')) {
+                base64Image = imageData.split(',')[1];
               }
-            );
+              
+              return new Response(
+                JSON.stringify({ 
+                  success: true,
+                  image_data: base64Image,
+                  message: 'Image generated successfully'
+                }),
+                {
+                  headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+                }
+              );
+            }
+          } else {
+            const text = await response.text();
+            console.log(`${endpoint} returned non-JSON:`, text.substring(0, 200));
           }
+        } else {
+          const text = await response.text();
+          console.log(`${endpoint} error response:`, text.substring(0, 200));
         }
       } catch (e) {
         console.log(`${endpoint} failed:`, e.message);
@@ -146,7 +172,7 @@ serve(async (req) => {
     }
 
     if (!success || !eventId) {
-      throw new Error('Could not find working Gradio API endpoint');
+      throw new Error('Could not find working Gradio API endpoint. The Space might be sleeping or have a different API structure.');
     }
 
     // Step 2: GET the result using event_id
