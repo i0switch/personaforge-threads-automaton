@@ -13,7 +13,7 @@ const ImageGenerator = () => {
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  const [spaceUrl, setSpaceUrl] = useState("https://huggingface.co/spaces/i0switch/my-image-generator");
+  const [spaceUrl, setSpaceUrl] = useState("https://i0switch-my-image-generator.hf.space");
   const [faceImage, setFaceImage] = useState<string>("");
   const [prompt, setPrompt] = useState("");
   const [negativePrompt, setNegativePrompt] = useState("");
