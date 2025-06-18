@@ -80,7 +80,7 @@ serve(async (req) => {
     console.log('Num steps:', requestData.data[5]);
     console.log('===========================');
 
-    console.log('Calling Gradio API via /api/predict...');
+    console.log('Calling Gradio API via /api/predict (no trailing slash)...');
     const response = await fetch(`${space_url}/api/predict`, {
       method: 'POST',
       headers: {
