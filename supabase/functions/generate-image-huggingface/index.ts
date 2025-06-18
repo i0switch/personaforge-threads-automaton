@@ -109,6 +109,16 @@ serve(async (req) => {
         // Blobの場合、base64に変換
         const arrayBuffer = await imageData.arrayBuffer();
         base64Image = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+      } else if (typeof imageData === 'object' && imageData.url) {
+        // Gradio FileData objectの場合、URLから画像を取得
+        console.log('Fetching image from Gradio FileData URL:', imageData.url);
+        const imageResponse = await fetch(imageData.url);
+        if (imageResponse.ok) {
+          const arrayBuffer = await imageResponse.arrayBuffer();
+          base64Image = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+        } else {
+          throw new Error('Failed to fetch generated image from Gradio URL');
+        }
       } else {
         console.error('Unexpected image data format:', typeof imageData);
         throw new Error('Unexpected image data format received');
