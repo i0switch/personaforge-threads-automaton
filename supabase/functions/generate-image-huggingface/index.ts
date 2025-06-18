@@ -57,176 +57,42 @@ serve(async (req) => {
     console.log('Prompt length:', prompt.length);
     console.log('Face image length:', face_image.length);
 
-    // 準備されたリクエストデータ
-    const requestData = {
-      data: [
-        `data:image/jpeg;base64,${face_image}`, // face_image_numpy
-        prompt,                                  // user_prompt  
-        negative_prompt,                         // user_negative_prompt
-        guidance_scale,                          // guidance_scale
-        ip_adapter_scale,                        // ip_adapter_scale
-        num_steps                               // num_steps
-      ]
-    };
+    // gradio_clientを使用してSpaceに接続
+    console.log('Connecting to Gradio Space using gradio_client...');
     
-    console.log('=== REQUEST DATA DEBUG ===');
-    console.log('Data array length:', requestData.data.length);
-    console.log('Face image data type:', typeof requestData.data[0]);
-    console.log('Face image prefix:', requestData.data[0].substring(0, 30));
-    console.log('Prompt:', requestData.data[1]);
-    console.log('Negative prompt:', requestData.data[2]);
-    console.log('Guidance scale:', requestData.data[3]);
-    console.log('IP adapter scale:', requestData.data[4]);
-    console.log('Num steps:', requestData.data[5]);
-    console.log('===========================');
-
-    console.log('First checking Gradio Space info...');
+    // Import gradio_client dynamically
+    const { Client } = await import("https://cdn.jsdelivr.net/npm/@gradio/client@1.0.1/dist/index.js");
     
-    // Check available APIs safely
-    try {
-      const infoResponse = await fetch(`${space_url}/info`);
-      if (infoResponse.ok) {
-        const contentType = infoResponse.headers.get('content-type');
-        if (contentType && contentType.includes('application/json')) {
-          const info = await infoResponse.json();
-          console.log('Gradio Space info:', JSON.stringify(info, null, 2));
-        } else {
-          console.log('Info endpoint returned non-JSON:', contentType);
-        }
-      }
-    } catch (e) {
-      console.log('Could not get Space info:', e.message);
-    }
-
-    // Try different endpoint formats with safer error handling
-    const endpoints = [
-      `/call/predict`,
-      `/api/predict`, 
-      `/run/predict`,
-      `/call/generate`
-    ];
-
-    let success = false;
-    let eventId = null;
-    let workingEndpoint = null;
+    console.log('Creating Gradio client...');
+    const client = await Client.connect(space_url);
+    console.log('Connected to Gradio Space successfully');
     
-    for (const endpoint of endpoints) {
-      try {
-        console.log(`Trying endpoint: ${space_url}${endpoint}`);
-        const response = await fetch(`${space_url}${endpoint}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(requestData)
-        });
-
-        console.log(`${endpoint} response status:`, response.status);
-        console.log(`${endpoint} content-type:`, response.headers.get('content-type'));
-        
-        if (response.ok) {
-          const contentType = response.headers.get('content-type');
-          
-          if (contentType && contentType.includes('application/json')) {
-            const result = await response.json();
-            console.log(`${endpoint} result:`, JSON.stringify(result, null, 2));
-            
-            if (result.event_id) {
-              eventId = result.event_id;
-              success = true;
-              workingEndpoint = endpoint;
-              console.log(`Success with ${endpoint}, event_id:`, eventId);
-              break;
-            } else if (result.data) {
-              // Direct result without event_id
-              console.log('Got direct result without event_id');
-              const imageData = result.data[0];
-              let base64Image = imageData;
-              
-              if (typeof imageData === 'string' && imageData.startsWith('data:image/')) {
-                base64Image = imageData.split(',')[1];
-              }
-              
-              return new Response(
-                JSON.stringify({ 
-                  success: true,
-                  image_data: base64Image,
-                  message: 'Image generated successfully'
-                }),
-                {
-                  headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-                }
-              );
-            }
-          } else {
-            const text = await response.text();
-            console.log(`${endpoint} returned non-JSON:`, text.substring(0, 200));
-          }
-        } else {
-          const text = await response.text();
-          console.log(`${endpoint} error response:`, text.substring(0, 200));
-        }
-      } catch (e) {
-        console.log(`${endpoint} failed:`, e.message);
-      }
-    }
-
-    if (!success || !eventId) {
-      throw new Error('Could not find working Gradio API endpoint. The Space might be sleeping or have a different API structure.');
-    }
-
-    // Step 2: GET the result using event_id
-    const getResponse = await fetch(`${space_url}/call/predict/${eventId}`, {
-      headers: {
-        'Accept': 'text/event-stream',
-      }
+    // 画像データを準備
+    const imageBlob = new Blob([Uint8Array.from(atob(face_image), c => c.charCodeAt(0))], {
+      type: 'image/jpeg'
     });
-    console.log('Step 2 - GET response status:', getResponse.status);
     
-    if (!getResponse.ok) {
-      const errorText = await getResponse.text();
-      console.error('Gradio API GET error response:', errorText);
-      throw new Error(`Gradio API GET error: ${getResponse.status} - ${errorText}`);
-    }
-
-    // Read the full response as text
-    const responseText = await getResponse.text();
-    console.log('Full response text:', responseText);
+    console.log('Submitting prediction...');
+    const result = await client.predict("/predict", {
+      face_image: imageBlob,
+      user_prompt: prompt,
+      user_negative_prompt: negative_prompt,
+      guidance_scale: guidance_scale,
+      ip_adapter_scale: ip_adapter_scale,
+      num_steps: num_steps
+    });
     
-    // Parse the server-sent events
-    const lines = responseText.split('\n');
-    let result = null;
+    console.log('Gradio prediction result:', JSON.stringify(result, null, 2));
     
-    for (const line of lines) {
-      const trimmedLine = line.trim();
-      if (trimmedLine.startsWith('data: ')) {
-        try {
-          const data = JSON.parse(trimmedLine.slice(6));
-          console.log('Parsed data:', JSON.stringify(data, null, 2));
-          
-          if (data.msg === 'process_completed' && data.output) {
-            result = data.output;
-            break;
-          }
-        } catch (e) {
-          console.log('Failed to parse line:', trimmedLine);
-        }
-      }
-    }
-
-    console.log('Final result:', JSON.stringify(result, null, 2));
-    
-    // Process the result
     if (result && result.data && result.data.length > 0) {
       const imageData = result.data[0];
       let base64Image;
       
       if (typeof imageData === 'string') {
-        // If it's a URL or base64 string
         if (imageData.startsWith('data:image/')) {
           base64Image = imageData.split(',')[1];
         } else if (imageData.startsWith('http')) {
-          // If it's a URL, we need to fetch and convert to base64
+          // URLの場合、fetch して base64 に変換
           console.log('Fetching image from URL:', imageData);
           const imageResponse = await fetch(imageData);
           if (imageResponse.ok) {
@@ -236,9 +102,12 @@ serve(async (req) => {
             throw new Error('Failed to fetch generated image from URL');
           }
         } else {
-          // Assume it's already base64
           base64Image = imageData;
         }
+      } else if (imageData instanceof Blob) {
+        // Blobの場合、base64に変換
+        const arrayBuffer = await imageData.arrayBuffer();
+        base64Image = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
       } else {
         console.error('Unexpected image data format:', typeof imageData);
         throw new Error('Unexpected image data format received');
@@ -249,7 +118,7 @@ serve(async (req) => {
         JSON.stringify({ 
           success: true,
           image_data: base64Image,
-          message: 'Image generated successfully via Gradio API'
+          message: 'Image generated successfully via Gradio Client'
         }),
         {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -257,7 +126,7 @@ serve(async (req) => {
       );
     } else {
       console.error('No data in Gradio response:', result);
-      throw new Error('No image data received from Gradio API');
+      throw new Error('No image data received from Gradio Space');
     }
 
   } catch (error) {
