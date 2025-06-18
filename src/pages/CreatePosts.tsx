@@ -8,11 +8,16 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { ArrowLeft, Bot, Calendar, Hash, Image, Settings, Wand2, Loader2, Save, Users, Download, RefreshCw } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ArrowLeft, Bot, Calendar as CalendarIcon, Hash, Image, Settings, Wand2, Loader2, Save, Users, Download, RefreshCw } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import { format } from "date-fns";
+import { cn } from "@/lib/utils";
 import type { Database } from "@/integrations/supabase/types";
 
 type Persona = Database['public']['Tables']['personas']['Row'];
@@ -41,10 +46,8 @@ const CreatePosts = () => {
   const [loadingPersonas, setLoadingPersonas] = useState(true);
   
   const [settings, setSettings] = useState({
-    postCount: 5,
-    startTime: "09:00",
-    endTime: "21:00",
-    interval: 2,
+    selectedDates: [] as Date[],
+    selectedTimes: [] as string[],
     topics: ["テクノロジー", "ライフスタイル"],
     customPrompt: ""
   });
@@ -190,10 +193,8 @@ const CreatePosts = () => {
         body: {
           personaId: selectedPersona,
           topics: settings.topics,
-          postCount: settings.postCount,
-          startTime: settings.startTime,
-          endTime: settings.endTime,
-          interval: settings.interval,
+          selectedDates: settings.selectedDates,
+          selectedTimes: settings.selectedTimes,
           customPrompt: settings.customPrompt,
           user_id: user?.id
         }
@@ -212,7 +213,7 @@ const CreatePosts = () => {
       
       toast({
         title: "投稿生成完了！",
-        description: `${settings.postCount}件の投稿を生成しました。`,
+        description: `${data.generated_count}件の投稿を生成しました。`,
       });
     } catch (error) {
       console.error('Error generating posts:', error);
@@ -623,46 +624,99 @@ const CreatePosts = () => {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="space-y-6">
+                  {/* Date Selection */}
                   <div className="space-y-2">
-                    <Label htmlFor="postCount">投稿数</Label>
-                    <Input
-                      id="postCount"
-                      type="number"
-                      value={settings.postCount}
-                      onChange={(e) => setSettings(prev => ({ ...prev, postCount: parseInt(e.target.value) }))}
-                      min="1"
-                      max="20"
-                    />
+                    <Label>投稿日を選択（最大5日）</Label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          className={cn(
+                            "w-full justify-start text-left font-normal",
+                            !settings.selectedDates.length && "text-muted-foreground"
+                          )}
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {settings.selectedDates.length > 0
+                            ? `${settings.selectedDates.length}日選択済み`
+                            : "日付を選択してください"}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                          mode="multiple"
+                          selected={settings.selectedDates}
+                          onSelect={(dates) => {
+                            if (dates && dates.length <= 5) {
+                              setSettings(prev => ({ ...prev, selectedDates: dates }));
+                            }
+                          }}
+                          disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
+                          initialFocus
+                          className={cn("p-3 pointer-events-auto")}
+                        />
+                      </PopoverContent>
+                    </Popover>
+                    {settings.selectedDates.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        {settings.selectedDates.map((date, index) => (
+                          <Badge key={index} variant="secondary">
+                            {format(date, "M/d")}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
                   </div>
+
+                  {/* Time Selection */}
                   <div className="space-y-2">
-                    <Label htmlFor="startTime">開始時刻</Label>
-                    <Input
-                      id="startTime"
-                      type="time"
-                      value={settings.startTime}
-                      onChange={(e) => setSettings(prev => ({ ...prev, startTime: e.target.value }))}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="endTime">終了時刻</Label>
-                    <Input
-                      id="endTime"
-                      type="time"
-                      value={settings.endTime}
-                      onChange={(e) => setSettings(prev => ({ ...prev, endTime: e.target.value }))}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="interval">間隔（時間）</Label>
-                    <Input
-                      id="interval"
-                      type="number"
-                      value={settings.interval}
-                      onChange={(e) => setSettings(prev => ({ ...prev, interval: parseInt(e.target.value) }))}
-                      min="1"
-                      max="24"
-                    />
+                    <Label>投稿時間を選択</Label>
+                    <div className="grid grid-cols-4 gap-2 max-h-64 overflow-y-auto border rounded-lg p-4">
+                      {Array.from({ length: 48 }, (_, i) => {
+                        const hour = Math.floor(i / 2);
+                        const minute = (i % 2) * 30;
+                        const timeString = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+                        return (
+                          <div key={timeString} className="flex items-center space-x-2">
+                            <Checkbox
+                              id={timeString}
+                              checked={settings.selectedTimes.includes(timeString)}
+                              onCheckedChange={(checked) => {
+                                if (checked) {
+                                  setSettings(prev => ({
+                                    ...prev,
+                                    selectedTimes: [...prev.selectedTimes, timeString].sort()
+                                  }));
+                                } else {
+                                  setSettings(prev => ({
+                                    ...prev,
+                                    selectedTimes: prev.selectedTimes.filter(t => t !== timeString)
+                                  }));
+                                }
+                              }}
+                            />
+                            <Label htmlFor={timeString} className="text-sm cursor-pointer">
+                              {timeString}
+                            </Label>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {settings.selectedTimes.length > 0 && (
+                      <div className="mt-2">
+                        <p className="text-sm text-muted-foreground mb-2">
+                          選択された時間: {settings.selectedTimes.length}個
+                        </p>
+                        <div className="flex flex-wrap gap-1">
+                          {settings.selectedTimes.map((time) => (
+                            <Badge key={time} variant="outline" className="text-xs">
+                              {time}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -714,7 +768,7 @@ const CreatePosts = () => {
                   <Button 
                     onClick={handleGeneratePosts} 
                     size="lg"
-                    disabled={generating || !selectedPersona}
+                    disabled={generating || !selectedPersona || settings.selectedDates.length === 0 || settings.selectedTimes.length === 0}
                   >
                     {generating ? (
                       <>

@@ -94,15 +94,13 @@ serve(async (req) => {
     const { 
       personaId, 
       topics, 
-      postCount, 
-      startTime, 
-      endTime, 
-      interval,
+      selectedDates, 
+      selectedTimes,
       customPrompt
     } = await req.json();
 
-    if (!personaId || !topics) {
-      throw new Error('Missing required fields: personaId, topics');
+    if (!personaId || !topics || !selectedDates || !selectedTimes) {
+      throw new Error('Missing required fields: personaId, topics, selectedDates, selectedTimes');
     }
 
     // ユーザーのGemini APIキーを取得
@@ -113,6 +111,8 @@ serve(async (req) => {
       throw new Error('Gemini API key is not configured. Please set your API key in Settings.');
     }
 
+    // Calculate total posts to generate
+    const postCount = selectedDates.length * selectedTimes.length;
     console.log(`Generating ${postCount} posts for persona ${personaId} using ${userGeminiApiKey ? 'user' : 'fallback'} API key`);
 
     // Get persona details
@@ -129,16 +129,16 @@ serve(async (req) => {
 
     console.log(`Using persona: ${persona.name}`);
 
-    // Generate time slots
-    const timeSlots = generateTimeSlots(startTime, endTime, interval, postCount);
+    // Generate time slots from selected dates and times
+    const timeSlots = generateTimeSlots(selectedDates, selectedTimes);
 
     const posts = [];
 
-    for (let i = 0; i < postCount; i++) {
-      console.log(`Generating post ${i + 1}/${postCount}`);
+    for (let i = 0; i < timeSlots.length; i++) {
+      console.log(`Generating post ${i + 1}/${timeSlots.length}`);
 
       // Create prompt for Gemini
-      const prompt = createPostPrompt(persona, topics, i + 1, postCount, customPrompt);
+      const prompt = createPostPrompt(persona, topics, i + 1, timeSlots.length, customPrompt);
 
       try {
         // Call Gemini API
@@ -235,12 +235,12 @@ serve(async (req) => {
 
     console.log(`Successfully generated ${posts.length} posts`);
 
-    return new Response(
+        return new Response(
       JSON.stringify({ 
         posts,
         success: true,
         generated_count: posts.length,
-        requested_count: postCount
+        requested_count: timeSlots.length
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -263,27 +263,18 @@ serve(async (req) => {
   }
 });
 
-function generateTimeSlots(startTime: string, endTime: string, interval: number, count: number): string[] {
+function generateTimeSlots(selectedDates: string[], selectedTimes: string[]): string[] {
   const slots = [];
-  const start = new Date(`2024-01-01T${startTime}:00`);
-  const end = new Date(`2024-01-01T${endTime}:00`);
   
-  let current = new Date(start);
-  const intervalMs = interval * 60 * 60 * 1000; // Convert hours to milliseconds
-  
-  for (let i = 0; i < count; i++) {
-    if (current <= end) {
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      tomorrow.setHours(current.getHours(), current.getMinutes(), 0, 0);
+  for (const dateStr of selectedDates) {
+    const date = new Date(dateStr);
+    
+    for (const timeStr of selectedTimes) {
+      const [hour, minute] = timeStr.split(':').map(Number);
+      const scheduledDate = new Date(date);
+      scheduledDate.setHours(hour, minute, 0, 0);
       
-      slots.push(tomorrow.toISOString());
-      current = new Date(current.getTime() + intervalMs);
-    } else {
-      // If we exceed end time, wrap to next day
-      const nextDay = new Date(start);
-      nextDay.setDate(nextDay.getDate() + Math.floor(i * interval / 24) + 1);
-      slots.push(nextDay.toISOString());
+      slots.push(scheduledDate.toISOString());
     }
   }
   
