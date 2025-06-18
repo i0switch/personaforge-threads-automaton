@@ -398,7 +398,7 @@ const CreatePosts = () => {
       const { data, error } = await supabase.functions.invoke('generate-image-stable-diffusion', {
         body: {
           api_url: ngrokUrl.trim(),
-          persona_id: 'default', // TODO: 実際のペルソナIDを使用
+          persona_id: selectedPersona,
           prompt: imagePrompt,
           negative_prompt: '',
           guidance_scale: 7.5,
