@@ -70,15 +70,16 @@ serve(async (req) => {
       throw new Error(`Cannot access HuggingFace Space: ${error.message}`);
     }
 
-    // Call the correct Gradio API endpoint
-    console.log('Calling /call/generate endpoint...');
+    // Call the correct Gradio API endpoint - matching Python code
+    console.log('Calling /api/predict with api_name="/generate"...');
     
-    const response = await fetch(`${space_url}/call/generate`, {
+    const response = await fetch(`${space_url}/api/predict`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
+        api_name: "/generate",
         data: [
           `data:image/jpeg;base64,${face_image}`, // face_image_numpy
           prompt, // user_prompt
