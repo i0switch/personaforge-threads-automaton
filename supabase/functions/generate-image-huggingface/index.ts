@@ -57,27 +57,62 @@ serve(async (req) => {
     console.log('Prompt length:', prompt.length);
     console.log('Face image length:', face_image.length);
 
-    // Return a dummy base64 image for testing (1x1 transparent PNG)
-    const dummyImageBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==";
-    
-    return new Response(
-      JSON.stringify({ 
-        success: true,
-        image_data: dummyImageBase64,
-        message: 'Test function working with dummy image',
-        received_data: {
-          space_url,
-          prompt_length: prompt.length,
-          face_image_length: face_image.length,
+    // Call HuggingFace Space API
+    console.log('Making request to HuggingFace Space...');
+    const response = await fetch(`${space_url}/api/predict`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        data: [
+          `data:image/jpeg;base64,${face_image}`,
+          prompt,
+          negative_prompt,
           guidance_scale,
           ip_adapter_scale,
           num_steps
-        }
-      }),
-      {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        ]
+      })
+    });
+
+    console.log('Response status:', response.status);
+    
+    if (!response.ok) {
+      console.error('HuggingFace API error:', response.statusText);
+      throw new Error(`HuggingFace API error: ${response.status} ${response.statusText}`);
+    }
+
+    const result = await response.json();
+    console.log('HuggingFace response received');
+
+    if (result.data && result.data[0]) {
+      // Extract base64 image data from the response
+      const imageData = result.data[0];
+      let base64Image;
+      
+      if (imageData.startsWith('data:image/')) {
+        // Remove data URL prefix if present
+        base64Image = imageData.split(',')[1];
+      } else {
+        base64Image = imageData;
       }
-    );
+
+      console.log('Image generation successful');
+      return new Response(
+        JSON.stringify({ 
+          success: true,
+          image_data: base64Image,
+          message: 'Image generated successfully'
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
+    } else {
+      console.error('No image data in response:', result);
+      throw new Error('No image data received from HuggingFace API');
+    }
 
   } catch (error) {
     console.error('Error in function:', error);
