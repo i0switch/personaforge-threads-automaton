@@ -32,8 +32,8 @@ async function getGradioConfig(spaceUrl: string) {
 async function buildGradioRequest(spaceUrl: string, config: any, params: any) {
   const { face_image, prompt, negative_prompt, guidance_scale, ip_adapter_scale, num_steps } = params;
   
-  // まず /api/predict を試す（標準的なGradio APIエンドポイント）
-  console.log('Trying standard Gradio API endpoints...');
+  // 正しいエンドポイント /api/generate を使用
+  console.log('Using correct endpoint: /api/generate');
   
   const requestData = {
     data: [
@@ -58,7 +58,7 @@ async function buildGradioRequest(spaceUrl: string, config: any, params: any) {
   console.log('Num steps:', requestData.data[5]);
   console.log('===========================');
   
-  return { endpoint: '/api/predict', requestData };
+  return { endpoint: '/api/generate', requestData };
 }
 
 serve(async (req) => {
@@ -135,8 +135,19 @@ serve(async (req) => {
       console.log('No config found, using endpoint discovery');
     }
 
-// HuggingFace Spaceの直接APIコールに変更
-    console.log('Attempting direct API call to HuggingFace Space...');
+    // 動的にエンドポイントとリクエストを構築
+    console.log('Building Gradio request with corrected endpoint...');
+    const { endpoint, requestData } = await buildGradioRequest(space_url, config, {
+      face_image,
+      prompt,
+      negative_prompt,
+      guidance_scale,
+      ip_adapter_scale,
+      num_steps
+    });
+
+    console.log(`Calling Gradio API via ${endpoint}...`);
+    console.log('Request data structure:', Object.keys(requestData));
     
     // HuggingFace認証トークンを取得
     const hfToken = Deno.env.get('HF_TOKEN');
@@ -144,31 +155,7 @@ serve(async (req) => {
       throw new Error('Server configuration error: HF_TOKEN is missing.');
     }
     
-    // HuggingFace Inference APIを使用
-    console.log('Using HuggingFace Inference API...');
-    const requestData = {
-      inputs: prompt,
-      parameters: {
-        guidance_scale,
-        num_inference_steps: num_steps,
-        // face_imageをinputsとして使用する場合の処理は後で追加
-      }
-    };
-    
-    console.log('=== REQUEST DATA DEBUG ===');
-    console.log('Prompt:', prompt);
-    console.log('Guidance scale:', guidance_scale);
-    console.log('Num steps:', num_steps);
-    console.log('Face image length:', face_image.length);
-    console.log('===========================');
-    
-    // Space URLから model名を抽出してInference APIを使用
-    const spaceId = space_url.replace('https://', '').replace('.hf.space', '').replace('/', '');
-    const apiUrl = `https://api-inference.huggingface.co/models/${spaceId}`;
-    
-    console.log('API URL:', apiUrl);
-    
-    const response = await fetch(apiUrl, {
+    const response = await fetch(`${space_url}${endpoint}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
