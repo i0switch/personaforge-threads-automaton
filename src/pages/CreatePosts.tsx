@@ -642,7 +642,7 @@ const CreatePosts = () => {
                             : "日付を選択してください"}
                         </Button>
                       </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
+                       <PopoverContent className="w-auto p-0 max-w-sm" align="start">
                         <Calendar
                           mode="multiple"
                           selected={settings.selectedDates}
@@ -653,7 +653,7 @@ const CreatePosts = () => {
                           }}
                           disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
                           initialFocus
-                          className={cn("p-3 pointer-events-auto")}
+                          className={cn("p-3 pointer-events-auto w-full max-w-sm")}
                         />
                       </PopoverContent>
                     </Popover>
