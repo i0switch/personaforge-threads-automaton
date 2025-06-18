@@ -71,22 +71,22 @@ const ImageGenerator = () => {
 
     setGenerating(true);
     try {
-      const { data, error } = await supabase.functions.invoke('generate-image-huggingface', {
+      const { data, error } = await supabase.functions.invoke('generate-image-stable-diffusion', {
         body: {
-          space_url: spaceUrl,
-          face_image: faceImage,
+          api_url: spaceUrl,
+          persona_id: "dummy", // You'll need to pass actual persona_id
           prompt: prompt,
           negative_prompt: negativePrompt,
           guidance_scale: guidanceScale[0],
           ip_adapter_scale: ipAdapterScale[0],
-          num_steps: numSteps[0]
+          num_inference_steps: numSteps[0]
         }
       });
 
       if (error) throw error;
 
-      if (data.success && data.image_data) {
-        setGeneratedImage(`data:image/png;base64,${data.image_data}`);
+      if (data.success && data.image) {
+        setGeneratedImage(data.image); // already contains data:image/png;base64,
         toast({
           title: "生成完了",
           description: "画像が正常に生成されました。",
