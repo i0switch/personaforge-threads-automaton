@@ -74,7 +74,7 @@ serve(async (req) => {
     
     console.log('Submitting prediction...');
     const result = await client.predict("/predict", {
-      face_image: imageBlob,
+      face_image_numpy: imageBlob,
       user_prompt: prompt,
       user_negative_prompt: negative_prompt,
       guidance_scale: guidance_scale,
