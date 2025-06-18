@@ -58,6 +58,8 @@ const CreatePosts = () => {
   // Image generation states
   const [generatedImages, setGeneratedImages] = useState<{[key: string]: string}>({});
   const [imagePrompts, setImagePrompts] = useState<{[key: string]: string}>({});
+  const [imageWidth, setImageWidth] = useState(512);
+  const [imageHeight, setImageHeight] = useState(768);
   const [generatingImage, setGeneratingImage] = useState<string | null>(null);
   const [ngrokUrl, setNgrokUrl] = useState<string>("");
   const [referenceImage, setReferenceImage] = useState<string>("");
@@ -393,22 +395,24 @@ const CreatePosts = () => {
     
     setGeneratingImage(postId);
     try {
-      const { data, error } = await supabase.functions.invoke('generate-image-huggingface', {
+      const { data, error } = await supabase.functions.invoke('generate-image-stable-diffusion', {
         body: {
-          space_url: ngrokUrl.trim(),
-          face_image: referenceImage,
+          api_url: ngrokUrl.trim(),
+          persona_id: 'default', // TODO: 実際のペルソナIDを使用
           prompt: imagePrompt,
-          negative_prompt: "glasses, hat",
-          guidance_scale: 8.0,
+          negative_prompt: '',
+          guidance_scale: 7.5,
           ip_adapter_scale: ipAdapterScale,
-          num_steps: 25
+          num_inference_steps: 30,
+          width: imageWidth,
+          height: imageHeight
         }
       });
 
       if (error) throw error;
 
-      if (data.success && data.image_data) {
-        const imageDataUrl = `data:image/png;base64,${data.image_data}`;
+      if (data.success && data.image) {
+        const imageDataUrl = `data:image/png;base64,${data.image}`;
         setGeneratedImages(prev => ({ ...prev, [postId]: imageDataUrl }));
         setImagePrompts(prev => ({ ...prev, [postId]: imagePrompt }));
         
@@ -991,6 +995,61 @@ const CreatePosts = () => {
                               デフォルト: 0.8
                             </p>
                           </div>
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="imageWidth">幅 (Width): {imageWidth}px</Label>
+                            <input
+                              id="imageWidth"
+                              type="range"
+                              min="256"
+                              max="1024"
+                              step="64"
+                              value={imageWidth}
+                              onChange={(e) => setImageWidth(parseInt(e.target.value))}
+                              className="w-full"
+                            />
+                            <p className="text-xs text-purple-700 dark:text-purple-300">
+                              64の倍数で設定してください
+                            </p>
+                          </div>
+                          
+                          <div className="space-y-2">
+                            <Label htmlFor="imageHeight">高さ (Height): {imageHeight}px</Label>
+                            <input
+                              id="imageHeight"
+                              type="range"
+                              min="256"
+                              max="1024"
+                              step="64"
+                              value={imageHeight}
+                              onChange={(e) => setImageHeight(parseInt(e.target.value))}
+                              className="w-full"
+                            />
+                            <p className="text-xs text-purple-700 dark:text-purple-300">
+                              64の倍数で設定してください
+                            </p>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    {/* Stable Diffusion Settings */}
+                    <Card className="border-blue-200 bg-blue-50 dark:bg-blue-950 dark:border-blue-800">
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2 text-blue-800 dark:text-blue-200">
+                          <Image className="h-5 w-5" />
+                          Stable Diffusion 設定
+                        </CardTitle>
+                        <CardDescription className="text-blue-700 dark:text-blue-300">
+                          画像生成の詳細パラメータを調整できます
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div className="text-sm text-blue-700 dark:text-blue-300">
+                          <p>現在は HuggingFace Spaces を使用した画像生成を行っています。</p>
+                          <p>Stable Diffusion 用の詳細設定は今後実装予定です。</p>
                         </div>
                       </CardContent>
                     </Card>
