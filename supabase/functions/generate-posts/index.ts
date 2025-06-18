@@ -295,14 +295,16 @@ function createPostPrompt(persona: any, topics: string[], postNumber: number, to
 - 専門分野: ${persona.expertise?.join(', ') || ''}
 - 口調: ${persona.tone_of_voice || ''}
 
-投稿番号: ${postNumber}/${totalPosts}
-
 カスタム指示: ${customPrompt}
+
+注意事項:
+- 投稿内容に番号（1/2、2/2など）を含めないでください
+- 投稿内容のみを返してください
 
 ${persona.name}のキャラクターに沿って、上記の指示に従って投稿内容のみを返してください:`;
   }
   
-  // デフォルトプロンプト（ハッシュタグ指示を削除）
+  // デフォルトプロンプト（番号表示を削除し、明確な指示を追加）
   return `あなたは${persona.name}として投稿を作成してください。
 
 ペルソナ情報:
@@ -313,7 +315,6 @@ ${persona.name}のキャラクターに沿って、上記の指示に従って�
 - 口調: ${persona.tone_of_voice || ''}
 
 投稿テーマ: ${topicsText}
-投稿番号: ${postNumber}/${totalPosts}
 
 要件:
 1. ${persona.name}のキャラクターに沿った内容
@@ -321,6 +322,10 @@ ${persona.name}のキャラクターに沿って、上記の指示に従って�
 3. 自然で魅力的な文章
 4. エンゲージメントを促す内容
 5. ${topicsText}のいずれかに関連した内容
+
+注意事項:
+- 投稿内容に番号（1/2、2/2など）を含めないでください
+- 投稿内容のみを返してください
 
 投稿内容のみを返してください:`;
 }
