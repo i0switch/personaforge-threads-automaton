@@ -32,8 +32,8 @@ async function getGradioConfig(spaceUrl: string) {
 async function buildGradioRequest(spaceUrl: string, config: any, params: any) {
   const { face_image, prompt, negative_prompt, guidance_scale, ip_adapter_scale, num_steps } = params;
   
-  // 正しいエンドポイント /api/generate を使用
-  console.log('Using correct endpoint: /api/generate');
+  // HuggingFace側の実装に合わせて /api/predict を使用
+  console.log('Using endpoint: /api/predict');
   
   const requestData = {
     data: [
@@ -58,7 +58,7 @@ async function buildGradioRequest(spaceUrl: string, config: any, params: any) {
   console.log('Num steps:', requestData.data[5]);
   console.log('===========================');
   
-  return { endpoint: '/api/generate', requestData };
+  return { endpoint: '/api/predict', requestData };
 }
 
 serve(async (req) => {
