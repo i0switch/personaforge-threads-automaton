@@ -99,6 +99,7 @@ serve(async (req) => {
 
     const result = await response.json();
     console.log('Gradio API response received, data keys:', Object.keys(result));
+    console.log('Full Gradio response:', JSON.stringify(result, null, 2));
     
     // Gradio typically returns data in result.data array
     if (result.data && result.data.length > 0) {
