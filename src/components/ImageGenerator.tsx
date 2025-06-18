@@ -71,22 +71,22 @@ const ImageGenerator = () => {
 
     setGenerating(true);
     try {
-      const { data, error } = await supabase.functions.invoke('generate-image-stable-diffusion', {
+      const { data, error } = await supabase.functions.invoke('generate-image-huggingface', {
         body: {
-          api_url: spaceUrl,
-          persona_id: "dummy", // You'll need to pass actual persona_id
+          space_url: spaceUrl,
+          face_image: faceImage,
           prompt: prompt,
           negative_prompt: negativePrompt,
           guidance_scale: guidanceScale[0],
           ip_adapter_scale: ipAdapterScale[0],
-          num_inference_steps: numSteps[0]
+          num_steps: numSteps[0]
         }
       });
 
       if (error) throw error;
 
-      if (data.success && data.image) {
-        setGeneratedImage(data.image); // already contains data:image/png;base64,
+      if (data.success && data.image_data) {
+        setGeneratedImage(`data:image/png;base64,${data.image_data}`);
         toast({
           title: "生成完了",
           description: "画像が正常に生成されました。",
@@ -204,7 +204,7 @@ const ImageGenerator = () => {
           {/* Advanced Settings */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="space-y-2">
-              <Label>ガイダンススケール: {guidanceScale[0]}</Label>
+              <Label>プロンプトへの忠実度 (Guidance Scale): {guidanceScale[0]}</Label>
               <Slider
                 value={guidanceScale}
                 onValueChange={setGuidanceScale}
@@ -216,7 +216,7 @@ const ImageGenerator = () => {
             </div>
 
             <div className="space-y-2">
-              <Label>IPアダプタースケール: {ipAdapterScale[0]}</Label>
+              <Label>顔の忠実度 (IP Adapter Scale): {ipAdapterScale[0]}</Label>
               <Slider
                 value={ipAdapterScale}
                 onValueChange={setIpAdapterScale}
@@ -228,7 +228,7 @@ const ImageGenerator = () => {
             </div>
 
             <div className="space-y-2">
-              <Label>ステップ数: {numSteps[0]}</Label>
+              <Label>生成ステップ数 (Steps): {numSteps[0]}</Label>
               <Slider
                 value={numSteps}
                 onValueChange={setNumSteps}

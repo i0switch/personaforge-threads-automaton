@@ -43,30 +43,29 @@ serve(async (req) => {
     }
 
     console.log('Generating image with Hugging Face Space API...');
-
-    // Truncate prompt aggressively for 50 tokens (approximately 100 characters)
-    const truncatedPrompt = prompt.length > 100 ? prompt.substring(0, 100) + "..." : prompt;
-    const truncatedNegativePrompt = negative_prompt.length > 50 ? negative_prompt.substring(0, 50) + "..." : negative_prompt;
-
     console.log('Original prompt length:', prompt.length);
-    console.log('Truncated prompt:', truncatedPrompt);
+    console.log('Using prompt:', prompt);
 
+    // Gradio Client compatible payload
     const payload = {
       data: [
-        face_image,
-        truncatedPrompt,
-        truncatedNegativePrompt,
-        guidance_scale,
-        ip_adapter_scale,
-        num_steps
-      ]
+        `data:image/png;base64,${face_image}`, // face_image_numpy
+        prompt,                               // user_prompt
+        negative_prompt,                      // user_negative_prompt
+        guidance_scale,                       // guidance_scale
+        ip_adapter_scale,                     // ip_adapter_scale
+        num_steps                             // num_steps
+      ],
+      event_data: null,
+      fn_index: 0,
+      trigger_id: Math.floor(Math.random() * 1000000)
     };
 
-    const apiUrl = `${space_url}/api/predict`;
+    const apiUrl = `${space_url}/api/generate`;
     console.log('Calling API:', apiUrl);
     
     const response = await fetch(apiUrl, {
-      method: "POST",
+      method: "POST", 
       headers: {
         "Content-Type": "application/json",
       },
