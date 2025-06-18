@@ -71,9 +71,9 @@ serve(async (req) => {
     }
 
     // Use the correct Gradio API endpoint that matches Python client api_name="/generate"
-    console.log('Calling Gradio API with /run/generate...');
+    console.log('Calling Gradio API with /api/generate...');
     
-    const response = await fetch(`${space_url}/run/generate`, {
+    const response = await fetch(`${space_url}/api/generate`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
