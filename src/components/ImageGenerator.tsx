@@ -5,7 +5,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Slider } from "@/components/ui/slider";
-import { Switch } from "@/components/ui/switch";
 import { Loader2, Download, Image as ImageIcon } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -13,7 +12,6 @@ import { supabase } from "@/integrations/supabase/client";
 const ImageGenerator = () => {
   const { toast } = useToast();
   
-  const [useAlternativeAPI, setUseAlternativeAPI] = useState(false);
   const [spaceUrl, setSpaceUrl] = useState("https://huggingface.co/spaces/multimodalart/face-to-all");
   const [personaId, setPersonaId] = useState<string>("");
   const [prompt, setPrompt] = useState("");
@@ -27,10 +25,10 @@ const ImageGenerator = () => {
   const [generatedImage, setGeneratedImage] = useState<string>("");
 
   const generateImage = async () => {
-    if (!prompt || (!useAlternativeAPI && !personaId)) {
+    if (!personaId || !prompt) {
       toast({
         title: "エラー",
-        description: useAlternativeAPI ? "プロンプトを入力してください。" : "ペルソナIDとプロンプトを入力してください。",
+        description: "ペルソナIDとプロンプトを入力してください。",
         variant: "destructive",
       });
       return;
@@ -38,53 +36,30 @@ const ImageGenerator = () => {
 
     setGenerating(true);
     try {
-      if (useAlternativeAPI) {
-        // Use stable HuggingFace Inference API
-        const { data, error } = await supabase.functions.invoke('generate-image-huggingface-alternative', {
-          body: {
-            prompt: prompt,
-            persona_id: personaId || null
-          }
-        });
-
-        if (error) throw error;
-
-        if (data.success && data.image) {
-          setGeneratedImage(`data:image/png;base64,${data.image}`);
-          toast({
-            title: "生成完了",
-            description: "画像が正常に生成されました。",
-          });
-        } else {
-          throw new Error(data.error || "画像生成に失敗しました");
+      const { data, error } = await supabase.functions.invoke('generate-image-stable-diffusion', {
+        body: {
+          api_url: spaceUrl,
+          persona_id: personaId,
+          prompt: prompt,
+          negative_prompt: negativePrompt,
+          guidance_scale: guidanceScale[0],
+          ip_adapter_scale: ipAdapterScale[0],
+          num_inference_steps: numSteps[0],
+          width: width[0],
+          height: height[0]
         }
+      });
+
+      if (error) throw error;
+
+      if (data.success && data.image) {
+        setGeneratedImage(`data:image/png;base64,${data.image}`);
+        toast({
+          title: "生成完了",
+          description: "画像が正常に生成されました。",
+        });
       } else {
-        // Use custom Gradio Space API
-        const { data, error } = await supabase.functions.invoke('generate-image-stable-diffusion', {
-          body: {
-            api_url: spaceUrl,
-            persona_id: personaId,
-            prompt: prompt,
-            negative_prompt: negativePrompt,
-            guidance_scale: guidanceScale[0],
-            ip_adapter_scale: ipAdapterScale[0],
-            num_inference_steps: numSteps[0],
-            width: width[0],
-            height: height[0]
-          }
-        });
-
-        if (error) throw error;
-
-        if (data.success && data.image) {
-          setGeneratedImage(`data:image/png;base64,${data.image}`);
-          toast({
-            title: "生成完了",
-            description: "画像が正常に生成されました。",
-          });
-        } else {
-          throw new Error(data.error || "画像生成に失敗しました");
-        }
+        throw new Error(data.error || "画像生成に失敗しました");
       }
     } catch (error) {
       console.error('Error generating image:', error);
@@ -122,29 +97,16 @@ const ImageGenerator = () => {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* API Selection */}
-          <div className="flex items-center space-x-2">
-            <Switch
-              id="use-alternative"
-              checked={useAlternativeAPI}
-              onCheckedChange={setUseAlternativeAPI}
+          {/* Space URL */}
+          <div className="space-y-2">
+            <Label htmlFor="space-url">HuggingFace Space URL</Label>
+            <Input
+              id="space-url"
+              value={spaceUrl}
+              onChange={(e) => setSpaceUrl(e.target.value)}
+              placeholder="https://huggingface.co/spaces/username/space-name"
             />
-            <Label htmlFor="use-alternative">
-              安定版HuggingFace APIを使用 (推奨)
-            </Label>
           </div>
-          
-          {!useAlternativeAPI && (
-            <div className="space-y-2">
-              <Label htmlFor="space-url">HuggingFace Space URL</Label>
-              <Input
-                id="space-url"
-                value={spaceUrl}
-                onChange={(e) => setSpaceUrl(e.target.value)}
-                placeholder="https://huggingface.co/spaces/username/space-name"
-              />
-            </div>
-          )}
 
           {/* Persona ID */}
           <div className="space-y-2">
@@ -181,74 +143,72 @@ const ImageGenerator = () => {
             />
           </div>
 
-          {/* Advanced Settings - only show when not using alternative API */}
-          {!useAlternativeAPI && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              <div className="space-y-2">
-                <Label>プロンプトへの忠実度 (Guidance Scale): {guidanceScale[0]}</Label>
-                <Slider
-                  value={guidanceScale}
-                  onValueChange={setGuidanceScale}
-                  min={1}
-                  max={20}
-                  step={0.1}
-                  className="w-full"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>顔の忠実度 (IP Adapter Scale): {ipAdapterScale[0]}</Label>
-                <Slider
-                  value={ipAdapterScale}
-                  onValueChange={setIpAdapterScale}
-                  min={0}
-                  max={1}
-                  step={0.1}
-                  className="w-full"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>生成ステップ数 (Steps): {numSteps[0]}</Label>
-                <Slider
-                  value={numSteps}
-                  onValueChange={setNumSteps}
-                  min={1}
-                  max={50}
-                  step={1}
-                  className="w-full"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>幅 (Width): {width[0]}px</Label>
-                <Slider
-                  value={width}
-                  onValueChange={setWidth}
-                  min={256}
-                  max={1024}
-                  step={64}
-                  className="w-full"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>高さ (Height): {height[0]}px</Label>
-                <Slider
-                  value={height}
-                  onValueChange={setHeight}
-                  min={256}
-                  max={1024}
-                  step={64}
-                  className="w-full"
-                />
-              </div>
+          {/* Advanced Settings */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="space-y-2">
+              <Label>プロンプトへの忠実度 (Guidance Scale): {guidanceScale[0]}</Label>
+              <Slider
+                value={guidanceScale}
+                onValueChange={setGuidanceScale}
+                min={1}
+                max={20}
+                step={0.1}
+                className="w-full"
+              />
             </div>
-          )}
+
+            <div className="space-y-2">
+              <Label>顔の忠実度 (IP Adapter Scale): {ipAdapterScale[0]}</Label>
+              <Slider
+                value={ipAdapterScale}
+                onValueChange={setIpAdapterScale}
+                min={0}
+                max={1}
+                step={0.1}
+                className="w-full"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>生成ステップ数 (Steps): {numSteps[0]}</Label>
+              <Slider
+                value={numSteps}
+                onValueChange={setNumSteps}
+                min={1}
+                max={50}
+                step={1}
+                className="w-full"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>幅 (Width): {width[0]}px</Label>
+              <Slider
+                value={width}
+                onValueChange={setWidth}
+                min={256}
+                max={1024}
+                step={64}
+                className="w-full"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>高さ (Height): {height[0]}px</Label>
+              <Slider
+                value={height}
+                onValueChange={setHeight}
+                min={256}
+                max={1024}
+                step={64}
+                className="w-full"
+              />
+            </div>
+          </div>
 
           <Button
             onClick={generateImage}
-            disabled={generating || !prompt || (!useAlternativeAPI && !personaId)}
+            disabled={generating || !personaId || !prompt}
             className="w-full"
             size="lg"
           >
