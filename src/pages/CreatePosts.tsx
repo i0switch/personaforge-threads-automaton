@@ -159,6 +159,18 @@ const CreatePosts = () => {
           scheduled_for: data.scheduled_for || new Date().toISOString(),
           edited: false
         }]);
+
+        // Load existing images if any
+        if (data.images && data.images.length > 0) {
+          const imageMap: {[key: string]: string} = {};
+          data.images.forEach((image: string, index: number) => {
+            imageMap[data.id] = image;
+          });
+          setGeneratedImages(imageMap);
+        }
+
+        // Move to editing step (step 2)
+        setCurrentStep(2);
       }
     } catch (error) {
       console.error('Error loading post for edit:', error);
@@ -238,6 +250,7 @@ const CreatePosts = () => {
       if (editPostId && generatedPosts.length === 1) {
         // Update existing post
         const post = generatedPosts[0];
+        const images = generatedImages[post.id] ? [generatedImages[post.id]] : [];
         const { error } = await supabase
           .from('posts')
           .update({
@@ -245,6 +258,7 @@ const CreatePosts = () => {
             hashtags: [],
             scheduled_for: post.scheduled_for,
             persona_id: selectedPersona,
+            images: images,
           })
           .eq('id', editPostId)
           .eq('user_id', user?.id);
@@ -266,7 +280,8 @@ const CreatePosts = () => {
           persona_id: selectedPersona,
           user_id: user?.id,
           status: 'scheduled' as const,
-          platform: 'threads'
+          platform: 'threads',
+          images: generatedImages[post.id] ? [generatedImages[post.id]] : []
         }));
 
         const { error } = await supabase
@@ -460,6 +475,22 @@ const CreatePosts = () => {
         // Remove data:image/...;base64, prefix to get just the base64 string
         const base64Data = base64.split(',')[1];
         setReferenceImage(base64Data);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handlePostImageUpload = (event: React.ChangeEvent<HTMLInputElement>, postId: string) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const base64 = e.target?.result as string;
+        setGeneratedImages(prev => ({ ...prev, [postId]: base64 }));
+        toast({
+          title: "画像をアップロードしました",
+          description: "投稿用の画像がアップロードされました。",
+        });
       };
       reader.readAsDataURL(file);
     }
@@ -836,37 +867,230 @@ const CreatePosts = () => {
                           )}
                         </div>
                       </CardHeader>
-                      <CardContent className="space-y-3">
-                        <Textarea
-                          value={post.content}
-                          onChange={(e) => updatePost(post.id, e.target.value)}
-                          rows={3}
-                          className="resize-none"
-                        />
-                      </CardContent>
+                       <CardContent className="space-y-4">
+                         <Textarea
+                           value={post.content}
+                           onChange={(e) => updatePost(post.id, e.target.value)}
+                           rows={3}
+                           className="resize-none"
+                         />
+                         
+                         {/* Image section for editing */}
+                         <div className="space-y-3">
+                           <Label className="text-sm font-medium">投稿画像</Label>
+                           
+                           {generatedImages[post.id] ? (
+                             <div className="space-y-3">
+                               <div className="relative group">
+                                 <img 
+                                   src={generatedImages[post.id]} 
+                                   alt="Post image"
+                                   className="w-full max-w-md h-auto rounded-lg shadow-lg border"
+                                 />
+                                 <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all rounded-lg flex items-center justify-center">
+                                   <Button
+                                     onClick={() => downloadImage(generatedImages[post.id], post.id)}
+                                     className="opacity-0 group-hover:opacity-100 transition-opacity"
+                                     size="sm"
+                                     variant="secondary"
+                                   >
+                                     <Download className="h-4 w-4 mr-2" />
+                                     ダウンロード
+                                   </Button>
+                                 </div>
+                               </div>
+                               
+                               <div className="flex flex-wrap gap-2">
+                                 <Button
+                                   onClick={() => generateImage(post.id, imagePrompts[post.id])}
+                                   disabled={generatingImage === post.id}
+                                   variant="outline"
+                                   size="sm"
+                                 >
+                                   {generatingImage === post.id ? (
+                                     <>
+                                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                       再生成中...
+                                     </>
+                                   ) : (
+                                     <>
+                                       <RefreshCw className="h-4 w-4 mr-2" />
+                                       再生成
+                                     </>
+                                   )}
+                                 </Button>
+                                 
+                                 <Button
+                                   variant="outline"
+                                   size="sm"
+                                   onClick={() => {
+                                     const input = document.createElement('input');
+                                     input.type = 'file';
+                                     input.accept = 'image/*';
+                                     input.onchange = (e) => handlePostImageUpload(e as any, post.id);
+                                     input.click();
+                                   }}
+                                 >
+                                   <Image className="h-4 w-4 mr-2" />
+                                   画像を置き換え
+                                 </Button>
+                                 
+                                 <Button
+                                   onClick={() => setGeneratedImages(prev => {
+                                     const newImages = { ...prev };
+                                     delete newImages[post.id];
+                                     return newImages;
+                                   })}
+                                   variant="outline"
+                                   size="sm"
+                                 >
+                                   画像を削除
+                                 </Button>
+                               </div>
+                             </div>
+                           ) : (
+                             <div className="space-y-3">
+                               <div className="w-full max-w-md h-48 border-2 border-dashed border-muted-foreground/25 rounded-lg flex items-center justify-center">
+                                 <div className="text-center">
+                                   <Image className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                                   <p className="text-sm text-muted-foreground">画像がありません</p>
+                                 </div>
+                               </div>
+                               
+                               <div className="flex flex-wrap gap-2">
+                                 <Button
+                                   onClick={() => generateImage(post.id, imagePrompts[post.id])}
+                                   disabled={generatingImage === post.id}
+                                   size="sm"
+                                 >
+                                   {generatingImage === post.id ? (
+                                     <>
+                                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                       生成中...
+                                     </>
+                                   ) : (
+                                     <>
+                                       <Wand2 className="h-4 w-4 mr-2" />
+                                       画像を生成
+                                     </>
+                                   )}
+                                 </Button>
+                                 
+                                 <Button
+                                   variant="outline"
+                                   size="sm"
+                                   onClick={() => {
+                                     const input = document.createElement('input');
+                                     input.type = 'file';
+                                     input.accept = 'image/*';
+                                     input.onchange = (e) => handlePostImageUpload(e as any, post.id);
+                                     input.click();
+                                   }}
+                                 >
+                                   <Image className="h-4 w-4 mr-2" />
+                                   画像をアップロード
+                                 </Button>
+                               </div>
+                             </div>
+                           )}
+                           
+                           {/* Image prompt editor */}
+                           <div className="space-y-2">
+                             <Label htmlFor={`edit-prompt-${post.id}`}>画像プロンプト</Label>
+                             <Textarea
+                               id={`edit-prompt-${post.id}`}
+                               value={imagePrompts[post.id] || ""}
+                               onChange={(e) => setImagePrompts(prev => ({ ...prev, [post.id]: e.target.value }))}
+                               placeholder="画像生成のためのプロンプトを入力..."
+                               rows={2}
+                               className="resize-none"
+                             />
+                           </div>
+                         </div>
+                       </CardContent>
                     </Card>
                   ))}
                 </div>
 
-                <div className="flex justify-between mt-6">
-                  {!editPostId && (
-                    <Button onClick={() => setCurrentStep(1)} variant="outline">
-                      設定に戻る
-                    </Button>
-                  )}
-                  <Button onClick={savePosts} disabled={saving} className={editPostId ? "ml-auto" : ""}>
-                    {saving ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        {editPostId ? "更新中..." : "保存中..."}
-                      </>
-                    ) : (
-                      <>
-                        <Save className="h-4 w-4 mr-2" />
-                        {editPostId ? "投稿を更新" : "投稿を保存"}
-                      </>
-                    )}
-                  </Button>
+                 {/* Image Generation Settings for Edit Mode */}
+                 {editPostId && (
+                   <Card className="mt-6 border-blue-200 bg-blue-50 dark:bg-blue-950 dark:border-blue-800">
+                     <CardHeader>
+                       <CardTitle className="flex items-center gap-2 text-blue-800 dark:text-blue-200">
+                         <Settings className="h-5 w-5" />
+                         画像生成設定
+                       </CardTitle>
+                       <CardDescription className="text-blue-700 dark:text-blue-300">
+                         画像生成用の設定を調整できます
+                       </CardDescription>
+                     </CardHeader>
+                     <CardContent className="space-y-4">
+                       <div className="space-y-2">
+                         <Label htmlFor="editNgrokUrl">HuggingFace Spaces URL</Label>
+                         <Input
+                           id="editNgrokUrl"
+                           value={ngrokUrl}
+                           onChange={(e) => setNgrokUrl(e.target.value)}
+                           placeholder="例: https://huggingface.co/spaces/i0switch/my-image-generator"
+                           className="bg-white dark:bg-gray-900"
+                         />
+                       </div>
+                       
+                       <div className="grid grid-cols-2 gap-4">
+                         <div className="space-y-2">
+                           <Label>プロンプトへの忠実度: {guidanceScale}</Label>
+                           <Slider
+                             value={[guidanceScale]}
+                             onValueChange={(value) => setGuidanceScale(value[0])}
+                             min={1}
+                             max={20}
+                             step={0.1}
+                             className="w-full"
+                           />
+                         </div>
+                         
+                         <div className="space-y-2">
+                           <Label>生成ステップ数: {numSteps}</Label>
+                           <Slider
+                             value={[numSteps]}
+                             onValueChange={(value) => setNumSteps(value[0])}
+                             min={1}
+                             max={50}
+                             step={1}
+                             className="w-full"
+                           />
+                         </div>
+                       </div>
+                     </CardContent>
+                   </Card>
+                 )}
+
+                 <div className="flex justify-between mt-6">
+                   {!editPostId && (
+                     <Button onClick={() => setCurrentStep(1)} variant="outline">
+                       設定に戻る
+                     </Button>
+                   )}
+                   <div className="flex gap-2 ml-auto">
+                     {!editPostId && (
+                       <Button onClick={() => setCurrentStep(3)} variant="outline">
+                         画像生成へ
+                       </Button>
+                     )}
+                     <Button onClick={savePosts} disabled={saving}>
+                       {saving ? (
+                         <>
+                           <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                           {editPostId ? "更新中..." : "保存中..."}
+                         </>
+                       ) : (
+                         <>
+                           <Save className="h-4 w-4 mr-2" />
+                           {editPostId ? "投稿を更新" : "投稿を保存"}
+                         </>
+                       )}
+                     </Button>
+                   </div>
                 </div>
               </CardContent>
             </Card>

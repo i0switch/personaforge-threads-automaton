@@ -567,26 +567,41 @@ const ScheduledPosts = () => {
                       </DropdownMenu>
                     </div>
                   </CardHeader>
-                  <CardContent>
-                    <div className="space-y-3">
-                      <p className="text-sm">{post.content}</p>
-                      {post.hashtags && post.hashtags.length > 0 && (
-                        <div className="flex flex-wrap gap-2">
-                          {post.hashtags.map((tag, index) => (
-                            <Badge key={index} variant="outline" className="text-blue-600">
-                              <Hash className="h-3 w-3 mr-1" />
-                              {tag.replace('#', '')}
-                            </Badge>
-                          ))}
-                        </div>
-                      )}
-                      {post.platform && (
-                        <div className="flex items-center gap-2">
-                          <Badge variant="secondary">{post.platform}</Badge>
-                        </div>
-                      )}
-                    </div>
-                  </CardContent>
+                   <CardContent>
+                     <div className="space-y-3">
+                       <div className="flex gap-4">
+                         <div className="flex-1">
+                           <p className="text-sm">{post.content}</p>
+                           {post.hashtags && post.hashtags.length > 0 && (
+                             <div className="flex flex-wrap gap-2 mt-2">
+                               {post.hashtags.map((tag, index) => (
+                                 <Badge key={index} variant="outline" className="text-blue-600">
+                                   <Hash className="h-3 w-3 mr-1" />
+                                   {tag.replace('#', '')}
+                                 </Badge>
+                               ))}
+                             </div>
+                           )}
+                           {post.platform && (
+                             <div className="flex items-center gap-2 mt-2">
+                               <Badge variant="secondary">{post.platform}</Badge>
+                             </div>
+                           )}
+                         </div>
+                         
+                         {/* Display post image if exists */}
+                         {post.images && post.images.length > 0 && (
+                           <div className="flex-shrink-0">
+                             <img 
+                               src={post.images[0]} 
+                               alt="Post image"
+                               className="w-24 h-24 object-cover rounded-lg border"
+                             />
+                           </div>
+                         )}
+                       </div>
+                     </div>
+                   </CardContent>
                 </Card>
                 ))}
               </>
@@ -629,21 +644,36 @@ const ScheduledPosts = () => {
                       </div>
                     </div>
                   </CardHeader>
-                  <CardContent>
-                    <div className="space-y-3">
-                      <p className="text-sm">{post.content}</p>
-                      {post.hashtags && post.hashtags.length > 0 && (
-                        <div className="flex flex-wrap gap-2">
-                          {post.hashtags.map((tag, index) => (
-                            <Badge key={index} variant="outline" className="text-blue-600">
-                              <Hash className="h-3 w-3 mr-1" />
-                              {tag.replace('#', '')}
-                            </Badge>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </CardContent>
+                   <CardContent>
+                     <div className="space-y-3">
+                       <div className="flex gap-4">
+                         <div className="flex-1">
+                           <p className="text-sm">{post.content}</p>
+                           {post.hashtags && post.hashtags.length > 0 && (
+                             <div className="flex flex-wrap gap-2 mt-2">
+                               {post.hashtags.map((tag, index) => (
+                                 <Badge key={index} variant="outline" className="text-blue-600">
+                                   <Hash className="h-3 w-3 mr-1" />
+                                   {tag.replace('#', '')}
+                                 </Badge>
+                               ))}
+                             </div>
+                           )}
+                         </div>
+                         
+                         {/* Display post image if exists */}
+                         {post.images && post.images.length > 0 && (
+                           <div className="flex-shrink-0">
+                             <img 
+                               src={post.images[0]} 
+                               alt="Post image"
+                               className="w-24 h-24 object-cover rounded-lg border"
+                             />
+                           </div>
+                         )}
+                       </div>
+                     </div>
+                   </CardContent>
                 </Card>
               ))
             )}
@@ -702,21 +732,36 @@ const ScheduledPosts = () => {
                       </div>
                     </div>
                   </CardHeader>
-                  <CardContent>
-                    <div className="space-y-3">
-                      <p className="text-sm">{post.content}</p>
-                      {post.hashtags && post.hashtags.length > 0 && (
-                        <div className="flex flex-wrap gap-2">
-                          {post.hashtags.map((tag, index) => (
-                            <Badge key={index} variant="outline" className="text-blue-600">
-                              <Hash className="h-3 w-3 mr-1" />
-                              {tag.replace('#', '')}
-                            </Badge>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </CardContent>
+                   <CardContent>
+                     <div className="space-y-3">
+                       <div className="flex gap-4">
+                         <div className="flex-1">
+                           <p className="text-sm">{post.content}</p>
+                           {post.hashtags && post.hashtags.length > 0 && (
+                             <div className="flex flex-wrap gap-2 mt-2">
+                               {post.hashtags.map((tag, index) => (
+                                 <Badge key={index} variant="outline" className="text-blue-600">
+                                   <Hash className="h-3 w-3 mr-1" />
+                                   {tag.replace('#', '')}
+                                 </Badge>
+                               ))}
+                             </div>
+                           )}
+                         </div>
+                         
+                         {/* Display post image if exists */}
+                         {post.images && post.images.length > 0 && (
+                           <div className="flex-shrink-0">
+                             <img 
+                               src={post.images[0]} 
+                               alt="Post image"
+                               className="w-24 h-24 object-cover rounded-lg border"
+                             />
+                           </div>
+                         )}
+                       </div>
+                     </div>
+                   </CardContent>
                 </Card>
               ))
             )}
