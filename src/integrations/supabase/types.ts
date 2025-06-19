@@ -150,6 +150,7 @@ export type Database = {
       }
       profiles: {
         Row: {
+          auto_reply_enabled: boolean
           avatar_url: string | null
           created_at: string
           display_name: string | null
@@ -158,6 +159,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          auto_reply_enabled?: boolean
           avatar_url?: string | null
           created_at?: string
           display_name?: string | null
@@ -166,6 +168,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          auto_reply_enabled?: boolean
           avatar_url?: string | null
           created_at?: string
           display_name?: string | null

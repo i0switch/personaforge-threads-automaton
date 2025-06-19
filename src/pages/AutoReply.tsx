@@ -18,6 +18,7 @@ import type { Database } from "@/integrations/supabase/types";
 
 type AutoReply = Database['public']['Tables']['auto_replies']['Row'];
 type Persona = Database['public']['Tables']['personas']['Row'];
+type Profile = Database['public']['Tables']['profiles']['Row'];
 
 const AutoReply = () => {
   const navigate = useNavigate();
@@ -26,6 +27,7 @@ const AutoReply = () => {
   
   const [autoReplies, setAutoReplies] = useState<AutoReply[]>([]);
   const [personas, setPersonas] = useState<Persona[]>([]);
+  const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   
@@ -55,8 +57,8 @@ const AutoReply = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      // Load auto replies and personas in parallel
-      const [repliesResult, personasResult] = await Promise.all([
+      // Load auto replies, personas, and profile in parallel
+      const [repliesResult, personasResult, profileResult] = await Promise.all([
         supabase
           .from('auto_replies')
           .select('*')
@@ -65,14 +67,21 @@ const AutoReply = () => {
         supabase
           .from('personas')
           .select('*')
+          .eq('user_id', user?.id),
+        supabase
+          .from('profiles')
+          .select('*')
           .eq('user_id', user?.id)
+          .single()
       ]);
 
       if (repliesResult.error) throw repliesResult.error;
       if (personasResult.error) throw personasResult.error;
+      if (profileResult.error && profileResult.error.code !== 'PGRST116') throw profileResult.error;
 
       setAutoReplies(repliesResult.data || []);
       setPersonas(personasResult.data || []);
+      setProfile(profileResult.data || null);
       
       // Auto-select first persona if available
       if (personasResult.data && personasResult.data.length > 0 && !newRule.persona_id) {
@@ -223,6 +232,32 @@ const AutoReply = () => {
     return persona?.avatar_url || null;
   };
 
+  const toggleAutoReply = async (enabled: boolean) => {
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ auto_reply_enabled: enabled })
+        .eq('user_id', user?.id);
+
+      if (error) throw error;
+
+      setProfile(prev => prev ? { ...prev, auto_reply_enabled: enabled } : null);
+      
+      const statusText = enabled ? '有効' : '無効';
+      toast({
+        title: `AI自動返信機能を${statusText}にしました`,
+        description: `リプライ取得によるAI自動返信機能の状態を更新しました。`,
+      });
+    } catch (error) {
+      console.error('Error toggling auto reply:', error);
+      toast({
+        title: "エラー",
+        description: "AI自動返信機能の状態更新に失敗しました。",
+        variant: "destructive",
+      });
+    }
+  };
+
   // Stats calculations
   const activeRules = autoReplies.filter(r => r.is_active).length;
   const totalRules = autoReplies.length;
@@ -296,6 +331,50 @@ const AutoReply = () => {
           </TabsList>
 
           <TabsContent value="add" className="space-y-6">
+            {/* AI Auto Reply Global Control */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-3">
+                  <Bot className="h-5 w-5" />
+                  リプライ取得によるAI自動返信機能
+                </CardTitle>
+                <CardDescription>
+                  すべての自動返信機能を一括で制御します
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Avatar className="h-8 w-8">
+                      <AvatarImage src={profile?.avatar_url || ""} />
+                      <AvatarFallback>
+                        {profile?.display_name?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || 'U'}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <p className="font-medium">
+                        {profile?.display_name || user?.email || 'ユーザー'}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {profile?.auto_reply_enabled ? 'AI自動返信が有効です' : 'AI自動返信が無効です'}
+                      </p>
+                    </div>
+                  </div>
+                  <Switch
+                    checked={profile?.auto_reply_enabled || false}
+                    onCheckedChange={toggleAutoReply}
+                  />
+                </div>
+                {!profile?.auto_reply_enabled && (
+                  <div className="mt-4 p-3 bg-muted rounded-md">
+                    <p className="text-sm text-muted-foreground">
+                      💡 AI自動返信機能を有効にすると、設定したルールに基づいてThreadsのリプライに自動返信します
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
             <Card>
               <CardHeader>
                 <CardTitle>新しい返信ルールを追加</CardTitle>
