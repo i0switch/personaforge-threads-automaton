@@ -20,12 +20,15 @@ import {
   Filter,
   Loader2,
   TrendingUp,
-  Send
+  Send,
+  CheckSquare,
+  Square
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import { Checkbox } from "@/components/ui/checkbox";
 import { 
   DropdownMenu,
   DropdownMenuContent,
@@ -49,6 +52,8 @@ const ScheduledPosts = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [personaFilter, setPersonaFilter] = useState<string>("all");
+  const [selectedPosts, setSelectedPosts] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   
   useEffect(() => {
     if (user) {
@@ -172,6 +177,60 @@ const ScheduledPosts = () => {
       });
     } finally {
       setPublishing(null);
+    }
+  };
+
+  // Bulk selection functions
+  const togglePostSelection = (postId: string) => {
+    setSelectedPosts(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(postId)) {
+        newSet.delete(postId);
+      } else {
+        newSet.add(postId);
+      }
+      return newSet;
+    });
+  };
+
+  const selectAllPosts = (postList: Post[]) => {
+    const allIds = postList.map(p => p.id);
+    setSelectedPosts(new Set(allIds));
+  };
+
+  const clearSelection = () => {
+    setSelectedPosts(new Set());
+  };
+
+  const bulkDeletePosts = async () => {
+    if (selectedPosts.size === 0) return;
+    
+    setBulkDeleting(true);
+    try {
+      const { error } = await supabase
+        .from('posts')
+        .delete()
+        .in('id', Array.from(selectedPosts))
+        .eq('user_id', user?.id);
+
+      if (error) throw error;
+
+      setPosts(prev => prev.filter(p => !selectedPosts.has(p.id)));
+      setSelectedPosts(new Set());
+      
+      toast({
+        title: "一括削除完了",
+        description: `${selectedPosts.size}件の投稿を削除しました。`,
+      });
+    } catch (error) {
+      console.error('Error bulk deleting posts:', error);
+      toast({
+        title: "エラー",
+        description: "一括削除に失敗しました。",
+        variant: "destructive",
+      });
+    } finally {
+      setBulkDeleting(false);
     }
   };
 
@@ -344,6 +403,46 @@ const ScheduledPosts = () => {
           </CardContent>
         </Card>
 
+        {/* Bulk Actions */}
+        {selectedPosts.size > 0 && (
+          <Card className="bg-blue-50 border-blue-200">
+            <CardContent className="pt-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <span className="text-sm font-medium">
+                    {selectedPosts.size}件の投稿を選択中
+                  </span>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={clearSelection}
+                  >
+                    選択解除
+                  </Button>
+                </div>
+                <Button 
+                  variant="destructive" 
+                  size="sm"
+                  onClick={bulkDeletePosts}
+                  disabled={bulkDeleting}
+                >
+                  {bulkDeleting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      削除中...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      一括削除
+                    </>
+                  )}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Tabs */}
         <Tabs defaultValue="scheduled" className="space-y-6">
           <TabsList>
@@ -367,28 +466,50 @@ const ScheduledPosts = () => {
                 </CardContent>
               </Card>
             ) : (
-              scheduledPosts.map((post) => (
-                <Card key={post.id}>
-                  <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        <div className="flex items-center gap-2">
-                          <Avatar className="h-8 w-8">
-                            <AvatarImage src={getPersonaAvatar(post.persona_id) || ""} />
-                            <AvatarFallback>
-                              {getPersonaName(post.persona_id)[0]?.toUpperCase()}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div>
-                            <span className="text-sm font-medium">{getPersonaName(post.persona_id)}</span>
-                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                              <Calendar className="h-3 w-3" />
-                              <span>{formatScheduledTime(post.scheduled_for)}</span>
+              <>
+                {/* Select All Header */}
+                <div className="flex items-center gap-4 p-4 bg-muted rounded-lg">
+                  <Checkbox 
+                    checked={scheduledPosts.length > 0 && scheduledPosts.every(p => selectedPosts.has(p.id))}
+                    onCheckedChange={(checked) => {
+                      if (checked) {
+                        selectAllPosts(scheduledPosts);
+                      } else {
+                        clearSelection();
+                      }
+                    }}
+                  />
+                  <span className="text-sm font-medium">
+                    すべて選択 ({scheduledPosts.length}件)
+                  </span>
+                </div>
+                
+                {scheduledPosts.map((post) => (
+                  <Card key={post.id} className={selectedPosts.has(post.id) ? "ring-2 ring-blue-500" : ""}>
+                    <CardHeader>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                          <Checkbox
+                            checked={selectedPosts.has(post.id)}
+                            onCheckedChange={() => togglePostSelection(post.id)}
+                          />
+                          <div className="flex items-center gap-2">
+                            <Avatar className="h-8 w-8">
+                              <AvatarImage src={getPersonaAvatar(post.persona_id) || ""} />
+                              <AvatarFallback>
+                                {getPersonaName(post.persona_id)[0]?.toUpperCase()}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div>
+                              <span className="text-sm font-medium">{getPersonaName(post.persona_id)}</span>
+                              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                <Calendar className="h-3 w-3" />
+                                <span>{formatScheduledTime(post.scheduled_for)}</span>
+                              </div>
                             </div>
                           </div>
+                          {getStatusBadge(post.status)}
                         </div>
-                        {getStatusBadge(post.status)}
-                      </div>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="outline" size="sm">
@@ -467,7 +588,8 @@ const ScheduledPosts = () => {
                     </div>
                   </CardContent>
                 </Card>
-              ))
+                ))}
+              </>
             )}
           </TabsContent>
 
