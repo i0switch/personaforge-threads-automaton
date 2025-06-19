@@ -10,12 +10,30 @@ export async function callImageGenerationAPI(
     console.log('Using API endpoint:', apiEndpoint)
     console.log('Request payload:', { ...payload, face_image_b64: '[BASE64_DATA]' })
 
+    // First check if the endpoint is accessible
+    console.log('Checking if API endpoint is accessible...')
+    const testResponse = await fetch(apiEndpoint, { method: 'GET' })
+    console.log('Test response status:', testResponse.status)
+    console.log('Test response headers:', Object.fromEntries(testResponse.headers.entries()))
+    
+    if (!testResponse.ok) {
+      throw new Error(`API endpoint not accessible: ${testResponse.status} ${testResponse.statusText}`)
+    }
+
+    const responseText = await testResponse.text()
+    console.log('Response preview:', responseText.substring(0, 500))
+    
+    if (responseText.includes('<!doctype') || responseText.includes('<html')) {
+      throw new Error('API endpoint returned HTML instead of a valid Gradio interface. Please check if the Space URL is correct and the Space is running.')
+    }
+
     // Use Gradio client for more reliable API calls
     const { Client } = await import('https://cdn.jsdelivr.net/npm/@gradio/client/dist/index.min.js')
     
+    console.log('Connecting to Gradio client...')
     const client = await Client.connect(apiEndpoint)
     
-    console.log('Connected to Gradio client')
+    console.log('Connected to Gradio client successfully')
     
     // Convert base64 to File object for Gradio
     const base64Data = payload.face_image_b64
