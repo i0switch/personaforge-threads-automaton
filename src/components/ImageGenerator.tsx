@@ -5,30 +5,45 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Slider } from "@/components/ui/slider";
-import { Loader2, Download, Image as ImageIcon } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Loader2, Download, Image as ImageIcon, Upload } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
 
 const ImageGenerator = () => {
   const { toast } = useToast();
   
-  const [spaceUrl, setSpaceUrl] = useState("https://huggingface.co/spaces/multimodalart/face-to-all");
-  const [personaId, setPersonaId] = useState<string>("");
-  const [prompt, setPrompt] = useState("");
-  const [negativePrompt, setNegativePrompt] = useState("");
-  const [guidanceScale, setGuidanceScale] = useState([8.0]);
-  const [ipAdapterScale, setIpAdapterScale] = useState([0.6]);
-  const [numSteps, setNumSteps] = useState([25]);
+  const [faceImage, setFaceImage] = useState<File | null>(null);
+  const [faceImagePreview, setFaceImagePreview] = useState<string>("");
+  const [subject, setSubject] = useState("a beautiful 20yo woman");
+  const [additionalPrompt, setAdditionalPrompt] = useState("");
+  const [additionalNegative, setAdditionalNegative] = useState("");
+  const [guidanceScale, setGuidanceScale] = useState([6.0]);
+  const [ipAdapterScale, setIpAdapterScale] = useState([0.65]);
+  const [numSteps, setNumSteps] = useState([20]);
   const [width, setWidth] = useState([512]);
   const [height, setHeight] = useState([768]);
+  const [upscale, setUpscale] = useState(true);
+  const [upscaleFactor, setUpscaleFactor] = useState([2]);
   const [generating, setGenerating] = useState(false);
   const [generatedImage, setGeneratedImage] = useState<string>("");
 
+  const handleFaceImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setFaceImage(file);
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setFaceImagePreview(e.target?.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const generateImage = async () => {
-    if (!personaId || !prompt) {
+    if (!faceImage) {
       toast({
         title: "エラー",
-        description: "ペルソナIDとプロンプトを入力してください。",
+        description: "顔写真をアップロードしてください。",
         variant: "destructive",
       });
       return;
@@ -36,39 +51,64 @@ const ImageGenerator = () => {
 
     setGenerating(true);
     try {
-      const { data, error } = await supabase.functions.invoke('generate-image-stable-diffusion', {
-        body: {
-          api_url: spaceUrl,
-          persona_id: personaId,
-          prompt: prompt,
-          negative_prompt: negativePrompt,
-          guidance_scale: guidanceScale[0],
-          ip_adapter_scale: ipAdapterScale[0],
-          num_inference_steps: numSteps[0],
-          width: width[0],
-          height: height[0]
+      // Convert image to base64
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const base64 = reader.result as string;
+          const imageData = base64.split(',')[1]; // Remove data:image/...;base64, prefix
+
+          const formData = new FormData();
+          formData.append('face_image', imageData);
+          formData.append('subject', subject);
+          formData.append('additional_prompt', additionalPrompt);
+          formData.append('additional_negative', additionalNegative);
+          formData.append('guidance_scale', guidanceScale[0].toString());
+          formData.append('ip_adapter_scale', ipAdapterScale[0].toString());
+          formData.append('steps', numSteps[0].toString());
+          formData.append('width', width[0].toString());
+          formData.append('height', height[0].toString());
+          formData.append('upscale', upscale.toString());
+          formData.append('upscale_factor', upscaleFactor[0].toString());
+
+          // Call the backend app directly (assuming it's running on a specific URL)
+          // You may need to adjust this URL based on your setup
+          const response = await fetch('/api/predict', {
+            method: 'POST',
+            body: formData,
+          });
+
+          if (!response.ok) {
+            throw new Error('画像生成に失敗しました');
+          }
+
+          const blob = await response.blob();
+          const imageUrl = URL.createObjectURL(blob);
+          setGeneratedImage(imageUrl);
+
+          toast({
+            title: "生成完了",
+            description: "画像が正常に生成されました。",
+          });
+        } catch (error) {
+          console.error('Error generating image:', error);
+          toast({
+            title: "エラー",
+            description: error.message || "画像生成に失敗しました。",
+            variant: "destructive",
+          });
+        } finally {
+          setGenerating(false);
         }
-      });
-
-      if (error) throw error;
-
-      if (data.success && data.image) {
-        setGeneratedImage(`data:image/png;base64,${data.image}`);
-        toast({
-          title: "生成完了",
-          description: "画像が正常に生成されました。",
-        });
-      } else {
-        throw new Error(data.error || "画像生成に失敗しました");
-      }
+      };
+      reader.readAsDataURL(faceImage);
     } catch (error) {
       console.error('Error generating image:', error);
       toast({
         title: "エラー",
-        description: error.message || "画像生成に失敗しました。",
+        description: "画像生成に失敗しました。",
         variant: "destructive",
       });
-    } finally {
       setGenerating(false);
     }
   };
@@ -97,48 +137,61 @@ const ImageGenerator = () => {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* Space URL */}
+          {/* Face Image Upload */}
           <div className="space-y-2">
-            <Label htmlFor="space-url">HuggingFace Space URL</Label>
+            <Label htmlFor="face-image">顔写真</Label>
+            <div className="flex items-center gap-4">
+              <Input
+                id="face-image"
+                type="file"
+                accept="image/*"
+                onChange={handleFaceImageChange}
+                className="flex-1"
+              />
+              <Upload className="h-4 w-4 text-muted-foreground" />
+            </div>
+            {faceImagePreview && (
+              <div className="mt-4">
+                <img
+                  src={faceImagePreview}
+                  alt="Face preview"
+                  className="w-32 h-32 object-cover rounded-lg border"
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Subject Description */}
+          <div className="space-y-2">
+            <Label htmlFor="subject">被写体説明</Label>
             <Input
-              id="space-url"
-              value={spaceUrl}
-              onChange={(e) => setSpaceUrl(e.target.value)}
-              placeholder="https://huggingface.co/spaces/username/space-name"
+              id="subject"
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              placeholder="例: woman in black suit, smiling"
             />
           </div>
 
-          {/* Persona ID */}
+          {/* Additional Prompt */}
           <div className="space-y-2">
-            <Label htmlFor="persona-id">ペルソナID</Label>
-            <Input
-              id="persona-id"
-              value={personaId}
-              onChange={(e) => setPersonaId(e.target.value)}
-              placeholder="ペルソナIDを入力してください"
-            />
-          </div>
-
-          {/* Prompt */}
-          <div className="space-y-2">
-            <Label htmlFor="prompt">プロンプト</Label>
+            <Label htmlFor="additional-prompt">追加プロンプト（任意）</Label>
             <Textarea
-              id="prompt"
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              placeholder="例: 1girl, a photo of a cute girl in a suit, smile"
+              id="additional-prompt"
+              value={additionalPrompt}
+              onChange={(e) => setAdditionalPrompt(e.target.value)}
+              placeholder="例: outdoor, sunny day, professional photography"
               rows={3}
             />
           </div>
 
-          {/* Negative Prompt */}
+          {/* Additional Negative Prompt */}
           <div className="space-y-2">
-            <Label htmlFor="negative-prompt">ネガティブプロンプト（任意）</Label>
+            <Label htmlFor="additional-negative">追加ネガティブプロンプト（任意）</Label>
             <Textarea
-              id="negative-prompt"
-              value={negativePrompt}
-              onChange={(e) => setNegativePrompt(e.target.value)}
-              placeholder="例: glasses, hat"
+              id="additional-negative"
+              value={additionalNegative}
+              onChange={(e) => setAdditionalNegative(e.target.value)}
+              placeholder="例: glasses, hat, low quality"
               rows={2}
             />
           </div>
@@ -146,25 +199,25 @@ const ImageGenerator = () => {
           {/* Advanced Settings */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             <div className="space-y-2">
-              <Label>プロンプトへの忠実度 (Guidance Scale): {guidanceScale[0]}</Label>
+              <Label>CFG (Guidance Scale): {guidanceScale[0]}</Label>
               <Slider
                 value={guidanceScale}
                 onValueChange={setGuidanceScale}
                 min={1}
-                max={20}
-                step={0.1}
+                max={15}
+                step={0.5}
                 className="w-full"
               />
             </div>
 
             <div className="space-y-2">
-              <Label>顔の忠実度 (IP Adapter Scale): {ipAdapterScale[0]}</Label>
+              <Label>IP Adapter Scale: {ipAdapterScale[0]}</Label>
               <Slider
                 value={ipAdapterScale}
                 onValueChange={setIpAdapterScale}
                 min={0}
-                max={1}
-                step={0.1}
+                max={1.5}
+                step={0.05}
                 className="w-full"
               />
             </div>
@@ -174,7 +227,7 @@ const ImageGenerator = () => {
               <Slider
                 value={numSteps}
                 onValueChange={setNumSteps}
-                min={1}
+                min={10}
                 max={50}
                 step={1}
                 className="w-full"
@@ -186,7 +239,7 @@ const ImageGenerator = () => {
               <Slider
                 value={width}
                 onValueChange={setWidth}
-                min={256}
+                min={512}
                 max={1024}
                 step={64}
                 className="w-full"
@@ -198,7 +251,7 @@ const ImageGenerator = () => {
               <Slider
                 value={height}
                 onValueChange={setHeight}
-                min={256}
+                min={512}
                 max={1024}
                 step={64}
                 className="w-full"
@@ -206,9 +259,35 @@ const ImageGenerator = () => {
             </div>
           </div>
 
+          {/* Upscale Settings */}
+          <div className="space-y-4">
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="upscale"
+                checked={upscale}
+                onCheckedChange={(checked) => setUpscale(checked === true)}
+              />
+              <Label htmlFor="upscale">アップスケール</Label>
+            </div>
+            
+            {upscale && (
+              <div className="space-y-2">
+                <Label>アップスケール倍率: {upscaleFactor[0]}x</Label>
+                <Slider
+                  value={upscaleFactor}
+                  onValueChange={setUpscaleFactor}
+                  min={1}
+                  max={8}
+                  step={1}
+                  className="w-full"
+                />
+              </div>
+            )}
+          </div>
+
           <Button
             onClick={generateImage}
-            disabled={generating || !personaId || !prompt}
+            disabled={generating || !faceImage}
             className="w-full"
             size="lg"
           >
