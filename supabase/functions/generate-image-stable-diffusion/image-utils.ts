@@ -52,7 +52,14 @@ export async function convertImageToBase64(imageUrl: string): Promise<{ avatarBa
     }
 
     const avatarArrayBuffer = await avatarResponse.arrayBuffer()
-    const avatarBase64 = btoa(String.fromCharCode(...new Uint8Array(avatarArrayBuffer)))
+    const uint8Array = new Uint8Array(avatarArrayBuffer)
+    
+    // Convert to base64 using a more memory-efficient approach
+    let binary = ''
+    for (let i = 0; i < uint8Array.length; i++) {
+      binary += String.fromCharCode(uint8Array[i])
+    }
+    const avatarBase64 = btoa(binary)
     
     return { avatarBase64 }
   } catch (error) {
