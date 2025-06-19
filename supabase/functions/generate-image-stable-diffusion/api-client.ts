@@ -15,18 +15,46 @@ export async function callImageGenerationAPI(
     
     const client = await Client.connect(apiEndpoint)
     
-    const result = await client.predict("/process_image", {
-      face_image: `data:image/png;base64,${payload.face_image_b64}`,
-      prompt: payload.prompt,
-      negative_prompt: payload.negative_prompt,
-      ip_adapter_scale: payload.ip_adapter_scale,
-      guidance_scale: payload.guidance_scale,
-      num_inference_steps: payload.num_inference_steps,
-      width: payload.width,
-      height: payload.height
-    })
+    // First, get info about available endpoints
+    console.log('Connected to Gradio client, checking endpoints...')
+    
+    // Try different common endpoint names for image generation
+    const possibleEndpoints = ['/predict', '/', '/generate', '/process', '/run']
+    
+    let result
+    let usedEndpoint = ''
+    
+    for (const endpoint of possibleEndpoints) {
+      try {
+        console.log(`Trying endpoint: ${endpoint}`)
+        
+        // For Gradio, parameters are usually passed as an array in order
+        const params = [
+          `data:image/png;base64,${payload.face_image_b64}`, // face_image
+          payload.prompt, // prompt  
+          payload.negative_prompt, // negative_prompt
+          payload.ip_adapter_scale, // ip_adapter_scale
+          payload.guidance_scale, // guidance_scale
+          payload.num_inference_steps, // num_inference_steps
+          payload.width, // width
+          payload.height // height
+        ]
+        
+        result = await client.predict(endpoint, params)
+        usedEndpoint = endpoint
+        console.log(`Success with endpoint: ${endpoint}`)
+        break
+      } catch (endpointError) {
+        console.log(`Endpoint ${endpoint} failed:`, endpointError.message)
+        continue
+      }
+    }
+    
+    if (!result) {
+      throw new Error('No valid endpoint found. Available endpoints: ' + possibleEndpoints.join(', '))
+    }
 
-    console.log('Gradio client result:', result)
+    console.log(`Gradio client result from ${usedEndpoint}:`, result)
 
     if (!result.data || !result.data[0]) {
       throw new Error('No image data received from Gradio API')
@@ -42,8 +70,11 @@ export async function callImageGenerationAPI(
     } else if (imageData && imageData.url) {
       // If it's a file object with URL
       imageDataUrl = imageData.url
+    } else if (imageData && imageData.path) {
+      // If it's a file object with path
+      imageDataUrl = `${apiEndpoint}/file=${imageData.path}`
     } else {
-      throw new Error('Invalid image data format received from API')
+      throw new Error('Invalid image data format received from API: ' + JSON.stringify(imageData))
     }
 
     return {
