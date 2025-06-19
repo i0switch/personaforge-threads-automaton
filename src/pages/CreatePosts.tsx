@@ -419,13 +419,12 @@ const CreatePosts = () => {
     try {
       const { data, error } = await supabase.functions.invoke('generate-image-huggingface', {
         body: {
-          space_url: ngrokUrl.trim(),
-          face_image: referenceImage,
+          face_image_b64: referenceImage,
           prompt: imagePrompt,
           negative_prompt: "glasses, hat",
           guidance_scale: guidanceScale,
           ip_adapter_scale: ipAdapterScale,
-          num_steps: numSteps,
+          num_inference_steps: numSteps,
           width: imageWidth,
           height: imageHeight
         }
