@@ -28,24 +28,27 @@ serve(async (req) => {
 
     console.log('Generating image prompt for post:', postContent)
 
-    const prompt = `"${postContent}"
-上記のポスト文章に合う、自撮り風プロンプトを英語で５０トークン以内で生成してください。
+    const prompt = `以下の投稿内容を分析して、写真的な画像生成プロンプトを英語で作成してください：
 
-構文ポイント：カンマで区切りつつ、写真的表現（photograph, professional photograph）、照明・背景（Bokeh, city night, diffused light）などを追加し、特定の服装・ポーズ（例：off shoulder dress, swimsuit）を明示する
+"${postContent}"
 
-下記プロンプトはシステムですでに設定されている固定プロンプトのため不要です。
-(masterpiece:1.2)
-best quality
-high quality
-8k
-high resolution
-photorealistic
-realistic
-super detail
-RAW photo
-film grain
-cinematic lighting
-textured skin`
+要件：
+1. 投稿の時間帯・場所・状況を正確に反映すること
+2. 投稿内容に含まれる具体的な要素（カフェ、朝、仕事、アプリ等）を含めること  
+3. 50トークン以内で簡潔に
+4. カンマ区切りで構成
+5. 写真的表現を含める（photograph, professional photo等）
+6. 適切な照明・背景・ポーズを指定
+
+例：
+- 朝活・カフェ → morning light, cafe setting, coffee
+- 夜・都市 → evening, city lights, urban
+- 仕事・PC → working, laptop, business casual
+
+システム固定プロンプト（追加不要）:
+(masterpiece:1.2), best quality, high quality, 8k, high resolution, photorealistic, realistic, super detail, RAW photo, film grain, cinematic lighting, textured skin
+
+回答は生成プロンプトのみ出力してください。`
 
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${geminiApiKey}`, {
       method: 'POST',
