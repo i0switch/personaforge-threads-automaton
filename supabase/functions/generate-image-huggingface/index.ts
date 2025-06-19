@@ -20,31 +20,24 @@ serve(async (req) => {
     console.log('Request body parsed successfully');
     
     const { 
-      space_url,
-      face_image, 
-      prompt, 
+      face_image_b64,
+      prompt,
       negative_prompt = "", 
-      guidance_scale = 8.0, 
-      ip_adapter_scale = 0.6, 
-      num_steps = 25 
+      guidance_scale = 6.0, 
+      ip_adapter_scale = 0.65, 
+      num_inference_steps = 20,
+      width = 512,
+      height = 768,
+      upscale = true,
+      upscale_factor = 2,
+      space_url = "https://i0switch-my-image-generator.hf.space"
     } = requestBody;
 
     console.log('Input validation...');
-    if (!face_image || !prompt) {
+    if (!face_image_b64 || !prompt) {
       console.log('Missing required fields');
       return new Response(
-        JSON.stringify({ error: "face_image and prompt are required" }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
-    }
-
-    if (!space_url) {
-      console.log('Missing space_url');
-      return new Response(
-        JSON.stringify({ error: "space_url is required" }),
+        JSON.stringify({ error: "face_image_b64 and prompt are required" }),
         { 
           status: 400, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -55,89 +48,104 @@ serve(async (req) => {
     console.log('=== DEBUG INFO ===');
     console.log('Space URL:', space_url);
     console.log('Prompt length:', prompt.length);
-    console.log('Face image length:', face_image.length);
+    console.log('Face image length:', face_image_b64.length);
 
-    // gradio_clientを使用してSpaceに接続
-    console.log('Connecting to Gradio Space using gradio_client...');
+    console.log('Calling Gradio API directly...');
     
-    // Import gradio_client dynamically
-    const { Client } = await import("https://cdn.jsdelivr.net/npm/@gradio/client/dist/index.min.js");
-    
-    console.log('Creating Gradio client...');
-    const client = await Client.connect(space_url);
-    console.log('Connected to Gradio Space successfully');
-    
-    // 画像データを準備
-    const imageBlob = new Blob([Uint8Array.from(atob(face_image), c => c.charCodeAt(0))], {
-      type: 'image/jpeg'
-    });
-    
-    console.log('Submitting prediction...');
-    const result = await client.predict("/predict", {
-      face_image_numpy: imageBlob,
-      user_prompt: prompt,
-      user_negative_prompt: negative_prompt,
-      guidance_scale: guidance_scale,
-      ip_adapter_scale: ip_adapter_scale,
-      num_steps: num_steps
-    });
-    
-    console.log('Gradio prediction result:', JSON.stringify(result, null, 2));
+    try {
+      // Convert base64 to Uint8Array
+      const base64Data = face_image_b64.replace(/^data:image\/[a-z]+;base64,/, '');
+      const binaryString = atob(base64Data);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
 
-    
-    if (result && result.data && result.data.length > 0) {
-      const imageData = result.data[0];
-      let base64Image;
+      // Create form data for Gradio API predict endpoint
+      const formData = new FormData();
+      
+      // Create a blob from the image data
+      const imageBlob = new Blob([bytes], { type: 'image/jpeg' });
+      
+      // Gradio expects parameters in a specific format
+      const data = [
+        imageBlob,           // face_np
+        prompt,              // subject
+        "",                  // add_prompt  
+        negative_prompt,     // add_neg
+        guidance_scale,      // cfg
+        ip_adapter_scale,    // ip_scale
+        num_inference_steps, // steps
+        width,               // w
+        height,              // h
+        upscale,            // upscale
+        upscale_factor      // up_factor
+      ];
+
+      formData.append('data', JSON.stringify(data));
+
+      console.log('Sending request to Gradio API...');
+      const gradioResponse = await fetch(`${space_url}/api/predict`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      console.log('Gradio API response status:', gradioResponse.status);
+
+      if (!gradioResponse.ok) {
+        const errorText = await gradioResponse.text();
+        console.error('Gradio API error response:', errorText);
+        throw new Error(`Gradio API failed with status ${gradioResponse.status}: ${errorText}`);
+      }
+
+      const result = await gradioResponse.json();
+      console.log('Gradio API response received successfully');
+
+      if (!result || !result.data || !result.data[0]) {
+        console.error('Unexpected response format:', result);
+        throw new Error('No image data received from Gradio API');
+      }
+
+      // Handle the response - Gradio typically returns file paths
+      let imageData = result.data[0];
       
       if (typeof imageData === 'string') {
-        if (imageData.startsWith('data:image/')) {
-          base64Image = imageData.split(',')[1];
-        } else if (imageData.startsWith('http')) {
-          // URLの場合、fetch して base64 に変換
-          console.log('Fetching image from URL:', imageData);
-          const imageResponse = await fetch(imageData);
-          if (imageResponse.ok) {
-            const arrayBuffer = await imageResponse.arrayBuffer();
-            base64Image = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
-          } else {
-            throw new Error('Failed to fetch generated image from URL');
+        if (imageData.startsWith('/tmp/') || imageData.startsWith('file=')) {
+          // If it's a file path, construct the full URL
+          const filePath = imageData.startsWith('file=') ? imageData.substring(5) : imageData;
+          const imageUrl = `${space_url}/file=${filePath}`;
+          
+          console.log('Fetching generated image from:', imageUrl);
+          const imageResponse = await fetch(imageUrl);
+          
+          if (!imageResponse.ok) {
+            throw new Error(`Failed to fetch image from ${imageUrl}: ${imageResponse.status}`);
           }
-        } else {
-          base64Image = imageData;
+          
+          const imageBuffer = await imageResponse.arrayBuffer();
+          const base64Image = btoa(String.fromCharCode(...new Uint8Array(imageBuffer)));
+          imageData = `data:image/png;base64,${base64Image}`;
+        } else if (!imageData.startsWith('data:image/')) {
+          // If it's raw base64, add the data URL prefix
+          imageData = `data:image/png;base64,${imageData}`;
         }
-      } else if (imageData instanceof Blob) {
-        // Blobの場合、base64に変換
-        const arrayBuffer = await imageData.arrayBuffer();
-        base64Image = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
-      } else if (typeof imageData === 'object' && imageData.url) {
-        // Gradio FileData objectの場合、URLから画像を取得
-        console.log('Fetching image from Gradio FileData URL:', imageData.url);
-        const imageResponse = await fetch(imageData.url);
-        if (imageResponse.ok) {
-          const arrayBuffer = await imageResponse.arrayBuffer();
-          base64Image = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
-        } else {
-          throw new Error('Failed to fetch generated image from Gradio URL');
-        }
-      } else {
-        console.error('Unexpected image data format:', typeof imageData);
-        throw new Error('Unexpected image data format received');
       }
 
       console.log('Image processing successful');
       return new Response(
         JSON.stringify({ 
           success: true,
-          image_data: base64Image,
-          message: 'Image generated successfully via Gradio Client'
+          image: imageData,
+          prompt: prompt
         }),
         {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         }
       );
-    } else {
-      console.error('No data in Gradio response:', result);
-      throw new Error('No image data received from Gradio Space');
+
+    } catch (apiError) {
+      console.error('Gradio API call failed:', apiError);
+      throw new Error(`Failed to call Gradio API: ${apiError.message}`);
     }
 
   } catch (error) {
@@ -147,9 +155,8 @@ serve(async (req) => {
     
     return new Response(
       JSON.stringify({ 
-        error: 'Function failed', 
-        details: error.message,
-        stack: error.stack
+        error: 'Image generation failed', 
+        details: error.message
       }),
       {
         status: 500,
