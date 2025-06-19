@@ -64,6 +64,8 @@ const CreatePosts = () => {
   const [referenceImage, setReferenceImage] = useState<string>("");
   const [ipAdapterScale, setIpAdapterScale] = useState<number>(0.8);
   const [controlWeight, setControlWeight] = useState<number>(0.8);
+  const [guidanceScale, setGuidanceScale] = useState<number>(8.0);
+  const [numSteps, setNumSteps] = useState<number>(25);
   const [imageWidth, setImageWidth] = useState<number>(512);
   const [imageHeight, setImageHeight] = useState<number>(768);
 
@@ -406,9 +408,9 @@ const CreatePosts = () => {
           face_image: referenceImage,
           prompt: imagePrompt,
           negative_prompt: "glasses, hat",
-          guidance_scale: 8.0,
+          guidance_scale: guidanceScale,
           ip_adapter_scale: ipAdapterScale,
-          num_steps: 25,
+          num_steps: numSteps,
           width: imageWidth,
           height: imageHeight
         }
@@ -999,6 +1001,32 @@ const CreatePosts = () => {
                             <p className="text-xs text-purple-700 dark:text-purple-300">
                               デフォルト: 0.8
                             </p>
+                          </div>
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label>プロンプトへの忠実度 (Guidance Scale): {guidanceScale}</Label>
+                            <Slider
+                              value={[guidanceScale]}
+                              onValueChange={(value) => setGuidanceScale(value[0])}
+                              min={1}
+                              max={20}
+                              step={0.1}
+                              className="w-full"
+                            />
+                          </div>
+                          
+                          <div className="space-y-2">
+                            <Label>生成ステップ数 (Steps): {numSteps}</Label>
+                            <Slider
+                              value={[numSteps]}
+                              onValueChange={(value) => setNumSteps(value[0])}
+                              min={1}
+                              max={50}
+                              step={1}
+                              className="w-full"
+                            />
                           </div>
                         </div>
                         
