@@ -12,6 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ArrowLeft, Bot, Calendar as CalendarIcon, Hash, Image, Settings, Wand2, Loader2, Save, Users, Download, RefreshCw } from "lucide-react";
+import { Slider } from "@/components/ui/slider";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -63,6 +64,8 @@ const CreatePosts = () => {
   const [referenceImage, setReferenceImage] = useState<string>("");
   const [ipAdapterScale, setIpAdapterScale] = useState<number>(0.8);
   const [controlWeight, setControlWeight] = useState<number>(0.8);
+  const [imageWidth, setImageWidth] = useState<number>(512);
+  const [imageHeight, setImageHeight] = useState<number>(768);
 
   useEffect(() => {
     loadPersonas();
@@ -345,20 +348,24 @@ const CreatePosts = () => {
 
       if (error) throw error;
 
-      if (data.success && data.imagePrompt) {
+      if (data && data.success && data.imagePrompt) {
+        console.log('Successfully generated image prompt:', data.imagePrompt);
         return data.imagePrompt;
       } else {
-        throw new Error(data.details || 'Failed to generate image prompt');
+        console.warn('No image prompt in response:', data);
+        throw new Error(data?.details || 'Failed to generate image prompt');
       }
     } catch (error) {
       console.error('Error generating image prompt with Gemini:', error);
       
-      // Show error message to user
-      toast({
-        title: "プロンプト生成に失敗",
-        description: "Gemini APIによる画像プロンプトの自動生成に失敗しました。デフォルトプロンプトを使用します。",
-        variant: "destructive",
-      });
+      // Only show error for actual failures, not when fallback is used
+      if (error.message && !error.message.includes('Failed to generate image prompt')) {
+        toast({
+          title: "プロンプト生成に失敗",
+          description: "Gemini APIによる画像プロンプトの自動生成に失敗しました。デフォルトプロンプトを使用します。",
+          variant: "destructive",
+        });
+      }
       
       // Fallback to simple prompt if Gemini fails
       return "Portrait, casual outfit, confident smile, natural lighting, urban background, engaging pose";
@@ -401,7 +408,9 @@ const CreatePosts = () => {
           negative_prompt: "glasses, hat",
           guidance_scale: 8.0,
           ip_adapter_scale: ipAdapterScale,
-          num_steps: 25
+          num_steps: 25,
+          width: imageWidth,
+          height: imageHeight
         }
       });
 
@@ -990,6 +999,32 @@ const CreatePosts = () => {
                             <p className="text-xs text-purple-700 dark:text-purple-300">
                               デフォルト: 0.8
                             </p>
+                          </div>
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label>幅 (Width): {imageWidth}px</Label>
+                            <Slider
+                              value={[imageWidth]}
+                              onValueChange={(value) => setImageWidth(value[0])}
+                              min={256}
+                              max={1024}
+                              step={64}
+                              className="w-full"
+                            />
+                          </div>
+                          
+                          <div className="space-y-2">
+                            <Label>高さ (Height): {imageHeight}px</Label>
+                            <Slider
+                              value={[imageHeight]}
+                              onValueChange={(value) => setImageHeight(value[0])}
+                              min={256}
+                              max={1024}
+                              step={64}
+                              className="w-full"
+                            />
                           </div>
                         </div>
                       </CardContent>
