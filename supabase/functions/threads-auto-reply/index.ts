@@ -38,6 +38,20 @@ serve(async (req) => {
       console.log(`Original post content: ${originalPost.substring(0, 100)}...`);
     }
 
+    // Get user's profile to check auto_reply_enabled setting
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('auto_reply_enabled')
+      .eq('user_id', userId)
+      .single();
+
+    if (profileError) {
+      console.log('Error fetching profile:', profileError);
+      throw profileError;
+    }
+
+    console.log(`Profile auto_reply_enabled: ${profile?.auto_reply_enabled}`);
+
     // Get active auto-reply rules for the user with persona info including threads access token
     const { data: autoReplies, error: repliesError } = await supabase
       .from('auto_replies')
@@ -68,27 +82,13 @@ serve(async (req) => {
 
     console.log(`Found ${autoReplies.length} active auto-reply rules`);
 
-    // Enhanced logic: Check for keyword match OR context-aware rules
+    // Control logic based on auto_reply_enabled setting
     let matchedRule = null;
     const messageText = message.toLowerCase();
 
-    // First, try to find keyword-based rules
-    for (const rule of autoReplies) {
-      if (rule.trigger_keywords && rule.trigger_keywords.length > 0) {
-        const hasMatch = rule.trigger_keywords.some(keyword => 
-          messageText.includes(keyword.toLowerCase())
-        );
-        
-        if (hasMatch) {
-          matchedRule = rule;
-          console.log(`Matched keyword-based rule: ${rule.trigger_keywords.join(', ')}`);
-          break;
-        }
-      }
-    }
-
-    // If no keyword match, check for context-aware rules (rules with empty or no keywords)
-    if (!matchedRule) {
+    if (profile?.auto_reply_enabled) {
+      // AI Auto Reply Mode: Only use context-aware rules (disable keyword triggers)
+      console.log('AI Auto Reply Mode: Using context-aware intelligence');
       const contextAwareRule = autoReplies.find(rule => 
         !rule.trigger_keywords || rule.trigger_keywords.length === 0
       );
@@ -96,21 +96,49 @@ serve(async (req) => {
       if (contextAwareRule) {
         matchedRule = contextAwareRule;
         console.log('Using context-aware rule for intelligent reply generation');
+      } else {
+        console.log('No context-aware rules found, AI auto-reply cannot proceed');
+        return new Response(
+          JSON.stringify({ 
+            success: true,
+            message: 'AI auto-reply enabled but no context-aware rules configured'
+          }),
+          { 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 200 
+          }
+        );
       }
-    }
-
-    if (!matchedRule) {
-      console.log('No matching rules found');
-      return new Response(
-        JSON.stringify({ 
-          success: true,
-          message: 'No matching auto-reply rules found'
-        }),
-        { 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 200 
+    } else {
+      // Traditional Trigger Mode: Only use keyword-based rules
+      console.log('Traditional Trigger Mode: Using keyword-based rules only');
+      for (const rule of autoReplies) {
+        if (rule.trigger_keywords && rule.trigger_keywords.length > 0) {
+          const hasMatch = rule.trigger_keywords.some(keyword => 
+            messageText.includes(keyword.toLowerCase())
+          );
+          
+          if (hasMatch) {
+            matchedRule = rule;
+            console.log(`Matched keyword-based rule: ${rule.trigger_keywords.join(', ')}`);
+            break;
+          }
         }
-      );
+      }
+      
+      if (!matchedRule) {
+        console.log('No keyword triggers matched, traditional auto-reply will not activate');
+        return new Response(
+          JSON.stringify({ 
+            success: true,
+            message: 'No matching keyword triggers found'
+          }),
+          { 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 200 
+          }
+        );
+      }
     }
 
     // Generate personalized reply using Gemini
