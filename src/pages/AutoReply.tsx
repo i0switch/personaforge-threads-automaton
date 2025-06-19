@@ -372,6 +372,13 @@ const AutoReply = () => {
                     </p>
                   </div>
                 )}
+                {profile?.auto_reply_enabled && (
+                  <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md dark:bg-blue-950 dark:border-blue-800">
+                    <p className="text-sm text-blue-700 dark:text-blue-300">
+                      ⚠️ AI自動返信機能が有効です。この機能がONの場合、キーワードトリガー返信は無効化され、すべてのリプライに対してAIが文脈を理解した自動返信を生成します。
+                    </p>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
