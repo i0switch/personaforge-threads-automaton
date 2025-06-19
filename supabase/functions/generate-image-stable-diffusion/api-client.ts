@@ -15,46 +15,33 @@ export async function callImageGenerationAPI(
     
     const client = await Client.connect(apiEndpoint)
     
-    // First, get info about available endpoints
-    console.log('Connected to Gradio client, checking endpoints...')
+    console.log('Connected to Gradio client')
     
-    // Try different common endpoint names for image generation
-    const possibleEndpoints = ['/predict', '/', '/generate', '/process', '/run']
-    
-    let result
-    let usedEndpoint = ''
-    
-    for (const endpoint of possibleEndpoints) {
-      try {
-        console.log(`Trying endpoint: ${endpoint}`)
-        
-        // For Gradio, parameters are usually passed as an array in order
-        const params = [
-          `data:image/png;base64,${payload.face_image_b64}`, // face_image
-          payload.prompt, // prompt  
-          payload.negative_prompt, // negative_prompt
-          payload.ip_adapter_scale, // ip_adapter_scale
-          payload.guidance_scale, // guidance_scale
-          payload.num_inference_steps, // num_inference_steps
-          payload.width, // width
-          payload.height // height
-        ]
-        
-        result = await client.predict(endpoint, params)
-        usedEndpoint = endpoint
-        console.log(`Success with endpoint: ${endpoint}`)
-        break
-      } catch (endpointError) {
-        console.log(`Endpoint ${endpoint} failed:`, endpointError.message)
-        continue
-      }
+    // Convert base64 to File object for Gradio
+    const base64Data = payload.face_image_b64
+    const byteCharacters = atob(base64Data)
+    const byteNumbers = new Array(byteCharacters.length)
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i)
     }
+    const byteArray = new Uint8Array(byteNumbers)
+    const faceImageFile = new File([byteArray], 'face.png', { type: 'image/png' })
     
-    if (!result) {
-      throw new Error('No valid endpoint found. Available endpoints: ' + possibleEndpoints.join(', '))
-    }
-
-    console.log(`Gradio client result from ${usedEndpoint}:`, result)
+    // Parameters in correct order for Gradio inputs
+    const params = [
+      faceImageFile, // face_image (File object)
+      payload.prompt, // prompt  
+      payload.negative_prompt, // negative_prompt
+      payload.guidance_scale, // guidance_scale
+      payload.ip_adapter_scale, // ip_adapter_scale
+      payload.num_inference_steps, // num_inference_steps
+      payload.width, // width
+      payload.height // height
+    ]
+    
+    console.log('Calling /predict endpoint with parameters')
+    const result = await client.predict('/predict', params)
+    console.log('Gradio client result:', result)
 
     if (!result.data || !result.data[0]) {
       throw new Error('No image data received from Gradio API')
