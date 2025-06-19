@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 export interface ImageGeneratorState {
   faceImage: File | null;
@@ -67,33 +68,35 @@ export const useImageGenerator = () => {
           const base64 = reader.result as string;
           const imageData = base64.split(',')[1]; // Remove data:image/...;base64, prefix
 
-          const formData = new FormData();
-          formData.append('face_image', imageData);
-          formData.append('subject', subject);
-          formData.append('additional_prompt', additionalPrompt);
-          formData.append('additional_negative', additionalNegative);
-          formData.append('guidance_scale', guidanceScale[0].toString());
-          formData.append('ip_adapter_scale', ipAdapterScale[0].toString());
-          formData.append('steps', numSteps[0].toString());
-          formData.append('width', width[0].toString());
-          formData.append('height', height[0].toString());
-          formData.append('upscale', upscale.toString());
-          formData.append('upscale_factor', upscaleFactor[0].toString());
+          const payload = {
+            face_image_b64: imageData,
+            prompt: subject + (additionalPrompt ? `, ${additionalPrompt}` : ''),
+            negative_prompt: additionalNegative,
+            guidance_scale: guidanceScale[0],
+            ip_adapter_scale: ipAdapterScale[0],
+            num_inference_steps: numSteps[0],
+            width: width[0],
+            height: height[0],
+            upscale: upscale,
+            upscale_factor: upscaleFactor[0]
+          };
 
-          // Call the backend app directly (assuming it's running on a specific URL)
-          // You may need to adjust this URL based on your setup
-          const response = await fetch('/api/predict', {
-            method: 'POST',
-            body: formData,
+          console.log('Calling edge function with payload:', payload);
+
+          const { data, error } = await supabase.functions.invoke('generate-image-huggingface', {
+            body: payload
           });
 
-          if (!response.ok) {
-            throw new Error('画像生成に失敗しました');
+          if (error) {
+            console.error('Edge function error:', error);
+            throw new Error(`画像生成に失敗しました: ${error.message}`);
           }
 
-          const blob = await response.blob();
-          const imageUrl = URL.createObjectURL(blob);
-          setGeneratedImage(imageUrl);
+          if (!data || !data.image) {
+            throw new Error('画像データが返されませんでした');
+          }
+
+          setGeneratedImage(data.image);
 
           toast({
             title: "生成完了",
