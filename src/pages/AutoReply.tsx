@@ -365,38 +365,13 @@ const AutoReply = () => {
                     onCheckedChange={toggleAutoReply}
                   />
                 </div>
-                <div className="mt-4 space-y-3">
-                  {profile?.auto_reply_enabled ? (
-                    <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-md">
-                      <div className="flex items-center gap-2 text-green-800 dark:text-green-200">
-                        <Bot className="h-4 w-4" />
-                        <p className="text-sm font-medium">
-                          AI自動返信機能が有効です
-                        </p>
-                      </div>
-                      <div className="mt-2 text-sm text-green-700 dark:text-green-300">
-                        <p>✓ Webhook経由でリプライを自動検出し、文脈を理解したAI返信を生成</p>
-                        <p>✓ ペルソナ情報 + ポスト文章 + リプライをGemini APIで分析</p>
-                        <p>⚠️ この機能がONの場合、トリガーキーワードによる返信は無効化されます</p>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="p-3 bg-muted rounded-md">
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <MessageCircle className="h-4 w-4" />
-                        <p className="text-sm font-medium">
-                          トリガーによる返信のみ有効
-                        </p>
-                      </div>
-                      <div className="mt-2 text-sm text-muted-foreground">
-                        <p>💡 AI自動返信機能を有効にすると：</p>
-                        <p>• 未返信のリプライを自動検出してAIが文脈を理解した返信を生成</p>
-                        <p>• トリガーキーワードによる返信は自動的に無効化</p>
-                        <p>• より自然で高度な自動返信が可能になります</p>
-                      </div>
-                    </div>
-                  )}
-                </div>
+                {!profile?.auto_reply_enabled && (
+                  <div className="mt-4 p-3 bg-muted rounded-md">
+                    <p className="text-sm text-muted-foreground">
+                      💡 AI自動返信機能を有効にすると、設定したルールに基づいてThreadsのリプライに自動返信します
+                    </p>
+                  </div>
+                )}
               </CardContent>
             </Card>
 

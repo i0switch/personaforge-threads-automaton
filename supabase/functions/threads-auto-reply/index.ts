@@ -39,47 +39,17 @@ serve(async (req) => {
     }
 
     // Get active auto-reply rules for the user with persona info including threads access token
-    // Also check user's profile for auto_reply_enabled setting
-    const [autoRepliesResult, profileResult] = await Promise.all([
-      supabase
-        .from('auto_replies')
-        .select(`
-          *,
-          personas (*, threads_access_token)
-        `)
-        .eq('user_id', userId)
-        .eq('is_active', true),
-      supabase
-        .from('profiles')
-        .select('auto_reply_enabled')
-        .eq('user_id', userId)
-        .single()
-    ]);
+    const { data: autoReplies, error: repliesError } = await supabase
+      .from('auto_replies')
+      .select(`
+        *,
+        personas (*, threads_access_token)
+      `)
+      .eq('user_id', userId)
+      .eq('is_active', true);
 
-    if (autoRepliesResult.error) {
-      throw autoRepliesResult.error;
-    }
-
-    if (profileResult.error && profileResult.error.code !== 'PGRST116') {
-      throw profileResult.error;
-    }
-
-    const autoReplies = autoRepliesResult.data;
-    const profile = profileResult.data;
-
-    // If AI auto-reply feature is enabled, disable trigger-based replies
-    if (profile?.auto_reply_enabled) {
-      console.log('AI auto-reply feature is enabled, skipping trigger-based reply');
-      return new Response(
-        JSON.stringify({ 
-          success: true,
-          message: 'AI auto-reply feature is enabled, trigger-based replies are disabled'
-        }),
-        { 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 200 
-        }
-      );
+    if (repliesError) {
+      throw repliesError;
     }
 
     if (!autoReplies || autoReplies.length === 0) {
