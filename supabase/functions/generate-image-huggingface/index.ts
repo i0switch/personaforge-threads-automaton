@@ -6,7 +6,7 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
-  console.log('Function called with method:', req.method);
+  console.log('=== NEW VERSION: Function called with method:', req.method);
   
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -17,7 +17,7 @@ serve(async (req) => {
   try {
     console.log('Parsing request body...');
     const requestBody = await req.json();
-    console.log('Request body parsed successfully');
+    console.log('Request body keys:', Object.keys(requestBody));
     
     const { 
       face_image_b64,
@@ -33,7 +33,11 @@ serve(async (req) => {
       space_url = "https://i0switch-my-image-generator.hf.space"
     } = requestBody;
 
-    console.log('Input validation...');
+    console.log('=== VALIDATION ===');
+    console.log('face_image_b64 exists:', !!face_image_b64);
+    console.log('prompt exists:', !!prompt);
+    console.log('space_url:', space_url);
+
     if (!face_image_b64 || !prompt) {
       console.log('Missing required fields');
       return new Response(
@@ -45,118 +49,129 @@ serve(async (req) => {
       );
     }
 
-    console.log('=== DEBUG INFO ===');
-    console.log('Space URL:', space_url);
-    console.log('Prompt length:', prompt.length);
-    console.log('Face image length:', face_image_b64.length);
-
-    console.log('Calling Gradio API directly...');
+    console.log('=== PROCESSING IMAGE ===');
     
-    try {
-      // Convert base64 to Uint8Array
-      const base64Data = face_image_b64.replace(/^data:image\/[a-z]+;base64,/, '');
-      const binaryString = atob(base64Data);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
+    // Remove data URL prefix if present
+    const base64Data = face_image_b64.replace(/^data:image\/[a-z]+;base64,/, '');
+    console.log('Base64 data length:', base64Data.length);
+    
+    // Convert base64 to binary
+    const binaryString = atob(base64Data);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    console.log('Converted to bytes array, length:', bytes.length);
 
-      // Create form data for Gradio API predict endpoint
-      const formData = new FormData();
-      
-      // Create a blob from the image data
-      const imageBlob = new Blob([bytes], { type: 'image/jpeg' });
-      
-      // Gradio expects parameters in a specific format
-      const data = [
-        imageBlob,           // face_np
-        prompt,              // subject
-        "",                  // add_prompt  
-        negative_prompt,     // add_neg
-        guidance_scale,      // cfg
-        ip_adapter_scale,    // ip_scale
-        num_inference_steps, // steps
-        width,               // w
-        height,              // h
-        upscale,            // upscale
-        upscale_factor      // up_factor
-      ];
+    // Create image blob
+    const imageBlob = new Blob([bytes], { type: 'image/jpeg' });
+    console.log('Created image blob, size:', imageBlob.size);
 
-      formData.append('data', JSON.stringify(data));
+    console.log('=== CALLING GRADIO API ===');
+    
+    // Prepare data for Gradio API (matching the Python function signature)
+    const apiData = [
+      imageBlob,           // face_np (numpy array from image)
+      prompt,              // subject
+      "",                  // add_prompt (additional prompt)
+      negative_prompt,     // add_neg (additional negative prompt)
+      guidance_scale,      // cfg (guidance scale)
+      ip_adapter_scale,    // ip_scale
+      num_inference_steps, // steps
+      width,               // w
+      height,              // h
+      upscale,            // upscale
+      upscale_factor      // up_factor
+    ];
 
-      console.log('Sending request to Gradio API...');
-      const gradioResponse = await fetch(`${space_url}/api/predict`, {
-        method: 'POST',
-        body: formData,
-      });
+    console.log('API data prepared, parameters count:', apiData.length);
 
-      console.log('Gradio API response status:', gradioResponse.status);
+    // Create form data for Gradio
+    const formData = new FormData();
+    formData.append('data', JSON.stringify(apiData));
 
-      if (!gradioResponse.ok) {
-        const errorText = await gradioResponse.text();
-        console.error('Gradio API error response:', errorText);
-        throw new Error(`Gradio API failed with status ${gradioResponse.status}: ${errorText}`);
-      }
+    console.log('Sending request to Gradio API...');
+    const apiUrl = `${space_url}/api/predict`;
+    console.log('API URL:', apiUrl);
 
-      const result = await gradioResponse.json();
-      console.log('Gradio API response received successfully');
+    const gradioResponse = await fetch(apiUrl, {
+      method: 'POST',
+      body: formData,
+    });
 
-      if (!result || !result.data || !result.data[0]) {
-        console.error('Unexpected response format:', result);
-        throw new Error('No image data received from Gradio API');
-      }
+    console.log('Gradio response status:', gradioResponse.status);
+    console.log('Gradio response headers:', Object.fromEntries(gradioResponse.headers.entries()));
 
-      // Handle the response - Gradio typically returns file paths
-      let imageData = result.data[0];
-      
-      if (typeof imageData === 'string') {
-        if (imageData.startsWith('/tmp/') || imageData.startsWith('file=')) {
-          // If it's a file path, construct the full URL
-          const filePath = imageData.startsWith('file=') ? imageData.substring(5) : imageData;
-          const imageUrl = `${space_url}/file=${filePath}`;
-          
-          console.log('Fetching generated image from:', imageUrl);
-          const imageResponse = await fetch(imageUrl);
-          
-          if (!imageResponse.ok) {
-            throw new Error(`Failed to fetch image from ${imageUrl}: ${imageResponse.status}`);
-          }
-          
-          const imageBuffer = await imageResponse.arrayBuffer();
-          const base64Image = btoa(String.fromCharCode(...new Uint8Array(imageBuffer)));
-          imageData = `data:image/png;base64,${base64Image}`;
-        } else if (!imageData.startsWith('data:image/')) {
-          // If it's raw base64, add the data URL prefix
-          imageData = `data:image/png;base64,${imageData}`;
-        }
-      }
-
-      console.log('Image processing successful');
-      return new Response(
-        JSON.stringify({ 
-          success: true,
-          image: imageData,
-          prompt: prompt
-        }),
-        {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
-
-    } catch (apiError) {
-      console.error('Gradio API call failed:', apiError);
-      throw new Error(`Failed to call Gradio API: ${apiError.message}`);
+    if (!gradioResponse.ok) {
+      const errorText = await gradioResponse.text();
+      console.error('Gradio API error:', errorText);
+      throw new Error(`Gradio API failed: ${gradioResponse.status} - ${errorText}`);
     }
 
+    const responseData = await gradioResponse.json();
+    console.log('Gradio response structure:', Object.keys(responseData));
+    console.log('Gradio response data length:', responseData.data?.length);
+
+    if (!responseData || !responseData.data || !responseData.data[0]) {
+      console.error('Invalid response structure:', responseData);
+      throw new Error('No image data received from Gradio API');
+    }
+
+    console.log('=== PROCESSING RESPONSE ===');
+    
+    let imageData = responseData.data[0];
+    console.log('Image data type:', typeof imageData);
+    
+    if (typeof imageData === 'string') {
+      if (imageData.startsWith('/tmp/') || imageData.includes('.png') || imageData.includes('.jpg')) {
+        // It's a file path, need to download the image
+        const imagePath = imageData.startsWith('/') ? imageData : `/${imageData}`;
+        const imageUrl = `${space_url}/file=${imagePath}`;
+        
+        console.log('Downloading image from:', imageUrl);
+        const imageResponse = await fetch(imageUrl);
+        
+        if (!imageResponse.ok) {
+          console.error('Failed to download image:', imageResponse.status);
+          throw new Error(`Failed to download image: ${imageResponse.status}`);
+        }
+        
+        const imageBuffer = await imageResponse.arrayBuffer();
+        const base64Image = btoa(String.fromCharCode(...new Uint8Array(imageBuffer)));
+        imageData = `data:image/png;base64,${base64Image}`;
+        console.log('Successfully converted image to base64');
+        
+      } else if (!imageData.startsWith('data:image/')) {
+        // Raw base64, add data URL prefix
+        imageData = `data:image/png;base64,${imageData}`;
+        console.log('Added data URL prefix to base64');
+      }
+    }
+
+    console.log('=== SUCCESS ===');
+    return new Response(
+      JSON.stringify({ 
+        success: true,
+        image: imageData,
+        prompt: prompt,
+        message: 'Image generated successfully'
+      }),
+      {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      }
+    );
+
   } catch (error) {
-    console.error('Error in function:', error);
+    console.error('=== ERROR ===');
+    console.error('Error type:', error.constructor.name);
     console.error('Error message:', error.message);
     console.error('Error stack:', error.stack);
     
     return new Response(
       JSON.stringify({ 
         error: 'Image generation failed', 
-        details: error.message
+        details: error.message,
+        type: error.constructor.name
       }),
       {
         status: 500,
