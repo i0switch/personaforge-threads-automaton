@@ -100,21 +100,35 @@ serve(async (req) => {
     console.log('Client endpoints:', Object.keys(client.endpoints || {}));
     console.log('Client view_api:', typeof client.view_api);
     
-    // JavaScriptのGradio Clientは配列形式で引数を渡す必要がある可能性
+    // JavaScriptのGradio Clientは配列形式で引数を順番通りに渡す（Pythonコードと同じ仕様）
     console.log('Attempting to call predict with array parameters...');
-    const result = await client.predict("/predict", {
-      face_np: imageFile,           // 1. face_np (Image型、required)
-      subject: prompt,              // 2. subject (str、required)
-      add_prompt: "",               // 3. add_prompt (str、required、空文字列OK)
-      add_neg: negative_prompt,     // 4. add_neg (str、required)
-      cfg: guidance_scale,          // 5. cfg (float、default: 6)
-      ip_scale: ip_adapter_scale,   // 6. ip_scale (float、default: 0.65)
-      steps: num_inference_steps,   // 7. steps (float、default: 20)
-      w: width,                     // 8. w (float、default: 512)
-      h: height,                    // 9. h (float、default: 768)
-      upscale: upscale,             // 10. upscale (bool、default: True)
-      up_factor: upscale_factor     // 11. up_factor (float、default: 2)
+    console.log('Parameters:', {
+      imageFile: imageFile ? `File(${imageFile.size} bytes)` : 'null',
+      prompt: prompt,
+      additionalPrompt: "",
+      negativePrompt: negative_prompt,
+      guidanceScale: guidance_scale,
+      ipAdapterScale: ip_adapter_scale,
+      numSteps: num_inference_steps,
+      width: width,
+      height: height,
+      upscale: upscale,
+      upscaleFactor: upscale_factor
     });
+    
+    const result = await client.predict("/predict", [
+      imageFile,           // 1. face_np: File object
+      prompt,              // 2. subject: string
+      "",                  // 3. add_prompt: string (empty string)
+      negative_prompt,     // 4. add_neg: string
+      guidance_scale,      // 5. cfg: number (float)
+      ip_adapter_scale,    // 6. ip_scale: number (float)
+      num_inference_steps, // 7. steps: number (integer)
+      width,               // 8. w: number (integer)
+      height,              // 9. h: number (integer)
+      upscale,             // 10. upscale: boolean
+      upscale_factor       // 11. up_factor: number (float)
+    ]);
 
     console.log('=== PROCESSING RESPONSE ===');
     console.log('Result data:', result.data);
