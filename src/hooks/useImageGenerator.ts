@@ -82,7 +82,7 @@ export const useImageGenerator = () => {
 
           console.log('Calling edge function with payload:', payload);
 
-          const { data, error } = await supabase.functions.invoke('generate-image-huggingface', {
+          const { data, error } = await supabase.functions.invoke('generate-image-replicate', {
             body: payload
           });
 
