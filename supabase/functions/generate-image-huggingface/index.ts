@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { Client } from "https://esm.sh/@gradio/client@1.5.0";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -6,7 +7,7 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
-  console.log('Function called with method:', req.method);
+  console.log('=== GRADIO CLIENT: Function called with method:', req.method);
   
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -17,23 +18,32 @@ serve(async (req) => {
   try {
     console.log('Parsing request body...');
     const requestBody = await req.json();
-    console.log('Request body parsed successfully');
+    console.log('Request body keys:', Object.keys(requestBody));
     
     const { 
-      space_url,
-      face_image, 
-      prompt, 
+      face_image_b64,
+      prompt,
       negative_prompt = "", 
-      guidance_scale = 8.0, 
-      ip_adapter_scale = 0.6, 
-      num_steps = 25 
+      guidance_scale = 6.0, 
+      ip_adapter_scale = 0.65, 
+      num_inference_steps = 20,
+      width = 512,
+      height = 768,
+      upscale = true,
+      upscale_factor = 2,
+      space_url = "https://i0switch-my-image-generator.hf.space"
     } = requestBody;
 
-    console.log('Input validation...');
-    if (!face_image || !prompt) {
+    console.log('=== VALIDATION ===');
+    console.log('face_image_b64 exists:', !!face_image_b64);
+    console.log('face_image_b64 first 50 chars:', face_image_b64?.substring(0, 50));
+    console.log('prompt exists:', !!prompt);
+    console.log('space_url:', space_url);
+
+    if (!face_image_b64 || !prompt) {
       console.log('Missing required fields');
       return new Response(
-        JSON.stringify({ error: "face_image and prompt are required" }),
+        JSON.stringify({ error: "face_image_b64 and prompt are required" }),
         { 
           status: 400, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -41,10 +51,13 @@ serve(async (req) => {
       );
     }
 
-    if (!space_url) {
-      console.log('Missing space_url');
+    console.log('=== PROCESSING IMAGE ===');
+    
+    // DataURL形式のチェック
+    if (!face_image_b64.startsWith('data:image/')) {
+      console.log('Invalid image format - not a DataURL');
       return new Response(
-        JSON.stringify({ error: "space_url is required" }),
+        JSON.stringify({ error: "Invalid image format. Expected DataURL format." }),
         { 
           status: 400, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -52,104 +65,122 @@ serve(async (req) => {
       );
     }
 
-    console.log('=== DEBUG INFO ===');
+    // DataURLからBlobを作成
+    console.log('Converting DataURL to Blob...');
+    const base64Data = face_image_b64.split(',')[1];
+    const mimeType = face_image_b64.split(',')[0].split(':')[1].split(';')[0];
+    
+    const binaryString = atob(base64Data);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    const imageBlob = new Blob([bytes], { type: mimeType });
+    console.log('Successfully converted to Blob, size:', imageBlob.size);
+
+    console.log('=== CALLING GRADIO CLIENT ===');
     console.log('Space URL:', space_url);
-    console.log('Prompt length:', prompt.length);
-    console.log('Face image length:', face_image.length);
-
-    // gradio_clientを使用してSpaceに接続
-    console.log('Connecting to Gradio Space using gradio_client...');
     
-    // Import gradio_client dynamically
-    const { Client } = await import("https://cdn.jsdelivr.net/npm/@gradio/client/dist/index.min.js");
-    
-    console.log('Creating Gradio client...');
-    const client = await Client.connect(space_url);
-    console.log('Connected to Gradio Space successfully');
-    
-    // 画像データを準備
-    const imageBlob = new Blob([Uint8Array.from(atob(face_image), c => c.charCodeAt(0))], {
-      type: 'image/jpeg'
-    });
-    
-    console.log('Submitting prediction...');
-    const result = await client.predict("/predict", {
-      face_image_numpy: imageBlob,
-      user_prompt: prompt,
-      user_negative_prompt: negative_prompt,
-      guidance_scale: guidance_scale,
-      ip_adapter_scale: ip_adapter_scale,
-      num_steps: num_steps
-    });
-    
-    console.log('Gradio prediction result:', JSON.stringify(result, null, 2));
-
-    
-    if (result && result.data && result.data.length > 0) {
-      const imageData = result.data[0];
-      let base64Image;
-      
-      if (typeof imageData === 'string') {
-        if (imageData.startsWith('data:image/')) {
-          base64Image = imageData.split(',')[1];
-        } else if (imageData.startsWith('http')) {
-          // URLの場合、fetch して base64 に変換
-          console.log('Fetching image from URL:', imageData);
-          const imageResponse = await fetch(imageData);
-          if (imageResponse.ok) {
-            const arrayBuffer = await imageResponse.arrayBuffer();
-            base64Image = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
-          } else {
-            throw new Error('Failed to fetch generated image from URL');
-          }
-        } else {
-          base64Image = imageData;
-        }
-      } else if (imageData instanceof Blob) {
-        // Blobの場合、base64に変換
-        const arrayBuffer = await imageData.arrayBuffer();
-        base64Image = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
-      } else if (typeof imageData === 'object' && imageData.url) {
-        // Gradio FileData objectの場合、URLから画像を取得
-        console.log('Fetching image from Gradio FileData URL:', imageData.url);
-        const imageResponse = await fetch(imageData.url);
-        if (imageResponse.ok) {
-          const arrayBuffer = await imageResponse.arrayBuffer();
-          base64Image = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
-        } else {
-          throw new Error('Failed to fetch generated image from Gradio URL');
-        }
-      } else {
-        console.error('Unexpected image data format:', typeof imageData);
-        throw new Error('Unexpected image data format received');
-      }
-
-      console.log('Image processing successful');
-      return new Response(
-        JSON.stringify({ 
-          success: true,
-          image_data: base64Image,
-          message: 'Image generated successfully via Gradio Client'
-        }),
-        {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
-    } else {
-      console.error('No data in Gradio response:', result);
-      throw new Error('No image data received from Gradio Space');
+    // HuggingFace トークンの設定
+    const hfToken = Deno.env.get('HF_TOKEN');
+    const clientOptions = {};
+    if (hfToken) {
+      console.log('Using HF_TOKEN for authentication');
+      clientOptions.hf_token = hfToken;
     }
+    
+    // Gradio Clientを使用して接続
+    const client = await Client.connect("i0switch/my-image-generator", clientOptions);
+    console.log('Connected to Gradio client');
+    
+    // APIを呼び出し
+    const result = await client.predict("/predict", { 
+      face_np: imageBlob,
+      subject: prompt,
+      add_prompt: "",
+      add_neg: negative_prompt,
+      cfg: guidance_scale,
+      ip_scale: ip_adapter_scale,
+      steps: num_inference_steps,
+      w: width,
+      h: height,
+      upscale: upscale,
+      up_factor: upscale_factor,
+    });
+
+    console.log('=== PROCESSING RESPONSE ===');
+    console.log('Result data:', result.data);
+    
+    if (!result || !result.data || !result.data[0]) {
+      console.error('No valid result received from Gradio');
+      throw new Error('No image data received from Gradio API');
+    }
+    
+    let imageData = result.data[0];
+    console.log('Image data type:', typeof imageData);
+    
+    // 結果の処理
+    if (typeof imageData === 'object' && imageData.url) {
+      // URLの場合は画像をダウンロード
+      const imageUrl = imageData.url;
+      console.log('Downloading image from URL:', imageUrl);
+      
+      const imageResponse = await fetch(imageUrl);
+      if (!imageResponse.ok) {
+        throw new Error(`Failed to download image: ${imageResponse.status}`);
+      }
+      
+      const imageBuffer = await imageResponse.arrayBuffer();
+      const base64Image = btoa(String.fromCharCode(...new Uint8Array(imageBuffer)));
+      imageData = `data:image/png;base64,${base64Image}`;
+      console.log('Successfully converted image to base64');
+      
+    } else if (typeof imageData === 'string') {
+      if (imageData.startsWith('http')) {
+        // URLの場合
+        console.log('Downloading image from URL:', imageData);
+        const imageResponse = await fetch(imageData);
+        
+        if (!imageResponse.ok) {
+          throw new Error(`Failed to download image: ${imageResponse.status}`);
+        }
+        
+        const imageBuffer = await imageResponse.arrayBuffer();
+        const base64Image = btoa(String.fromCharCode(...new Uint8Array(imageBuffer)));
+        imageData = `data:image/png;base64,${base64Image}`;
+        console.log('Successfully converted image to base64');
+        
+      } else if (!imageData.startsWith('data:image/')) {
+        // Raw base64の場合
+        imageData = `data:image/png;base64,${imageData}`;
+        console.log('Added data URL prefix to base64');
+      }
+    }
+
+    console.log('=== SUCCESS ===');
+    return new Response(
+      JSON.stringify({ 
+        success: true,
+        image: imageData,
+        prompt: prompt,
+        message: 'Image generated successfully'
+      }),
+      {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      }
+    );
 
   } catch (error) {
-    console.error('Error in function:', error);
+    console.error('=== ERROR ===');
+    console.error('Error type:', error.constructor.name);
     console.error('Error message:', error.message);
     console.error('Error stack:', error.stack);
     
     return new Response(
       JSON.stringify({ 
-        error: 'Function failed', 
+        error: 'Image generation failed', 
         details: error.message,
-        stack: error.stack
+        type: error.constructor.name
       }),
       {
         status: 500,

@@ -1,13 +1,4 @@
-import { ArrowLeft, Download } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { useNavigate } from "react-router-dom";
-import ImageGenerator from "@/components/ImageGenerator";
-
-const ImageGeneration = () => {
-  const navigate = useNavigate();
-
-  const downloadHookCode = () => {
-    const hookCode = `import { useState } from "react";
+import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -78,7 +69,7 @@ export const useImageGenerator = () => {
 
           const payload = {
             face_image_b64: base64,
-            prompt: subject + (additionalPrompt ? \`, \${additionalPrompt}\` : ''),
+            prompt: subject + (additionalPrompt ? `, ${additionalPrompt}` : ''),
             negative_prompt: additionalNegative,
             guidance_scale: guidanceScale[0],
             ip_adapter_scale: ipAdapterScale[0],
@@ -97,7 +88,7 @@ export const useImageGenerator = () => {
 
           if (error) {
             console.error('Edge function error:', error);
-            throw new Error(\`画像生成に失敗しました: \${error.message}\`);
+            throw new Error(`画像生成に失敗しました: ${error.message}`);
           }
 
           if (!data || !data.image) {
@@ -138,7 +129,7 @@ export const useImageGenerator = () => {
 
     const link = document.createElement('a');
     link.href = generatedImage;
-    link.download = \`generated-image-\${Date.now()}.png\`;
+    link.download = `generated-image-${Date.now()}.png`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -178,94 +169,4 @@ export const useImageGenerator = () => {
     generateImage,
     downloadImage,
   };
-};`;
-
-    const blob = new Blob([hookCode], { type: 'text/typescript' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'useImageGenerator.ts';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  };
-
-  const downloadFaceImageUploadCode = () => {
-    const componentCode = `import { Upload } from "lucide-react";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
-
-interface FaceImageUploadProps {
-  faceImagePreview: string;
-  onImageChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
-}
-
-export const FaceImageUpload = ({ faceImagePreview, onImageChange }: FaceImageUploadProps) => {
-  return (
-    <div className="space-y-2">
-      <Label htmlFor="face-image">顔写真</Label>
-      <div className="flex items-center gap-4">
-        <Input
-          id="face-image"
-          type="file"
-          accept="image/*"
-          onChange={onImageChange}
-          className="flex-1"
-        />
-        <Upload className="h-4 w-4 text-muted-foreground" />
-      </div>
-      {faceImagePreview && (
-        <div className="mt-4">
-          <img
-            src={faceImagePreview}
-            alt="Face preview"
-            className="w-32 h-32 object-cover rounded-lg border"
-          />
-        </div>
-      )}
-    </div>
-  );
-};`;
-
-    const blob = new Blob([componentCode], { type: 'text/typescript' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'FaceImageUpload.tsx';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  };
-
-  return (
-    <div className="min-h-screen bg-background p-6">
-      <div className="max-w-4xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="flex items-center gap-4">
-          <Button onClick={() => navigate("/")} variant="ghost" size="sm">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            戻る
-          </Button>
-          <div className="flex-1">
-            <h1 className="text-3xl font-bold text-foreground">AI画像生成</h1>
-            <p className="text-muted-foreground">顔画像からAIで新しい画像を生成</p>
-          </div>
-          <Button onClick={downloadHookCode} variant="outline" size="sm">
-            <Download className="h-4 w-4 mr-2" />
-            Hook コードをダウンロード
-          </Button>
-          <Button onClick={downloadFaceImageUploadCode} variant="outline" size="sm">
-            <Download className="h-4 w-4 mr-2" />
-            FaceImageUpload をダウンロード
-          </Button>
-        </div>
-
-        <ImageGenerator />
-      </div>
-    </div>
-  );
 };
-
-export default ImageGeneration;
