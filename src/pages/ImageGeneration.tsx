@@ -192,6 +192,54 @@ export const useImageGenerator = () => {
     URL.revokeObjectURL(url);
   };
 
+  const downloadFaceImageUploadCode = () => {
+    const componentCode = `import { Upload } from "lucide-react";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+
+interface FaceImageUploadProps {
+  faceImagePreview: string;
+  onImageChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+}
+
+export const FaceImageUpload = ({ faceImagePreview, onImageChange }: FaceImageUploadProps) => {
+  return (
+    <div className="space-y-2">
+      <Label htmlFor="face-image">顔写真</Label>
+      <div className="flex items-center gap-4">
+        <Input
+          id="face-image"
+          type="file"
+          accept="image/*"
+          onChange={onImageChange}
+          className="flex-1"
+        />
+        <Upload className="h-4 w-4 text-muted-foreground" />
+      </div>
+      {faceImagePreview && (
+        <div className="mt-4">
+          <img
+            src={faceImagePreview}
+            alt="Face preview"
+            className="w-32 h-32 object-cover rounded-lg border"
+          />
+        </div>
+      )}
+    </div>
+  );
+};`;
+
+    const blob = new Blob([componentCode], { type: 'text/typescript' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'FaceImageUpload.tsx';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-4xl mx-auto space-y-6">
@@ -208,6 +256,10 @@ export const useImageGenerator = () => {
           <Button onClick={downloadHookCode} variant="outline" size="sm">
             <Download className="h-4 w-4 mr-2" />
             Hook コードをダウンロード
+          </Button>
+          <Button onClick={downloadFaceImageUploadCode} variant="outline" size="sm">
+            <Download className="h-4 w-4 mr-2" />
+            FaceImageUpload をダウンロード
           </Button>
         </div>
 
