@@ -75,10 +75,9 @@ export const useImageGenerator = () => {
       reader.onload = async () => {
         try {
           const base64 = reader.result as string;
-          const imageData = base64.split(',')[1]; // Remove data:image/...;base64, prefix
 
           const payload = {
-            face_image_b64: imageData,
+            face_image_b64: base64,
             prompt: subject + (additionalPrompt ? \`, \${additionalPrompt}\` : ''),
             negative_prompt: additionalNegative,
             guidance_scale: guidanceScale[0],
