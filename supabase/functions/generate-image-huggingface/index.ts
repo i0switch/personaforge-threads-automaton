@@ -85,20 +85,23 @@ serve(async (req) => {
 
     console.log('=== CALLING GRADIO PREDICT ===');
     
-    // Call the predict function with parameters as array (matching Gradio app.py order)
+    // Call the predict function with parameters as array (matching app.py inputs order exactly)
+    // Order: [顔画像, 被写体説明, 追加プロンプト, 追加ネガティブ, CFG, IP-Adapter, steps, 幅, 高さ, アップスケール, 倍率]
     const result = await client.predict("/predict", [
-      imageFile,           // face image file
-      prompt,              // subject/prompt
-      "",                  // additional prompt (empty)
-      negative_prompt,     // negative prompt
-      guidance_scale,      // guidance scale
-      ip_adapter_scale,    // ip adapter scale
+      imageFile,           // 顔画像 (File object)
+      prompt,              // 被写体説明 (subject description)
+      "",                  // 追加プロンプト (additional prompt - empty)
+      negative_prompt,     // 追加ネガティブ (additional negative)
+      guidance_scale,      // CFG (guidance scale)
+      ip_adapter_scale,    // IP-Adapter scale
       num_inference_steps, // steps
-      width,               // width
-      height,              // height
-      upscale,            // upscale boolean
-      upscale_factor      // upscale factor
+      width,               // 幅 (width)
+      height,              // 高さ (height)
+      upscale,            // アップスケール (upscale boolean)
+      upscale_factor      // 倍率 (upscale factor)
     ]);
+    
+    console.log('Gradio predict call completed with 11 parameters');
 
     console.log('Gradio prediction completed');
     console.log('Result structure:', Object.keys(result));
