@@ -51,38 +51,44 @@ serve(async (req) => {
 
     console.log('=== PROCESSING IMAGE ===');
     
-    // Remove data URL prefix if present to get pure base64
+    // Base64をBlobに変換
     const base64Data = face_image_b64.replace(/^data:image\/[a-z]+;base64,/, '');
     console.log('Base64 data length:', base64Data.length);
 
+    // Base64をバイナリデータに変換
+    const binaryString = atob(base64Data);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
 
     console.log('=== CALLING GRADIO API ===');
     console.log('Space URL:', space_url);
     
-    // app.pyの generate 関数の引数順序に合わせる
-    const payload = {
-      data: [
-        base64Data,          // face_np (numpy array として base64)
-        prompt,              // subject (被写体説明)
-        "",                  // add_prompt (追加プロンプト)
-        negative_prompt,     // add_neg (追加ネガティブ)
-        guidance_scale,      // cfg (CFG scale)
-        ip_adapter_scale,    // ip_scale (IP-Adapter scale)
-        num_inference_steps, // steps (Steps)
-        width,               // w (幅)
-        height,              // h (高さ)
-        upscale,            // upscale (アップスケール)
-        upscale_factor      // up_factor (倍率)
-      ]
-    };
+    // FormData を使用して画像ファイルとして送信
+    const formData = new FormData();
     
-    console.log('Calling Gradio API');
+    // 画像ファイルとして追加
+    const imageBlob = new Blob([bytes], { type: 'image/jpeg' });
+    formData.append('data', JSON.stringify([
+      imageBlob,               // face_np (File/Blob として)
+      prompt,                  // subject (被写体説明)
+      "",                      // add_prompt (追加プロンプト)
+      negative_prompt,         // add_neg (追加ネガティブ)
+      guidance_scale,          // cfg (CFG scale)
+      ip_adapter_scale,        // ip_scale (IP-Adapter scale)
+      num_inference_steps,     // steps (Steps)
+      width,                   // w (幅)
+      height,                  // h (高さ)
+      upscale,                // upscale (アップスケール)
+      upscale_factor          // up_factor (倍率)
+    ]));
+    
+    console.log('Calling Gradio API with FormData');
     const apiUrl = `${space_url}/api/predict`;
     console.log('API URL:', apiUrl);
     
-    const headers = {
-      'Content-Type': 'application/json',
-    };
+    const headers = {};
     
     // HuggingFace トークンがある場合は認証ヘッダーを追加
     const hfToken = Deno.env.get('HF_TOKEN');
@@ -94,7 +100,7 @@ serve(async (req) => {
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers,
-      body: JSON.stringify(payload),
+      body: formData,
     });
     
     if (!response.ok) {
