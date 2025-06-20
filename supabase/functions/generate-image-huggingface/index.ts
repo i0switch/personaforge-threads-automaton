@@ -66,40 +66,38 @@ serve(async (req) => {
     const imageFile = new File([bytes], 'face_image.jpg', { type: 'image/jpeg' });
     console.log('Created image file, size:', imageFile.size);
 
-    console.log('=== CALLING GRADIO API DIRECTLY ===');
+    console.log('=== CALLING GRADIO API WITH JSON ===');
     console.log('Space URL:', space_url);
     
-    // Create FormData for REST API call
-    const formData = new FormData();
+    // Create JSON payload for Gradio API
+    const payload = {
+      data: [
+        face_image_b64,      // 4: 顔写真 (base64 string)
+        prompt,              // 5: 被写体説明 (textbox)
+        "",                  // 6: 追加プロンプト (textbox)
+        negative_prompt,     // 7: 追加ネガティブ (textbox)
+        guidance_scale,      // 9: CFG (slider)
+        ip_adapter_scale,    // 8: IP-Adapter scale (slider)
+        num_inference_steps, // 10: Steps (slider)
+        width,               // 11: 幅 (slider)
+        height,              // 12: 高さ (slider)
+        upscale,            // 13: アップスケール (checkbox)
+        upscale_factor      // 14: 倍率 (slider)
+      ]
+    };
     
-    // Add each parameter separately as required by Gradio API
-    formData.append('data', JSON.stringify([
-      null,                // 4: 顔写真 (will be added separately)
-      prompt,              // 5: 被写体説明 (textbox)
-      "",                  // 6: 追加プロンプト (textbox)
-      negative_prompt,     // 7: 追加ネガティブ (textbox)
-      guidance_scale,      // 9: CFG (slider)
-      ip_adapter_scale,    // 8: IP-Adapter scale (slider)
-      num_inference_steps, // 10: Steps (slider)
-      width,               // 11: 幅 (slider)
-      height,              // 12: 高さ (slider)
-      upscale,            // 13: アップスケール (checkbox)
-      upscale_factor      // 14: 倍率 (slider)
-    ]));
+    console.log('Payload created, data array length:', payload.data.length);
     
-    // Add the image file separately
-    formData.append('files', imageFile, 'face_image.jpg');
-    
-    // Call Gradio Space REST API with correct endpoint
-    const apiUrl = `${space_url}/run/predict`;
+    // Call Gradio Space REST API with JSON
+    const apiUrl = `${space_url}/api/predict`;
     console.log('Calling API URL:', apiUrl);
-    
-    // Add fn_index parameter for Gradio API
-    formData.append('fn_index', '0');
     
     const response = await fetch(apiUrl, {
       method: 'POST',
-      body: formData,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
     });
     
     if (!response.ok) {
