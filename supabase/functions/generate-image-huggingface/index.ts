@@ -56,18 +56,14 @@ serve(async (req) => {
     console.log('Base64 data length:', base64Data.length);
 
 
-    console.log('=== CALLING GRADIO API (2-STEP PROCESS) ===');
+    console.log('=== CALLING GRADIO API ===');
     console.log('Space URL:', space_url);
     
-    // Step 1: Send request to get event_id
+    // Direct API call to /gradio_api/run/predict
     const payload = {
+      fn_index: 0,
       data: [
-        {
-          name: "face_np",
-          shape: null,
-          datatype: "BYTES",
-          data: base64Data
-        },
+        base64Data,          // face_np (base64 string)
         prompt,              // 被写体説明
         "",                  // 追加プロンプト
         negative_prompt,     // 追加ネガティブ
@@ -78,14 +74,15 @@ serve(async (req) => {
         height,              // 高さ
         upscale,            // アップスケール
         upscale_factor      // 倍率
-      ]
+      ],
+      session_hash: ""
     };
     
-    console.log('Step 1: Sending request to get event_id');
-    const callUrl = `${space_url}/call/predict`;
-    console.log('Call URL:', callUrl);
+    console.log('Calling Gradio API with direct endpoint');
+    const apiUrl = `${space_url}/gradio_api/run/predict`;
+    console.log('API URL:', apiUrl);
     
-    const callResponse = await fetch(callUrl, {
+    const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -93,66 +90,18 @@ serve(async (req) => {
       body: JSON.stringify(payload),
     });
     
-    if (!callResponse.ok) {
-      const errorText = await callResponse.text();
-      console.error('Step 1 Error Response:', errorText);
-      throw new Error(`Step 1 failed: ${callResponse.status} - ${callResponse.statusText}. Response: ${errorText}`);
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('API Error Response:', errorText);
+      throw new Error(`API failed: ${response.status} - ${response.statusText}. Response: ${errorText}`);
     }
     
-    const callResult = await callResponse.json();
-    const eventId = callResult.event_id;
-    console.log('Event ID received:', eventId);
-    
-    // Step 2: Get result using streaming
-    console.log('Step 2: Getting result via streaming');
-    const resultUrl = `${space_url}/call/predict/${eventId}`;
-    console.log('Result URL:', resultUrl);
-    
-    const resultResponse = await fetch(resultUrl);
-    
-    if (!resultResponse.ok) {
-      const errorText = await resultResponse.text();
-      console.error('Step 2 Error Response:', errorText);
-      throw new Error(`Step 2 failed: ${resultResponse.status} - ${resultResponse.statusText}. Response: ${errorText}`);
-    }
-    
-    // Read the streaming response
-    const reader = resultResponse.body?.getReader();
-    const decoder = new TextDecoder();
-    let result = null;
-    let completed = false;
-    
-    if (reader) {
-      while (!completed) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        
-        const chunk = decoder.decode(value);
-        const lines = chunk.split('\n');
-        
-        for (const line of lines) {
-          if (line.startsWith('event: complete')) {
-            console.log('Stream completed!');
-            completed = true;
-          } else if (line.startsWith('data: ')) {
-            try {
-              const jsonData = line.substring(6); // Remove "data: " prefix
-              const data = JSON.parse(jsonData);
-              if (data.data && data.data[0]) {
-                result = data;
-                console.log('Result data received');
-              }
-            } catch (e) {
-              // Skip invalid JSON lines
-            }
-          }
-        }
-      }
-    }
+    const result = await response.json();
+    console.log('API response received');
     
     if (!result || !result.data || !result.data[0]) {
-      console.error('No valid result received from streaming');
-      throw new Error('No image data received from Gradio API streaming');
+      console.error('No valid result received from API');
+      throw new Error('No image data received from Gradio API');
     }
     console.log('=== PROCESSING RESPONSE ===');
     
