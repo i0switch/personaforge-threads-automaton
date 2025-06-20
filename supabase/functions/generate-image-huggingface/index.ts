@@ -70,14 +70,14 @@ serve(async (req) => {
     console.log('=== CONNECTING TO GRADIO SPACE ===');
     console.log('Connecting to space:', space_url);
     
-    const gradioClient = await client.connect(space_url);
+    const app = await client(space_url);
     console.log('Successfully connected to Gradio space');
 
     console.log('=== CALLING GRADIO PREDICT ===');
     
     // Call the predict function with parameters as array (matching API specification)
     // Order: [顔写真, 被写体説明, 追加プロンプト, 追加ネガティブ, CFG, IP-Adapter scale, Steps, 幅, 高さ, アップスケール, 倍率]
-    const result = await gradioClient.predict("/predict", [
+    const result = await app.predict("/predict", [
       imageFile,           // 4: 顔写真 (image)
       prompt,              // 5: 被写体説明 (textbox)
       "",                  // 6: 追加プロンプト (textbox)
