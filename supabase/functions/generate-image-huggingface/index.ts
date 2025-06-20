@@ -36,6 +36,7 @@ serve(async (req) => {
 
     console.log('=== VALIDATION ===');
     console.log('face_image_b64 exists:', !!face_image_b64);
+    console.log('face_image_b64 first 50 chars:', face_image_b64?.substring(0, 50));
     console.log('prompt exists:', !!prompt);
     console.log('space_url:', space_url);
 
