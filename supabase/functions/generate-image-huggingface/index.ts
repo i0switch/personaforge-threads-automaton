@@ -97,7 +97,7 @@ serve(async (req) => {
     console.log('Connected to Gradio client');
     
     // APIを呼び出し（配列形式でFile型を渡す）
-    const result = await client.predict("/predict", [
+    const result = await client.predict("predict", [
       imageFile,           // 1. face_np (File型)
       prompt,              // 2. subject
       "",                  // 3. add_prompt
