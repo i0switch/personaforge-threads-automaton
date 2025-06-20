@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { HfInference } from 'https://esm.sh/@huggingface/inference@2.3.2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -27,16 +28,12 @@ serve(async (req) => {
       ip_adapter_scale = 0.65, 
       num_inference_steps = 20,
       width = 512,
-      height = 768,
-      upscale = true,
-      upscale_factor = 2,
-      space_url = "https://i0switch-my-image-generator.hf.space"
+      height = 768
     } = requestBody;
 
     console.log('=== VALIDATION ===');
     console.log('face_image_b64 exists:', !!face_image_b64);
     console.log('prompt exists:', !!prompt);
-    console.log('space_url:', space_url);
 
     if (!face_image_b64 || !prompt) {
       console.log('Missing required fields');
@@ -49,104 +46,34 @@ serve(async (req) => {
       );
     }
 
-    console.log('=== PROCESSING IMAGE ===');
-    
-    // Remove data URL prefix if present
-    const base64Data = face_image_b64.replace(/^data:image\/[a-z]+;base64,/, '');
-    console.log('Base64 data length:', base64Data.length);
-    
-    // Convert base64 to binary
-    const binaryString = atob(base64Data);
-    const bytes = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i);
+    const hfToken = Deno.env.get('HF_TOKEN');
+    if (!hfToken) {
+      throw new Error('HF_TOKEN environment variable not set');
     }
-    console.log('Converted to bytes array, length:', bytes.length);
 
-    // Create image blob
-    const imageBlob = new Blob([bytes], { type: 'image/jpeg' });
-    console.log('Created image blob, size:', imageBlob.size);
-
-    console.log('=== CALLING GRADIO API ===');
+    console.log('=== USING HUGGING FACE INFERENCE API ===');
     
-    // Prepare data for Gradio API (matching the Python function signature)
-    const apiData = [
-      imageBlob,           // face_np (numpy array from image)
-      prompt,              // subject
-      "",                  // add_prompt (additional prompt)
-      negative_prompt,     // add_neg (additional negative prompt)
-      guidance_scale,      // cfg (guidance scale)
-      ip_adapter_scale,    // ip_scale
-      num_inference_steps, // steps
-      width,               // w
-      height,              // h
-      upscale,            // upscale
-      upscale_factor      // up_factor
-    ];
+    const hf = new HfInference(hfToken);
 
-    console.log('API data prepared, parameters count:', apiData.length);
-
-    // Create form data for Gradio
-    const formData = new FormData();
-    formData.append('data', JSON.stringify(apiData));
-
-    console.log('Sending request to Gradio API...');
-    const apiUrl = `${space_url}/api/predict`;
-    console.log('API URL:', apiUrl);
-
-    const gradioResponse = await fetch(apiUrl, {
-      method: 'POST',
-      body: formData,
+    // Use Stable Diffusion for text-to-image generation
+    const image = await hf.textToImage({
+      inputs: prompt,
+      model: 'black-forest-labs/FLUX.1-schnell',
+      parameters: {
+        guidance_scale: guidance_scale,
+        num_inference_steps: num_inference_steps,
+        width: width,
+        height: height,
+        negative_prompt: negative_prompt
+      }
     });
 
-    console.log('Gradio response status:', gradioResponse.status);
-    console.log('Gradio response headers:', Object.fromEntries(gradioResponse.headers.entries()));
+    console.log('Image generated successfully');
 
-    if (!gradioResponse.ok) {
-      const errorText = await gradioResponse.text();
-      console.error('Gradio API error:', errorText);
-      throw new Error(`Gradio API failed: ${gradioResponse.status} - ${errorText}`);
-    }
-
-    const responseData = await gradioResponse.json();
-    console.log('Gradio response structure:', Object.keys(responseData));
-    console.log('Gradio response data length:', responseData.data?.length);
-
-    if (!responseData || !responseData.data || !responseData.data[0]) {
-      console.error('Invalid response structure:', responseData);
-      throw new Error('No image data received from Gradio API');
-    }
-
-    console.log('=== PROCESSING RESPONSE ===');
-    
-    let imageData = responseData.data[0];
-    console.log('Image data type:', typeof imageData);
-    
-    if (typeof imageData === 'string') {
-      if (imageData.startsWith('/tmp/') || imageData.includes('.png') || imageData.includes('.jpg')) {
-        // It's a file path, need to download the image
-        const imagePath = imageData.startsWith('/') ? imageData : `/${imageData}`;
-        const imageUrl = `${space_url}/file=${imagePath}`;
-        
-        console.log('Downloading image from:', imageUrl);
-        const imageResponse = await fetch(imageUrl);
-        
-        if (!imageResponse.ok) {
-          console.error('Failed to download image:', imageResponse.status);
-          throw new Error(`Failed to download image: ${imageResponse.status}`);
-        }
-        
-        const imageBuffer = await imageResponse.arrayBuffer();
-        const base64Image = btoa(String.fromCharCode(...new Uint8Array(imageBuffer)));
-        imageData = `data:image/png;base64,${base64Image}`;
-        console.log('Successfully converted image to base64');
-        
-      } else if (!imageData.startsWith('data:image/')) {
-        // Raw base64, add data URL prefix
-        imageData = `data:image/png;base64,${imageData}`;
-        console.log('Added data URL prefix to base64');
-      }
-    }
+    // Convert the blob to a base64 string
+    const arrayBuffer = await image.arrayBuffer();
+    const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+    const imageData = `data:image/png;base64,${base64}`;
 
     console.log('=== SUCCESS ===');
     return new Response(
