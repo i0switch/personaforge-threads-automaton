@@ -1,5 +1,4 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { Client } from "https://esm.sh/@gradio/client@1.15.3";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -7,7 +6,7 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
-  console.log('=== GRADIO NPM CLIENT: Function called with method:', req.method);
+  console.log('=== GRADIO REST API: Function called with method:', req.method);
   
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -67,18 +66,15 @@ serve(async (req) => {
     const imageFile = new File([bytes], 'face_image.jpg', { type: 'image/jpeg' });
     console.log('Created image file, size:', imageFile.size);
 
-    console.log('=== CONNECTING TO GRADIO SPACE ===');
-    console.log('Connecting to space:', space_url);
+    console.log('=== CALLING GRADIO API DIRECTLY ===');
+    console.log('Space URL:', space_url);
     
-    const client = new Client(space_url);
-    console.log('Successfully connected to Gradio space');
-
-    console.log('=== CALLING GRADIO PREDICT ===');
+    // Create FormData for REST API call
+    const formData = new FormData();
     
-    // Call the predict function with parameters as array (matching API specification)
-    // Order: [顔写真, 被写体説明, 追加プロンプト, 追加ネガティブ, CFG, IP-Adapter scale, Steps, 幅, 高さ, アップスケール, 倍率]
-    const result = await client.predict("/predict", [
-      imageFile,           // 4: 顔写真 (image)
+    // Add each parameter separately as required by Gradio API
+    formData.append('data', JSON.stringify([
+      null,                // 4: 顔写真 (will be added separately)
       prompt,              // 5: 被写体説明 (textbox)
       "",                  // 6: 追加プロンプト (textbox)
       negative_prompt,     // 7: 追加ネガティブ (textbox)
@@ -89,9 +85,31 @@ serve(async (req) => {
       height,              // 12: 高さ (slider)
       upscale,            // 13: アップスケール (checkbox)
       upscale_factor      // 14: 倍率 (slider)
-    ]);
+    ]));
     
-    console.log('Gradio predict call completed with array parameters');
+    // Add the image file separately
+    formData.append('files', imageFile, 'face_image.jpg');
+    
+    // Call Gradio Space REST API with correct endpoint
+    const apiUrl = `${space_url}/run/predict`;
+    console.log('Calling API URL:', apiUrl);
+    
+    // Add fn_index parameter for Gradio API
+    formData.append('fn_index', '0');
+    
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      body: formData,
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('API Error Response:', errorText);
+      throw new Error(`API request failed: ${response.status} - ${response.statusText}. Response: ${errorText}`);
+    }
+    
+    const result = await response.json();
+    console.log('API response received');
 
     console.log('Gradio prediction completed');
     console.log('Result structure:', Object.keys(result));
