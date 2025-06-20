@@ -30,7 +30,7 @@ serve(async (req) => {
       height = 768,
       upscale = true,
       upscale_factor = 2,
-      space_url = "https://fffiloni-ip-adapter-faceid.hf.space"
+      space_url = "https://i0switch-my-image-generator.hf.space"
     } = requestBody;
 
     console.log('=== VALIDATION ===');
