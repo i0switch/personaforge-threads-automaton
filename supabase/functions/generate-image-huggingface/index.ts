@@ -52,17 +52,21 @@ serve(async (req) => {
 
     console.log('=== PROCESSING IMAGE ===');
     
-    // Base64をBlobに変換
-    const base64Data = face_image_b64.replace(/^data:image\/[a-z]+;base64,/, '');
-    console.log('Base64 data length:', base64Data.length);
-
-    // Base64をバイナリデータに変換してBlob作成
-    const binaryString = atob(base64Data);
-    const bytes = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i);
+    // DataURL形式のチェック
+    if (!face_image_b64.startsWith('data:image/')) {
+      console.log('Invalid image format - not a DataURL');
+      return new Response(
+        JSON.stringify({ error: "Invalid image format. Expected DataURL format." }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
     }
-    const imageBlob = new Blob([bytes], { type: 'image/jpeg' });
+
+    // DataURLからBlobを作成
+    const response = await fetch(face_image_b64);
+    const imageBlob = await response.blob();
 
     console.log('=== CALLING GRADIO CLIENT ===');
     console.log('Space URL:', space_url);
