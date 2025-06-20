@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { Client } from "https://esm.sh/@gradio/client@1.5.0";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -6,7 +7,7 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
-  console.log('=== GRADIO REST API: Function called with method:', req.method);
+  console.log('=== GRADIO CLIENT: Function called with method:', req.method);
   
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -51,73 +52,62 @@ serve(async (req) => {
 
     console.log('=== PROCESSING IMAGE ===');
     
-    // Remove data URL prefix if present to get pure base64
+    // Base64をBlobに変換
     const base64Data = face_image_b64.replace(/^data:image\/[a-z]+;base64,/, '');
     console.log('Base64 data length:', base64Data.length);
 
-    console.log('=== CALLING GRADIO API ===');
+    // Base64をバイナリデータに変換してBlob作成
+    const binaryString = atob(base64Data);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    const imageBlob = new Blob([bytes], { type: 'image/jpeg' });
+
+    console.log('=== CALLING GRADIO CLIENT ===');
     console.log('Space URL:', space_url);
     
-    // 正しいGradio APIエンドポイントとデータ形式を使用
-    const payload = {
-      data: [
-        base64Data,          // faceBase64 (純粋なbase64文字列)
-        prompt,              // subject
-        "",                  // addPrompt (追加プロンプト)
-        negative_prompt,     // addNeg
-        guidance_scale,      // cfg
-        ip_adapter_scale,    // ipScale
-        num_inference_steps, // steps
-        width,               // width
-        height,              // height
-        upscale,            // upscale
-        upscale_factor      // upFactor
-      ]
-    };
-    
-    console.log('Calling Gradio API with correct format');
-    const apiUrl = `${space_url}/run/predict`;
-    console.log('API URL:', apiUrl);
-    
-    const headers = {
-      'Content-Type': 'application/json',
-    };
-    
-    // HuggingFace トークンがある場合は認証ヘッダーを追加
+    // HuggingFace トークンの設定
     const hfToken = Deno.env.get('HF_TOKEN');
+    const clientOptions = {};
     if (hfToken) {
       console.log('Using HF_TOKEN for authentication');
-      headers['Authorization'] = `Bearer ${hfToken}`;
+      clientOptions.hf_token = hfToken;
     }
     
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(payload),
+    // Gradio Clientを使用して接続
+    const client = await Client.connect("i0switch/my-image-generator", clientOptions);
+    console.log('Connected to Gradio client');
+    
+    // APIを呼び出し
+    const result = await client.predict("/predict", { 
+      face_np: imageBlob,
+      subject: prompt,
+      add_prompt: "",
+      add_neg: negative_prompt,
+      cfg: guidance_scale,
+      ip_scale: ip_adapter_scale,
+      steps: num_inference_steps,
+      w: width,
+      h: height,
+      upscale: upscale,
+      up_factor: upscale_factor,
     });
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('API Error Response:', errorText);
-      throw new Error(`API failed: ${response.status} - ${response.statusText}. Response: ${errorText}`);
-    }
-    
-    const result = await response.json();
-    console.log('API response received');
-    console.log('Response structure:', Object.keys(result));
+
+    console.log('=== PROCESSING RESPONSE ===');
+    console.log('Result data:', result.data);
     
     if (!result || !result.data || !result.data[0]) {
-      console.error('No valid result received from API');
+      console.error('No valid result received from Gradio');
       throw new Error('No image data received from Gradio API');
     }
-    console.log('=== PROCESSING RESPONSE ===');
     
     let imageData = result.data[0];
     console.log('Image data type:', typeof imageData);
-    console.log('Image data preview:', typeof imageData === 'string' ? imageData.substring(0, 100) : 'Not a string');
     
+    // 結果の処理
     if (typeof imageData === 'object' && imageData.url) {
-      // It's an object with URL property
+      // URLの場合は画像をダウンロード
       const imageUrl = imageData.url;
       console.log('Downloading image from URL:', imageUrl);
       
@@ -133,7 +123,7 @@ serve(async (req) => {
       
     } else if (typeof imageData === 'string') {
       if (imageData.startsWith('http')) {
-        // It's a URL, download it
+        // URLの場合
         console.log('Downloading image from URL:', imageData);
         const imageResponse = await fetch(imageData);
         
@@ -147,7 +137,7 @@ serve(async (req) => {
         console.log('Successfully converted image to base64');
         
       } else if (!imageData.startsWith('data:image/')) {
-        // Raw base64, add data URL prefix
+        // Raw base64の場合
         imageData = `data:image/png;base64,${imageData}`;
         console.log('Added data URL prefix to base64');
       }
