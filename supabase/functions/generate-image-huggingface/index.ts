@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { Client } from "https://esm.sh/@gradio/client@1.4.0";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -6,7 +7,7 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
-  console.log('=== GRADIO CLIENT VERSION: Function called with method:', req.method);
+  console.log('=== GRADIO NPM CLIENT: Function called with method:', req.method);
   
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -66,21 +67,10 @@ serve(async (req) => {
     const imageFile = new File([bytes], 'face_image.jpg', { type: 'image/jpeg' });
     console.log('Created image file, size:', imageFile.size);
 
-    console.log('=== LOADING GRADIO CLIENT ===');
-    
-    // Load Gradio client from CDN (it will be available as window.gradio.Client)
-    await import("https://cdn.jsdelivr.net/npm/@gradio/client/dist/index.min.js");
-    
-    // Access the client through globalThis (Deno's equivalent of window)
-    const gradioClient = (globalThis as any).gradio?.Client;
-    if (!gradioClient) {
-      throw new Error('Gradio client not loaded properly');
-    }
-    
     console.log('=== CONNECTING TO GRADIO SPACE ===');
     console.log('Connecting to space:', space_url);
     
-    const client = await gradioClient.connect(space_url);
+    const client = await Client.connect(space_url);
     console.log('Successfully connected to Gradio space');
 
     console.log('=== CALLING GRADIO PREDICT ===');
