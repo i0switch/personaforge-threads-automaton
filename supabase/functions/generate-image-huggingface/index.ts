@@ -1,5 +1,4 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { HfInference } from 'https://esm.sh/@huggingface/inference@2.3.2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -7,7 +6,7 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
-  console.log('=== NEW VERSION: Function called with method:', req.method);
+  console.log('=== GRADIO CLIENT VERSION: Function called with method:', req.method);
   
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -28,12 +27,16 @@ serve(async (req) => {
       ip_adapter_scale = 0.65, 
       num_inference_steps = 20,
       width = 512,
-      height = 768
+      height = 768,
+      upscale = true,
+      upscale_factor = 2,
+      space_url = "https://fffiloni-ip-adapter-faceid.hf.space"
     } = requestBody;
 
     console.log('=== VALIDATION ===');
     console.log('face_image_b64 exists:', !!face_image_b64);
     console.log('prompt exists:', !!prompt);
+    console.log('space_url:', space_url);
 
     if (!face_image_b64 || !prompt) {
       console.log('Missing required fields');
@@ -46,34 +49,94 @@ serve(async (req) => {
       );
     }
 
-    const hfToken = Deno.env.get('HF_TOKEN');
-    if (!hfToken) {
-      throw new Error('HF_TOKEN environment variable not set');
-    }
-
-    console.log('=== USING HUGGING FACE INFERENCE API ===');
+    console.log('=== PROCESSING IMAGE ===');
     
-    const hf = new HfInference(hfToken);
+    // Remove data URL prefix if present to get pure base64
+    const base64Data = face_image_b64.replace(/^data:image\/[a-z]+;base64,/, '');
+    console.log('Base64 data length:', base64Data.length);
 
-    // Use Stable Diffusion for text-to-image generation
-    const image = await hf.textToImage({
-      inputs: prompt,
-      model: 'black-forest-labs/FLUX.1-schnell',
-      parameters: {
-        guidance_scale: guidance_scale,
-        num_inference_steps: num_inference_steps,
-        width: width,
-        height: height,
-        negative_prompt: negative_prompt
-      }
+    console.log('=== IMPORTING GRADIO CLIENT ===');
+    
+    // Import Gradio client dynamically
+    const { Client } = await import("https://cdn.jsdelivr.net/npm/@gradio/client/dist/index.min.js");
+    
+    console.log('=== CONNECTING TO GRADIO SPACE ===');
+    console.log('Connecting to space:', space_url);
+    
+    const client = await Client.connect(space_url);
+    console.log('Successfully connected to Gradio space');
+
+    console.log('=== CALLING GRADIO PREDICT ===');
+    
+    // Prepare the image data URL for Gradio
+    const imageDataUrl = face_image_b64.startsWith('data:') ? face_image_b64 : `data:image/jpeg;base64,${face_image_b64}`;
+    
+    // Call the predict function with proper parameters
+    const result = await client.predict("/generate", {
+      face_image: imageDataUrl,
+      prompt: prompt,
+      negative_prompt: negative_prompt,
+      guidance_scale: guidance_scale,
+      ip_adapter_scale: ip_adapter_scale,
+      num_inference_steps: num_inference_steps,
+      width: width,
+      height: height,
+      upscale: upscale,
+      upscale_factor: upscale_factor
     });
 
-    console.log('Image generated successfully');
+    console.log('Gradio prediction completed');
+    console.log('Result structure:', Object.keys(result));
+    console.log('Result data type:', typeof result.data);
+    console.log('Result data length:', result.data?.length);
 
-    // Convert the blob to a base64 string
-    const arrayBuffer = await image.arrayBuffer();
-    const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
-    const imageData = `data:image/png;base64,${base64}`;
+    if (!result || !result.data || !result.data[0]) {
+      console.error('Invalid result structure:', result);
+      throw new Error('No image data received from Gradio API');
+    }
+
+    console.log('=== PROCESSING RESPONSE ===');
+    
+    let imageData = result.data[0];
+    console.log('Image data type:', typeof imageData);
+    console.log('Image data preview:', typeof imageData === 'string' ? imageData.substring(0, 100) : 'Not a string');
+    
+    if (typeof imageData === 'object' && imageData.url) {
+      // It's an object with URL property
+      const imageUrl = imageData.url;
+      console.log('Downloading image from URL:', imageUrl);
+      
+      const imageResponse = await fetch(imageUrl);
+      if (!imageResponse.ok) {
+        throw new Error(`Failed to download image: ${imageResponse.status}`);
+      }
+      
+      const imageBuffer = await imageResponse.arrayBuffer();
+      const base64Image = btoa(String.fromCharCode(...new Uint8Array(imageBuffer)));
+      imageData = `data:image/png;base64,${base64Image}`;
+      console.log('Successfully converted image to base64');
+      
+    } else if (typeof imageData === 'string') {
+      if (imageData.startsWith('http')) {
+        // It's a URL, download it
+        console.log('Downloading image from URL:', imageData);
+        const imageResponse = await fetch(imageData);
+        
+        if (!imageResponse.ok) {
+          throw new Error(`Failed to download image: ${imageResponse.status}`);
+        }
+        
+        const imageBuffer = await imageResponse.arrayBuffer();
+        const base64Image = btoa(String.fromCharCode(...new Uint8Array(imageBuffer)));
+        imageData = `data:image/png;base64,${base64Image}`;
+        console.log('Successfully converted image to base64');
+        
+      } else if (!imageData.startsWith('data:image/')) {
+        // Raw base64, add data URL prefix
+        imageData = `data:image/png;base64,${imageData}`;
+        console.log('Added data URL prefix to base64');
+      }
+    }
 
     console.log('=== SUCCESS ===');
     return new Response(
