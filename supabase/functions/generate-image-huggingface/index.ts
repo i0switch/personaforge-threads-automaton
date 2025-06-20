@@ -66,8 +66,17 @@ serve(async (req) => {
     }
 
     // DataURLからBlobを作成
-    const response = await fetch(face_image_b64);
-    const imageBlob = await response.blob();
+    console.log('Converting DataURL to Blob...');
+    const base64Data = face_image_b64.split(',')[1];
+    const mimeType = face_image_b64.split(',')[0].split(':')[1].split(';')[0];
+    
+    const binaryString = atob(base64Data);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    const imageBlob = new Blob([bytes], { type: mimeType });
+    console.log('Successfully converted to Blob, size:', imageBlob.size);
 
     console.log('=== CALLING GRADIO CLIENT ===');
     console.log('Space URL:', space_url);
