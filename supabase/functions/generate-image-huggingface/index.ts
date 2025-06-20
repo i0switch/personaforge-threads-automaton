@@ -96,21 +96,25 @@ serve(async (req) => {
     const client = await Client.connect("i0switch/my-image-generator", clientOptions);
     console.log('Connected to Gradio client');
     
-    // APIを呼び出し（Pythonコードと同じ形式で、api_nameをオプションとして指定）
-    const result = await client.predict(
-      imageFile,           // 1. face_np (Image型、required)
-      prompt,              // 2. subject (str、required)
-      "",                  // 3. add_prompt (str、required、空文字列OK)
-      negative_prompt,     // 4. add_neg (str、required)
-      guidance_scale,      // 5. cfg (float、default: 6)
-      ip_adapter_scale,    // 6. ip_scale (float、default: 0.65)
-      num_inference_steps, // 7. steps (float、default: 20)
-      width,               // 8. w (float、default: 512)
-      height,              // 9. h (float、default: 768)
-      upscale,             // 10. upscale (bool、default: True)
-      upscale_factor,      // 11. up_factor (float、default: 2)
-      { api_name: "/predict" }  // Pythonコードと同様にapi_nameをオプションとして指定
-    );
+    // クライアントのエンドポイント情報をログ出力
+    console.log('Client endpoints:', Object.keys(client.endpoints || {}));
+    console.log('Client view_api:', typeof client.view_api);
+    
+    // JavaScriptのGradio Clientは配列形式で引数を渡す必要がある可能性
+    console.log('Attempting to call predict with array parameters...');
+    const result = await client.predict("/predict", {
+      face_np: imageFile,           // 1. face_np (Image型、required)
+      subject: prompt,              // 2. subject (str、required)
+      add_prompt: "",               // 3. add_prompt (str、required、空文字列OK)
+      add_neg: negative_prompt,     // 4. add_neg (str、required)
+      cfg: guidance_scale,          // 5. cfg (float、default: 6)
+      ip_scale: ip_adapter_scale,   // 6. ip_scale (float、default: 0.65)
+      steps: num_inference_steps,   // 7. steps (float、default: 20)
+      w: width,                     // 8. w (float、default: 512)
+      h: height,                    // 9. h (float、default: 768)
+      upscale: upscale,             // 10. upscale (bool、default: True)
+      up_factor: upscale_factor     // 11. up_factor (float、default: 2)
+    });
 
     console.log('=== PROCESSING RESPONSE ===');
     console.log('Result data:', result.data);
