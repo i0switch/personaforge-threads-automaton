@@ -55,35 +55,50 @@ serve(async (req) => {
     const base64Data = face_image_b64.replace(/^data:image\/[a-z]+;base64,/, '');
     console.log('Base64 data length:', base64Data.length);
 
-    console.log('=== IMPORTING GRADIO CLIENT ===');
+    // Convert base64 to binary for file creation
+    const binaryString = atob(base64Data);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
     
-    // Import Gradio client dynamically
-    const { Client } = await import("https://cdn.jsdelivr.net/npm/@gradio/client/dist/index.min.js");
+    // Create a File object from the image data
+    const imageFile = new File([bytes], 'face_image.jpg', { type: 'image/jpeg' });
+    console.log('Created image file, size:', imageFile.size);
+
+    console.log('=== LOADING GRADIO CLIENT ===');
+    
+    // Load Gradio client from CDN (it will be available as window.gradio.Client)
+    await import("https://cdn.jsdelivr.net/npm/@gradio/client/dist/index.min.js");
+    
+    // Access the client through globalThis (Deno's equivalent of window)
+    const gradioClient = (globalThis as any).gradio?.Client;
+    if (!gradioClient) {
+      throw new Error('Gradio client not loaded properly');
+    }
     
     console.log('=== CONNECTING TO GRADIO SPACE ===');
     console.log('Connecting to space:', space_url);
     
-    const client = await Client.connect(space_url);
+    const client = await gradioClient.connect(space_url);
     console.log('Successfully connected to Gradio space');
 
     console.log('=== CALLING GRADIO PREDICT ===');
     
-    // Prepare the image data URL for Gradio
-    const imageDataUrl = face_image_b64.startsWith('data:') ? face_image_b64 : `data:image/jpeg;base64,${face_image_b64}`;
-    
-    // Call the predict function with proper parameters
-    const result = await client.predict("/generate", {
-      face_image: imageDataUrl,
-      prompt: prompt,
-      negative_prompt: negative_prompt,
-      guidance_scale: guidance_scale,
-      ip_adapter_scale: ip_adapter_scale,
-      num_inference_steps: num_inference_steps,
-      width: width,
-      height: height,
-      upscale: upscale,
-      upscale_factor: upscale_factor
-    });
+    // Call the predict function with parameters as array (matching Gradio app.py order)
+    const result = await client.predict("/predict", [
+      imageFile,           // face image file
+      prompt,              // subject/prompt
+      "",                  // additional prompt (empty)
+      negative_prompt,     // negative prompt
+      guidance_scale,      // guidance scale
+      ip_adapter_scale,    // ip adapter scale
+      num_inference_steps, // steps
+      width,               // width
+      height,              // height
+      upscale,            // upscale boolean
+      upscale_factor      // upscale factor
+    ]);
 
     console.log('Gradio prediction completed');
     console.log('Result structure:', Object.keys(result));
