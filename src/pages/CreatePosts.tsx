@@ -91,7 +91,7 @@ const CreatePosts = () => {
           canvas.height = img.height;
           ctx?.drawImage(img, 0, 0);
           try {
-            const base64 = canvas.toDataURL('image/jpeg');
+            const base64 = canvas.toDataURL('image/jpeg').split(',')[1];
             setReferenceImage(base64);
           } catch (error) {
             console.error('Failed to convert persona image to base64:', error);
@@ -419,12 +419,13 @@ const CreatePosts = () => {
     try {
       const { data, error } = await supabase.functions.invoke('generate-image-huggingface', {
         body: {
-          face_image_b64: referenceImage,
+          space_url: ngrokUrl.trim(),
+          face_image: referenceImage,
           prompt: imagePrompt,
           negative_prompt: "glasses, hat",
           guidance_scale: guidanceScale,
           ip_adapter_scale: ipAdapterScale,
-          num_inference_steps: numSteps,
+          num_steps: numSteps,
           width: imageWidth,
           height: imageHeight
         }
@@ -471,7 +472,9 @@ const CreatePosts = () => {
       const reader = new FileReader();
       reader.onload = (e) => {
         const base64 = e.target?.result as string;
-        setReferenceImage(base64);
+        // Remove data:image/...;base64, prefix to get just the base64 string
+        const base64Data = base64.split(',')[1];
+        setReferenceImage(base64Data);
       };
       reader.readAsDataURL(file);
     }
