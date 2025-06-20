@@ -59,20 +59,20 @@ serve(async (req) => {
     console.log('=== CALLING GRADIO API ===');
     console.log('Space URL:', space_url);
     
-    // 正しいエンドポイント /gradio_api/run/predict を使用
+    // app.pyの generate 関数の引数順序に合わせる
     const payload = {
       data: [
-        base64Data,          // face_np (base64 string)
-        prompt,              // 被写体説明
-        "",                  // 追加プロンプト
-        negative_prompt,     // 追加ネガティブ
-        guidance_scale,      // CFG
-        ip_adapter_scale,    // IP-Adapter scale
-        num_inference_steps, // Steps
-        width,               // 幅
-        height,              // 高さ
-        upscale,            // アップスケール
-        upscale_factor      // 倍率
+        base64Data,          // face_np (numpy array として base64)
+        prompt,              // subject (被写体説明)
+        "",                  // add_prompt (追加プロンプト)
+        negative_prompt,     // add_neg (追加ネガティブ)
+        guidance_scale,      // cfg (CFG scale)
+        ip_adapter_scale,    // ip_scale (IP-Adapter scale)
+        num_inference_steps, // steps (Steps)
+        width,               // w (幅)
+        height,              // h (高さ)
+        upscale,            // upscale (アップスケール)
+        upscale_factor      // up_factor (倍率)
       ]
     };
     
