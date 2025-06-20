@@ -80,11 +80,20 @@ serve(async (req) => {
     const apiUrl = `${space_url}/api/predict`;
     console.log('API URL:', apiUrl);
     
+    const headers = {
+      'Content-Type': 'application/json',
+    };
+    
+    // HuggingFace トークンがある場合は認証ヘッダーを追加
+    const hfToken = Deno.env.get('HF_TOKEN');
+    if (hfToken) {
+      console.log('Using HF_TOKEN for authentication');
+      headers['Authorization'] = `Bearer ${hfToken}`;
+    }
+    
     const response = await fetch(apiUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers,
       body: JSON.stringify(payload),
     });
     
