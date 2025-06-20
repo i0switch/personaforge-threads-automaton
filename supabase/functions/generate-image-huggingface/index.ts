@@ -31,7 +31,7 @@ serve(async (req) => {
       height = 768,
       upscale = true,
       upscale_factor = 2,
-      space_url = "https://i0switch-my-image-generator.hf.space"
+      space_url = "i0switch/my-image-generator"
     } = requestBody;
 
     console.log('=== VALIDATION ===');
