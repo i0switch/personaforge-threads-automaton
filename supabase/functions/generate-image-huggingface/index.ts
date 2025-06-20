@@ -96,23 +96,8 @@ serve(async (req) => {
     const client = await Client.connect("i0switch/my-image-generator", clientOptions);
     console.log('Connected to Gradio client');
     
-    // デバッグ: 利用可能なAPIを確認
-    try {
-      console.log('=== CHECKING AVAILABLE APIs ===');
-      if (typeof client.view_api === 'function') {
-        const apiInfo = await client.view_api();
-        console.log('API Info:', apiInfo);
-      } else {
-        console.log('view_api method not available, checking client object...');
-        console.log('Client methods:', Object.getOwnPropertyNames(client));
-        console.log('Client prototype methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(client)));
-      }
-    } catch (error) {
-      console.log('Error checking API info:', error);
-    }
-    
     // APIを呼び出し（配列形式で引数の順番通りに渡す）
-    const result = await client.predict("/predict", [
+    const result = await client.predict("predict", [
       imageFile,           // 1. face_np (File型)
       prompt,              // 2. subject
       "",                  // 3. add_prompt
