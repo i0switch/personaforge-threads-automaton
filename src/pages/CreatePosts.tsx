@@ -91,7 +91,7 @@ const CreatePosts = () => {
           canvas.height = img.height;
           ctx?.drawImage(img, 0, 0);
           try {
-            const base64 = canvas.toDataURL('image/jpeg').split(',')[1];
+            const base64 = canvas.toDataURL('image/jpeg');
             setReferenceImage(base64);
           } catch (error) {
             console.error('Failed to convert persona image to base64:', error);
@@ -471,9 +471,7 @@ const CreatePosts = () => {
       const reader = new FileReader();
       reader.onload = (e) => {
         const base64 = e.target?.result as string;
-        // Remove data:image/...;base64, prefix to get just the base64 string
-        const base64Data = base64.split(',')[1];
-        setReferenceImage(base64Data);
+        setReferenceImage(base64);
       };
       reader.readAsDataURL(file);
     }
