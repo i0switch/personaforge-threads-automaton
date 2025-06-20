@@ -56,10 +56,10 @@ serve(async (req) => {
     console.log('Base64 data length:', base64Data.length);
 
 
-    console.log('=== CALLING GRADIO API (2-STEP PROCESS) ===');
+    console.log('=== CALLING GRADIO API ===');
     console.log('Space URL:', space_url);
     
-    // Step 1: POST で event_id を取得
+    // 正しいエンドポイント /gradio_api/run/predict を使用
     const payload = {
       data: [
         base64Data,          // face_np (base64 string)
@@ -76,11 +76,11 @@ serve(async (req) => {
       ]
     };
     
-    console.log('Step 1: POST request to get event_id');
-    const postUrl = `${space_url}/run/predict`;
-    console.log('POST URL:', postUrl);
+    console.log('Calling Gradio API with correct endpoint');
+    const apiUrl = `${space_url}/gradio_api/run/predict`;
+    console.log('API URL:', apiUrl);
     
-    const postResponse = await fetch(postUrl, {
+    const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -88,70 +88,18 @@ serve(async (req) => {
       body: JSON.stringify(payload),
     });
     
-    if (!postResponse.ok) {
-      const errorText = await postResponse.text();
-      console.error('Step 1 Error Response:', errorText);
-      throw new Error(`Step 1 failed: ${postResponse.status} - ${postResponse.statusText}. Response: ${errorText}`);
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('API Error Response:', errorText);
+      throw new Error(`API failed: ${response.status} - ${response.statusText}. Response: ${errorText}`);
     }
     
-    const postResult = await postResponse.json();
-    const eventId = postResult.event_id;
-    console.log('Event ID received:', eventId);
-    
-    // Step 2: GET で結果取得 (streaming)
-    console.log('Step 2: GET request for result');
-    const getUrl = `${space_url}/run/predict/${eventId}`;
-    console.log('GET URL:', getUrl);
-    
-    const getResponse = await fetch(getUrl, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      }
-    });
-    
-    if (!getResponse.ok) {
-      const errorText = await getResponse.text();
-      console.error('Step 2 Error Response:', errorText);
-      throw new Error(`Step 2 failed: ${getResponse.status} - ${getResponse.statusText}. Response: ${errorText}`);
-    }
-    
-    // Read the streaming response
-    const reader = getResponse.body?.getReader();
-    const decoder = new TextDecoder();
-    let result = null;
-    
-    if (reader) {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        
-        const chunk = decoder.decode(value);
-        const lines = chunk.split('\n');
-        
-        for (const line of lines) {
-          if (line.startsWith('data:')) {
-            try {
-              const jsonData = line.replace(/^data:\s*/, '').trim();
-              if (jsonData) {
-                const data = JSON.parse(jsonData);
-                if (data.data && data.data[0]) {
-                  result = data;
-                  console.log('Result data received');
-                  break;
-                }
-              }
-            } catch (e) {
-              console.log('Skipping invalid JSON line:', line);
-            }
-          }
-        }
-        if (result) break;
-      }
-    }
+    const result = await response.json();
+    console.log('API response received');
+    console.log('Response structure:', Object.keys(result));
     
     if (!result || !result.data || !result.data[0]) {
-      console.error('No valid result received from streaming');
+      console.error('No valid result received from API');
       throw new Error('No image data received from Gradio API');
     }
     console.log('=== PROCESSING RESPONSE ===');
