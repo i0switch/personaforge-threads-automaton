@@ -65,8 +65,8 @@ serve(async (req) => {
       );
     }
 
-    // DataURLからBlobを作成
-    console.log('Converting DataURL to Blob...');
+    // DataURLからFileを作成
+    console.log('Converting DataURL to File...');
     const base64Data = face_image_b64.split(',')[1];
     const mimeType = face_image_b64.split(',')[0].split(':')[1].split(';')[0];
     
@@ -76,7 +76,10 @@ serve(async (req) => {
       bytes[i] = binaryString.charCodeAt(i);
     }
     const imageBlob = new Blob([bytes], { type: mimeType });
-    console.log('Successfully converted to Blob, size:', imageBlob.size);
+    
+    // BlobをFileに変換（Gradio APIはFile型を期待している）
+    const imageFile = new File([imageBlob], "face.png", { type: mimeType });
+    console.log('Successfully converted to File, size:', imageFile.size, 'type:', imageFile.type);
 
     console.log('=== CALLING GRADIO CLIENT ===');
     console.log('Space URL:', space_url);
@@ -93,9 +96,9 @@ serve(async (req) => {
     const client = await Client.connect("i0switch/my-image-generator", clientOptions);
     console.log('Connected to Gradio client');
     
-    // APIを呼び出し（配列形式でパラメータを渡す）
+    // APIを呼び出し（配列形式でFile型を渡す）
     const result = await client.predict("/predict", [
-      imageBlob,           // 1. face_np
+      imageFile,           // 1. face_np (File型)
       prompt,              // 2. subject
       "",                  // 3. add_prompt
       negative_prompt,     // 4. add_neg
