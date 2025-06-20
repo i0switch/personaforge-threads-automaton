@@ -55,44 +55,37 @@ serve(async (req) => {
     const base64Data = face_image_b64.replace(/^data:image\/[a-z]+;base64,/, '');
     console.log('Base64 data length:', base64Data.length);
 
-    // Convert base64 to binary for file creation
-    const binaryString = atob(base64Data);
-    const bytes = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i);
-    }
-    
-    // Create a File object from the image data
-    const imageFile = new File([bytes], 'face_image.jpg', { type: 'image/jpeg' });
-    console.log('Created image file, size:', imageFile.size);
 
-    console.log('=== CALLING GRADIO API WITH JSON ===');
+    console.log('=== CALLING GRADIO API (2-STEP PROCESS) ===');
     console.log('Space URL:', space_url);
     
-    // Create JSON payload for Gradio API
+    // Step 1: Send request to get event_id
     const payload = {
       data: [
-        face_image_b64,      // 4: 顔写真 (base64 string)
-        prompt,              // 5: 被写体説明 (textbox)
-        "",                  // 6: 追加プロンプト (textbox)
-        negative_prompt,     // 7: 追加ネガティブ (textbox)
-        guidance_scale,      // 9: CFG (slider)
-        ip_adapter_scale,    // 8: IP-Adapter scale (slider)
-        num_inference_steps, // 10: Steps (slider)
-        width,               // 11: 幅 (slider)
-        height,              // 12: 高さ (slider)
-        upscale,            // 13: アップスケール (checkbox)
-        upscale_factor      // 14: 倍率 (slider)
+        {
+          name: "face_np",
+          shape: null,
+          datatype: "BYTES",
+          data: base64Data
+        },
+        prompt,              // 被写体説明
+        "",                  // 追加プロンプト
+        negative_prompt,     // 追加ネガティブ
+        guidance_scale,      // CFG
+        ip_adapter_scale,    // IP-Adapter scale
+        num_inference_steps, // Steps
+        width,               // 幅
+        height,              // 高さ
+        upscale,            // アップスケール
+        upscale_factor      // 倍率
       ]
     };
     
-    console.log('Payload created, data array length:', payload.data.length);
+    console.log('Step 1: Sending request to get event_id');
+    const callUrl = `${space_url}/call/predict`;
+    console.log('Call URL:', callUrl);
     
-    // Call Gradio Space REST API with JSON
-    const apiUrl = `${space_url}/api/predict`;
-    console.log('Calling API URL:', apiUrl);
-    
-    const response = await fetch(apiUrl, {
+    const callResponse = await fetch(callUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -100,25 +93,67 @@ serve(async (req) => {
       body: JSON.stringify(payload),
     });
     
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('API Error Response:', errorText);
-      throw new Error(`API request failed: ${response.status} - ${response.statusText}. Response: ${errorText}`);
+    if (!callResponse.ok) {
+      const errorText = await callResponse.text();
+      console.error('Step 1 Error Response:', errorText);
+      throw new Error(`Step 1 failed: ${callResponse.status} - ${callResponse.statusText}. Response: ${errorText}`);
     }
     
-    const result = await response.json();
-    console.log('API response received');
-
-    console.log('Gradio prediction completed');
-    console.log('Result structure:', Object.keys(result));
-    console.log('Result data type:', typeof result.data);
-    console.log('Result data length:', result.data?.length);
-
-    if (!result || !result.data || !result.data[0]) {
-      console.error('Invalid result structure:', result);
-      throw new Error('No image data received from Gradio API');
+    const callResult = await callResponse.json();
+    const eventId = callResult.event_id;
+    console.log('Event ID received:', eventId);
+    
+    // Step 2: Get result using streaming
+    console.log('Step 2: Getting result via streaming');
+    const resultUrl = `${space_url}/call/predict/${eventId}`;
+    console.log('Result URL:', resultUrl);
+    
+    const resultResponse = await fetch(resultUrl);
+    
+    if (!resultResponse.ok) {
+      const errorText = await resultResponse.text();
+      console.error('Step 2 Error Response:', errorText);
+      throw new Error(`Step 2 failed: ${resultResponse.status} - ${resultResponse.statusText}. Response: ${errorText}`);
     }
-
+    
+    // Read the streaming response
+    const reader = resultResponse.body?.getReader();
+    const decoder = new TextDecoder();
+    let result = null;
+    let completed = false;
+    
+    if (reader) {
+      while (!completed) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+        
+        for (const line of lines) {
+          if (line.startsWith('event: complete')) {
+            console.log('Stream completed!');
+            completed = true;
+          } else if (line.startsWith('data: ')) {
+            try {
+              const jsonData = line.substring(6); // Remove "data: " prefix
+              const data = JSON.parse(jsonData);
+              if (data.data && data.data[0]) {
+                result = data;
+                console.log('Result data received');
+              }
+            } catch (e) {
+              // Skip invalid JSON lines
+            }
+          }
+        }
+      }
+    }
+    
+    if (!result || !result.data || !result.data[0]) {
+      console.error('No valid result received from streaming');
+      throw new Error('No image data received from Gradio API streaming');
+    }
     console.log('=== PROCESSING RESPONSE ===');
     
     let imageData = result.data[0];
