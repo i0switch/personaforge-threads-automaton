@@ -75,22 +75,23 @@ serve(async (req) => {
 
     console.log('=== CALLING GRADIO PREDICT ===');
     
-    // Call the predict function with parameters as object (matching API specification)
-    const result = await gradioClient.predict("/predict", {
-      face_np: imageFile,           // 顔画像 (File object)
-      subject: prompt,              // 被写体説明 (subject description)
-      add_prompt: "",               // 追加プロンプト (additional prompt - empty)
-      add_neg: negative_prompt,     // 追加ネガティブ (additional negative)
-      cfg: guidance_scale,          // CFG (guidance scale)
-      ip_scale: ip_adapter_scale,   // IP-Adapter scale
-      steps: num_inference_steps,   // steps
-      w: width,                     // 幅 (width)
-      h: height,                    // 高さ (height)
-      upscale: upscale,            // アップスケール (upscale boolean)
-      up_factor: upscale_factor    // 倍率 (upscale factor)
-    });
+    // Call the predict function with parameters as array (matching API specification)
+    // Order: [顔写真, 被写体説明, 追加プロンプト, 追加ネガティブ, CFG, IP-Adapter scale, Steps, 幅, 高さ, アップスケール, 倍率]
+    const result = await gradioClient.predict("/predict", [
+      imageFile,           // 4: 顔写真 (image)
+      prompt,              // 5: 被写体説明 (textbox)
+      "",                  // 6: 追加プロンプト (textbox)
+      negative_prompt,     // 7: 追加ネガティブ (textbox)
+      guidance_scale,      // 9: CFG (slider)
+      ip_adapter_scale,    // 8: IP-Adapter scale (slider)
+      num_inference_steps, // 10: Steps (slider)
+      width,               // 11: 幅 (slider)
+      height,              // 12: 高さ (slider)
+      upscale,            // 13: アップスケール (checkbox)
+      upscale_factor      // 14: 倍率 (slider)
+    ]);
     
-    console.log('Gradio predict call completed with object parameters');
+    console.log('Gradio predict call completed with array parameters');
 
     console.log('Gradio prediction completed');
     console.log('Result structure:', Object.keys(result));
