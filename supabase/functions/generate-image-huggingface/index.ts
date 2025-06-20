@@ -76,8 +76,8 @@ serve(async (req) => {
       ]
     };
     
-    console.log('Calling Gradio API with correct endpoint');
-    const apiUrl = `${space_url}/gradio_api/run/predict`;
+    console.log('Calling Gradio API');
+    const apiUrl = `${space_url}/api/predict`;
     console.log('API URL:', apiUrl);
     
     const response = await fetch(apiUrl, {
