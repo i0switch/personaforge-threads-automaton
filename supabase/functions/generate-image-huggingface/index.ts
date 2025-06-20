@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { client } from "https://esm.sh/@gradio/client@0.19.1";
+import { Client } from "https://esm.sh/@gradio/client@1.15.3";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -70,7 +70,7 @@ serve(async (req) => {
     console.log('=== CONNECTING TO GRADIO SPACE ===');
     console.log('Connecting to space:', space_url);
     
-    const app = await client(space_url);
+    const app = new Client(space_url);
     console.log('Successfully connected to Gradio space');
 
     console.log('=== CALLING GRADIO PREDICT ===');
