@@ -96,20 +96,23 @@ serve(async (req) => {
     const client = await Client.connect("i0switch/my-image-generator", clientOptions);
     console.log('Connected to Gradio client');
     
-    // APIを呼び出し（配列形式でFile型を渡す）
-    const result = await client.predict("predict", [
-      imageFile,           // 1. face_np (File型)
-      prompt,              // 2. subject
-      "",                  // 3. add_prompt
-      negative_prompt,     // 4. add_neg
-      guidance_scale,      // 5. cfg
-      ip_adapter_scale,    // 6. ip_scale
-      num_inference_steps, // 7. steps
-      width,               // 8. w
-      height,              // 9. h
-      upscale,             // 10. upscale
-      upscale_factor       // 11. up_factor
-    ]);
+    // APIを呼び出し（api_nameを指定してオブジェクト形式で呼び出し）
+    const result = await client.predict({
+      fn_index: 0, // または適切なindex
+      inputs: [
+        imageFile,           // face_np (File型)
+        prompt,              // subject
+        "",                  // add_prompt
+        negative_prompt,     // add_neg
+        guidance_scale,      // cfg
+        ip_adapter_scale,    // ip_scale
+        num_inference_steps, // steps
+        width,               // w
+        height,              // h
+        upscale,             // upscale
+        upscale_factor       // up_factor
+      ]
+    });
 
     console.log('=== PROCESSING RESPONSE ===');
     console.log('Result data:', result.data);
