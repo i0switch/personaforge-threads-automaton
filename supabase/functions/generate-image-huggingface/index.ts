@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { Client } from "https://esm.sh/@gradio/client@1.5.0";
+import { Client } from "https://esm.sh/@gradio/client@1.10.3";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
