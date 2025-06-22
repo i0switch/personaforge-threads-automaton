@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,7 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 
-type AutoReplyRule = Database['public']['Tables']['auto_reply_rules']['Row'];
+type AutoReplyRule = Database['public']['Tables']['auto_replies']['Row'];
 type Persona = Database['public']['Tables']['personas']['Row'];
 
 const AutoReply = () => {
@@ -56,7 +57,7 @@ const AutoReply = () => {
 
       // Load auto-reply rules
       const { data: rulesData, error: rulesError } = await supabase
-        .from('auto_reply_rules')
+        .from('auto_replies')
         .select('*')
         .eq('user_id', user.id)
         .order('created_at', { ascending: true });
@@ -122,8 +123,8 @@ const AutoReply = () => {
   const addRule = () => {
     const newRule: Partial<AutoReplyRule> = {
       user_id: user!.id,
-      trigger_keywords: "",
-      reply_text: "",
+      trigger_keywords: [],
+      response_template: "",
       is_active: true
     };
 
@@ -135,7 +136,7 @@ const AutoReply = () => {
     if (rule.id) {
       try {
         const { error } = await supabase
-          .from('auto_reply_rules')
+          .from('auto_replies')
           .delete()
           .eq('id', rule.id);
 
@@ -170,10 +171,10 @@ const AutoReply = () => {
         if (rule.id) {
           // Update existing rule
           const { error } = await supabase
-            .from('auto_reply_rules')
+            .from('auto_replies')
             .update({
               trigger_keywords: rule.trigger_keywords,
-              reply_text: rule.reply_text,
+              response_template: rule.response_template,
               is_active: rule.is_active
             })
             .eq('id', rule.id);
@@ -182,11 +183,11 @@ const AutoReply = () => {
         } else {
           // Insert new rule
           const { error } = await supabase
-            .from('auto_reply_rules')
+            .from('auto_replies')
             .insert([{
               user_id: user.id,
               trigger_keywords: rule.trigger_keywords,
-              reply_text: rule.reply_text,
+              response_template: rule.response_template,
               is_active: rule.is_active
             }]);
 
@@ -457,8 +458,8 @@ const AutoReply = () => {
                   <div className="space-y-2">
                     <Label>トリガーキーワード（カンマ区切り）</Label>
                     <Input
-                      value={rule.trigger_keywords}
-                      onChange={(e) => updateRule(index, 'trigger_keywords', e.target.value)}
+                      value={Array.isArray(rule.trigger_keywords) ? rule.trigger_keywords.join(', ') : ''}
+                      onChange={(e) => updateRule(index, 'trigger_keywords', e.target.value.split(',').map(k => k.trim()))}
                       placeholder="例: こんにちは, おはよう, ありがとう"
                     />
                   </div>
@@ -466,8 +467,8 @@ const AutoReply = () => {
                   <div className="space-y-2">
                     <Label>返信文</Label>
                     <Textarea
-                      value={rule.reply_text}
-                      onChange={(e) => updateRule(index, 'reply_text', e.target.value)}
+                      value={rule.response_template}
+                      onChange={(e) => updateRule(index, 'response_template', e.target.value)}
                       placeholder="自動返信する文章を入力"
                       rows={2}
                     />
