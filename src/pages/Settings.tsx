@@ -4,10 +4,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, User, Key, Bell, Save, Loader2, Upload } from "lucide-react";
+import { ArrowLeft, User, Key, Save, Loader2, Upload } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -28,7 +27,6 @@ const Settings = () => {
   // Profile form states
   const [displayName, setDisplayName] = useState("");
   const [avatarUrl, setAvatarUrl] = useState("");
-  const [autoReplyEnabled, setAutoReplyEnabled] = useState(false);
 
   useEffect(() => {
     loadProfile();
@@ -51,7 +49,6 @@ const Settings = () => {
         setProfile(data);
         setDisplayName(data.display_name || "");
         setAvatarUrl(data.avatar_url || "");
-        setAutoReplyEnabled(data.auto_reply_enabled);
       } else {
         // Create profile if it doesn't exist
         const newProfile = {
@@ -71,7 +68,6 @@ const Settings = () => {
         setProfile(createdProfile);
         setDisplayName(createdProfile.display_name || "");
         setAvatarUrl(createdProfile.avatar_url || "");
-        setAutoReplyEnabled(createdProfile.auto_reply_enabled);
       }
     } catch (error) {
       console.error('Error loading profile:', error);
@@ -94,8 +90,7 @@ const Settings = () => {
         .from('profiles')
         .update({
           display_name: displayName,
-          avatar_url: avatarUrl,
-          auto_reply_enabled: autoReplyEnabled
+          avatar_url: avatarUrl
         })
         .eq('user_id', user.id);
 
@@ -217,15 +212,6 @@ const Settings = () => {
                   </p>
                 </div>
 
-                <div className="flex items-center space-x-2">
-                  <Switch
-                    id="auto-reply"
-                    checked={autoReplyEnabled}
-                    onCheckedChange={setAutoReplyEnabled}
-                  />
-                  <Label htmlFor="auto-reply">自動返信機能を有効にする</Label>
-                </div>
-
                 <Button onClick={saveProfile} disabled={saving}>
                   {saving ? (
                     <>
@@ -266,19 +252,6 @@ const Settings = () => {
                     />
                     <p className="text-xs text-muted-foreground">
                       AI投稿生成に使用されます（Supabase Secretsで管理）
-                    </p>
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label>Threads Access Token</Label>
-                    <Input
-                      type="password"
-                      placeholder="ペルソナごとに設定"
-                      disabled
-                      className="bg-muted"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      各ペルソナの設定画面で個別に管理されます
                     </p>
                   </div>
 

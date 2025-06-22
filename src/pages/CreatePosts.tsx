@@ -160,105 +160,102 @@ const CreatePosts = () => {
   const totalPosts = selectedDates.length * selectedTimes.length;
 
   return (
-    <div className="min-h-screen bg-background p-6">
-      <div className="max-w-6xl mx-auto space-y-6">
-        <div className="flex items-center gap-4">
-          <Button variant="outline" size="sm" onClick={() => navigate("/")}>
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            戻る
-          </Button>
-          <div>
-            <h1 className="text-3xl font-bold">新規投稿作成</h1>
-            <p className="text-muted-foreground">AIでThreads投稿を一括生成</p>
-          </div>
+    <div className="max-w-4xl mx-auto p-6 space-y-6">
+      <div className="flex items-center gap-4">
+        <Button variant="outline" size="sm" onClick={() => navigate("/")}>
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          戻る
+        </Button>
+        <div>
+          <h1 className="text-3xl font-bold">新規投稿作成</h1>
+          <p className="text-muted-foreground">AIでThreads投稿を一括生成</p>
         </div>
+      </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* ペルソナ選択 */}
-          <Card>
-            <CardHeader>
-              <CardTitle>ペルソナ選択</CardTitle>
-              <CardDescription>投稿するキャラクターを選択</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <Select value={selectedPersona} onValueChange={setSelectedPersona}>
-                <SelectTrigger>
-                  <SelectValue placeholder="ペルソナを選択" />
-                </SelectTrigger>
-                <SelectContent>
-                  {personas.map((persona) => (
-                    <SelectItem key={persona.id} value={persona.id}>
-                      <div className="flex items-center gap-2">
-                        <Avatar className="h-6 w-6">
-                          <AvatarImage src={persona.avatar_url || ""} />
-                          <AvatarFallback>{persona.name[0]}</AvatarFallback>
-                        </Avatar>
-                        {persona.name}
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              
-              {selectedPersonaData && (
-                <div className="p-3 bg-muted rounded-lg">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Avatar className="h-8 w-8">
-                      <AvatarImage src={selectedPersonaData.avatar_url || ""} />
-                      <AvatarFallback>{selectedPersonaData.name[0]}</AvatarFallback>
-                    </Avatar>
-                    <span className="font-medium">{selectedPersonaData.name}</span>
-                  </div>
-                  {selectedPersonaData.personality && (
-                    <p className="text-sm text-muted-foreground">{selectedPersonaData.personality}</p>
-                  )}
+      <div className="space-y-6">
+        {/* ペルソナ選択 */}
+        <Card>
+          <CardHeader>
+            <CardTitle>ペルソナ選択</CardTitle>
+            <CardDescription>投稿するキャラクターを選択</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Select value={selectedPersona} onValueChange={setSelectedPersona}>
+              <SelectTrigger>
+                <SelectValue placeholder="ペルソナを選択" />
+              </SelectTrigger>
+              <SelectContent>
+                {personas.map((persona) => (
+                  <SelectItem key={persona.id} value={persona.id}>
+                    <div className="flex items-center gap-2">
+                      <Avatar className="h-6 w-6">
+                        <AvatarImage src={persona.avatar_url || ""} />
+                        <AvatarFallback>{persona.name[0]}</AvatarFallback>
+                      </Avatar>
+                      {persona.name}
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            
+            {selectedPersonaData && (
+              <div className="p-3 bg-muted rounded-lg">
+                <div className="flex items-center gap-2 mb-2">
+                  <Avatar className="h-8 w-8">
+                    <AvatarImage src={selectedPersonaData.avatar_url || ""} />
+                    <AvatarFallback>{selectedPersonaData.name[0]}</AvatarFallback>
+                  </Avatar>
+                  <span className="font-medium">{selectedPersonaData.name}</span>
                 </div>
-              )}
-
-              <div className="space-y-2">
-                <Label>投稿トピック</Label>
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="トピックを入力"
-                    value={newTopic}
-                    onChange={(e) => setNewTopic(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && addTopic()}
-                  />
-                  <Button size="sm" onClick={addTopic}>
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                </div>
-                {topics.length > 0 && (
-                  <div className="flex flex-wrap gap-1">
-                    {topics.map((topic, index) => (
-                      <Badge key={index} variant="secondary" className="text-xs">
-                        {topic}
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-4 w-4 p-0 ml-1"
-                          onClick={() => removeTopic(topic)}
-                        >
-                          <X className="h-3 w-3" />
-                        </Button>
-                      </Badge>
-                    ))}
-                  </div>
+                {selectedPersonaData.personality && (
+                  <p className="text-sm text-muted-foreground">{selectedPersonaData.personality}</p>
                 )}
               </div>
+            )}
+          </CardContent>
+        </Card>
 
-              <div className="space-y-2">
-                <Label>カスタムプロンプト（オプション）</Label>
-                <Textarea
-                  placeholder="特別な指示があれば入力してください"
-                  value={customPrompt}
-                  onChange={(e) => setCustomPrompt(e.target.value)}
-                  rows={3}
-                />
+        {/* トピック設定 */}
+        <Card>
+          <CardHeader>
+            <CardTitle>投稿トピック</CardTitle>
+            <CardDescription>投稿内容のテーマを設定</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex gap-2">
+              <Input
+                placeholder="トピックを入力"
+                value={newTopic}
+                onChange={(e) => setNewTopic(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && addTopic()}
+              />
+              <Button size="sm" onClick={addTopic}>
+                <Plus className="h-4 w-4" />
+              </Button>
+            </div>
+            {topics.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {topics.map((topic, index) => (
+                  <Badge key={index} variant="secondary" className="text-xs">
+                    {topic}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-4 w-4 p-0 ml-1"
+                      onClick={() => removeTopic(topic)}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </Badge>
+                ))}
               </div>
-            </CardContent>
-          </Card>
+            )}
+          </CardContent>
+        </Card>
 
+        {/* 日付と時間選択 */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* 日付選択 */}
           <Card>
             <CardHeader>
@@ -338,6 +335,22 @@ const CreatePosts = () => {
           </Card>
         </div>
 
+        {/* カスタムプロンプト */}
+        <Card>
+          <CardHeader>
+            <CardTitle>カスタムプロンプト（オプション）</CardTitle>
+            <CardDescription>特別な指示があれば入力してください</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Textarea
+              placeholder="例: もっとカジュアルに、絵文字を多用して、など"
+              value={customPrompt}
+              onChange={(e) => setCustomPrompt(e.target.value)}
+              rows={3}
+            />
+          </CardContent>
+        </Card>
+
         {/* 生成サマリー */}
         {(selectedDates.length > 0 || selectedTimes.length > 0 || topics.length > 0) && (
           <Card>
@@ -348,7 +361,7 @@ const CreatePosts = () => {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-center">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-center mb-6">
                 <div>
                   <div className="text-2xl font-bold text-blue-600">{topics.length}</div>
                   <p className="text-sm text-muted-foreground">トピック</p>
@@ -370,7 +383,7 @@ const CreatePosts = () => {
               <Button 
                 onClick={generatePosts} 
                 disabled={isGenerating || !selectedPersona || topics.length === 0 || selectedDates.length === 0 || selectedTimes.length === 0}
-                className="w-full mt-4"
+                className="w-full"
                 size="lg"
               >
                 {isGenerating ? (
