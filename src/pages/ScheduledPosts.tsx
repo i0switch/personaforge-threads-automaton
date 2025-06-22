@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,7 +14,7 @@ import { ja } from "date-fns/locale";
 import type { Database } from "@/integrations/supabase/types";
 
 type Post = Database['public']['Tables']['posts']['Row'] & {
-  personas?: Database['public']['Tables']['personas']['Row'];
+  personas?: Pick<Database['public']['Tables']['personas']['Row'], 'name' | 'avatar_url' | 'threads_access_token'>;
 };
 
 const ScheduledPosts = () => {
@@ -41,7 +40,7 @@ const ScheduledPosts = () => {
         .from('posts')
         .select(`
           *,
-          personas(name, avatar_url, threads_access_token)
+          personas!inner(name, avatar_url, threads_access_token)
         `)
         .eq('user_id', user.id)
         .in('status', ['scheduled', 'draft'])
