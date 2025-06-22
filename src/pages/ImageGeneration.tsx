@@ -7,7 +7,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
-import { ArrowLeft, Image as ImageIcon, Sparkles, Loader2, Upload } from "lucide-react";
+import { ArrowLeft, Image as ImageIcon, Sparkles, Loader2, Upload, RefreshCw } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -36,6 +36,7 @@ const ImageGeneration = () => {
   const [generatedPrompts, setGeneratedPrompts] = useState<{[key: number]: string}>({});
   const [generatingImages, setGeneratingImages] = useState<Set<number>>(new Set());
   const [generatedImages, setGeneratedImages] = useState<{[key: number]: string}>({});
+  const [promptError, setPromptError] = useState<{[key: number]: string}>({});
   
   // InstantID設定
   const [referenceImage, setReferenceImage] = useState<File | null>(null);
@@ -46,13 +47,17 @@ const ImageGeneration = () => {
   useEffect(() => {
     const state = location.state as ImageGenerationState;
     if (state) {
+      console.log('ImageGeneration: Received state with posts:', state.posts);
+      console.log('ImageGeneration: Received persona:', state.persona);
       setPosts(state.posts);
       setPersona(state.persona);
       // 自動でプロンプト生成を開始
       state.posts.forEach((_, index) => {
+        console.log(`ImageGeneration: Starting prompt generation for post ${index}`);
         generateImagePrompt(index);
       });
     } else {
+      console.log('ImageGeneration: No state found, redirecting to create-posts');
       navigate("/create-posts");
     }
   }, [location.state, navigate]);
@@ -71,11 +76,17 @@ const ImageGeneration = () => {
 
   const generateImagePrompt = async (postIndex: number) => {
     const post = posts[postIndex];
-    if (!post) return;
+    if (!post) {
+      console.error(`ImageGeneration: No post found at index ${postIndex}`);
+      return;
+    }
 
+    console.log(`ImageGeneration: Starting prompt generation for post ${postIndex}:`, post.content);
     setGeneratingPrompts(prev => new Set(prev).add(postIndex));
+    setPromptError(prev => ({ ...prev, [postIndex]: "" }));
 
     try {
+      console.log('ImageGeneration: Calling generate-image-prompt function');
       const { data, error } = await supabase.functions.invoke('generate-image-prompt', {
         body: {
           postContent: post.content,
@@ -83,9 +94,15 @@ const ImageGeneration = () => {
         }
       });
 
-      if (error) throw error;
+      console.log('ImageGeneration: Function response:', { data, error });
 
-      if (data.success) {
+      if (error) {
+        console.error('ImageGeneration: Function error:', error);
+        throw new Error(`Function error: ${error.message}`);
+      }
+
+      if (data?.success && data?.imagePrompt) {
+        console.log(`ImageGeneration: Successfully generated prompt for post ${postIndex}:`, data.imagePrompt);
         setGeneratedPrompts(prev => ({
           ...prev,
           [postIndex]: data.imagePrompt
@@ -96,13 +113,17 @@ const ImageGeneration = () => {
           description: "画像生成プロンプトを生成しました。",
         });
       } else {
-        throw new Error('プロンプト生成に失敗しました');
+        console.error('ImageGeneration: Invalid response:', data);
+        throw new Error('プロンプト生成に失敗しました: 無効なレスポンス');
       }
     } catch (error) {
-      console.error('Error generating image prompt:', error);
+      console.error(`ImageGeneration: Error generating prompt for post ${postIndex}:`, error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      setPromptError(prev => ({ ...prev, [postIndex]: errorMessage }));
+      
       toast({
         title: "エラー",
-        description: "画像生成プロンプトの生成に失敗しました。",
+        description: `画像生成プロンプトの生成に失敗しました: ${errorMessage}`,
         variant: "destructive",
       });
     } finally {
@@ -112,6 +133,11 @@ const ImageGeneration = () => {
         return newSet;
       });
     }
+  };
+
+  const retryPromptGeneration = (postIndex: number) => {
+    console.log(`ImageGeneration: Retrying prompt generation for post ${postIndex}`);
+    generateImagePrompt(postIndex);
   };
 
   const generateImage = async (postIndex: number) => {
@@ -325,11 +351,27 @@ const ImageGeneration = () => {
                 </div>
                 
                 <div>
-                  <p className="text-sm font-medium mb-2">画像プロンプト</p>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-sm font-medium">画像プロンプト</p>
+                    {promptError[index] && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => retryPromptGeneration(index)}
+                      >
+                        <RefreshCw className="h-3 w-3 mr-1" />
+                        再試行
+                      </Button>
+                    )}
+                  </div>
                   {generatingPrompts.has(index) ? (
                     <div className="flex items-center justify-center py-4">
                       <Loader2 className="h-6 w-6 animate-spin mr-2" />
                       <span>プロンプト生成中...</span>
+                    </div>
+                  ) : promptError[index] ? (
+                    <div className="text-sm text-red-600 p-3 bg-red-50 rounded border-l-4 border-red-400">
+                      エラー: {promptError[index]}
                     </div>
                   ) : generatedPrompts[index] ? (
                     <p className="text-sm bg-primary/5 p-3 rounded border-l-4 border-primary">
