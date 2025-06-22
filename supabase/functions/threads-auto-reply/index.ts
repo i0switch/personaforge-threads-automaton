@@ -44,7 +44,7 @@ serve(async (req) => {
       throw new Error('Threads access token not configured for this persona');
     }
 
-    // Generate AI reply using Gemini
+    // Generate AI reply using Gemini - Updated model name
     const prompt = `
 あなたは${persona.name}として振る舞ってください。
 
@@ -65,7 +65,7 @@ ${replyContent}
 150文字以内で、親しみやすく自然な返信をお願いします。
 `;
 
-    const geminiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${geminiApiKey}`, {
+    const geminiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

@@ -33,7 +33,7 @@ serve(async (req) => {
 - 名前: ${persona?.name || 'Unknown'}
 - 職業: ${persona?.occupation || 'Unknown'}
 - 性格: ${persona?.personality || 'Unknown'}
-- 話し方: ${persona?.tone || 'Unknown'}
+- 話し方: ${persona?.tone_of_voice || 'Unknown'}
 - 背景: ${persona?.background || 'Unknown'}
 
 元の投稿:
@@ -49,7 +49,8 @@ ${replyContent}
 返信文のみを出力してください（説明文は不要）。
 `;
 
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${geminiApiKey}`, {
+    // Updated model name from gemini-pro to gemini-1.5-flash
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
