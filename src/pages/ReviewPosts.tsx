@@ -5,11 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { ArrowLeft, Calendar as CalendarIcon, Clock, Send, Trash2, Edit, Loader2, Plus, X } from "lucide-react";
+import { ArrowLeft, Trash2, Calendar, Clock, Image as ImageIcon, Loader2 } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -19,12 +15,11 @@ import { ja } from "date-fns/locale";
 import type { Database } from "@/integrations/supabase/types";
 
 type Persona = Database['public']['Tables']['personas']['Row'];
+type Post = Database['public']['Tables']['posts']['Row'];
 
 interface ReviewPostsState {
-  posts: string[];
+  posts: Post[];
   persona: Persona;
-  topic: string;
-  customHashtags: string[];
 }
 
 const ReviewPosts = () => {
@@ -33,22 +28,15 @@ const ReviewPosts = () => {
   const { user } = useAuth();
   const { toast } = useToast();
   
-  const [posts, setPosts] = useState<string[]>([]);
+  const [posts, setPosts] = useState<Post[]>([]);
   const [persona, setPersona] = useState<Persona | null>(null);
-  const [topic, setTopic] = useState("");
-  const [customHashtags, setCustomHashtags] = useState<string[]>([]);
-  const [scheduledDate, setScheduledDate] = useState<Date>();
-  const [scheduledTime, setScheduledTime] = useState("12:00");
-  const [hashtagInput, setHashtagInput] = useState("");
-  const [isPublishing, setIsPublishing] = useState(false);
+  const [isScheduling, setIsScheduling] = useState(false);
 
   useEffect(() => {
     const state = location.state as ReviewPostsState;
     if (state) {
       setPosts(state.posts);
       setPersona(state.persona);
-      setTopic(state.topic);
-      setCustomHashtags(state.customHashtags);
     } else {
       navigate("/create-posts");
     }
@@ -56,7 +44,7 @@ const ReviewPosts = () => {
 
   const updatePost = (index: number, content: string) => {
     const updatedPosts = [...posts];
-    updatedPosts[index] = content;
+    updatedPosts[index] = { ...updatedPosts[index], content };
     setPosts(updatedPosts);
   };
 
@@ -64,41 +52,28 @@ const ReviewPosts = () => {
     setPosts(posts.filter((_, i) => i !== index));
   };
 
-  const addHashtag = () => {
-    if (hashtagInput.trim() && !customHashtags.includes(hashtagInput.trim())) {
-      setCustomHashtags([...customHashtags, hashtagInput.trim()]);
-      setHashtagInput("");
-    }
-  };
-
-  const removeHashtag = (hashtag: string) => {
-    setCustomHashtags(customHashtags.filter(h => h !== hashtag));
-  };
-
-  const savePosts = async (status: 'draft' | 'scheduled' = 'draft') => {
+  const scheduleAllPosts = async () => {
     if (posts.length === 0 || !persona) return;
 
-    setIsPublishing(true);
+    setIsScheduling(true);
     try {
-      const scheduledFor = scheduledDate && status === 'scheduled' 
-        ? new Date(`${format(scheduledDate, 'yyyy-MM-dd')} ${scheduledTime}:00`)
-        : null;
-
-      const postsToSave = posts.map(content => ({
-        user_id: user!.id,
-        persona_id: persona.id,
-        content,
-        hashtags: customHashtags,
-        platform: 'threads',
-        status,
-        scheduled_for: scheduledFor?.toISOString()
+      const postsToUpdate = posts.map(post => ({
+        id: post.id,
+        content: post.content,
+        status: 'scheduled' as const
       }));
 
-      const { error } = await supabase
-        .from('posts')
-        .insert(postsToSave);
+      for (const post of postsToUpdate) {
+        const { error } = await supabase
+          .from('posts')
+          .update({ 
+            content: post.content,
+            status: post.status 
+          })
+          .eq('id', post.id);
 
-      if (error) throw error;
+        if (error) throw error;
+      }
 
       // Log activity
       await supabase
@@ -106,27 +81,35 @@ const ReviewPosts = () => {
         .insert({
           user_id: user!.id,
           persona_id: persona.id,
-          action_type: status === 'scheduled' ? 'posts_scheduled' : 'posts_created',
-          description: `${posts.length}件の投稿を${status === 'scheduled' ? '予約' : '作成'}しました`,
-          metadata: { postCount: posts.length, topic }
+          action_type: 'posts_scheduled',
+          description: `${posts.length}件の投稿を予約しました`
         });
 
       toast({
         title: "成功",
-        description: `投稿を${status === 'scheduled' ? '予約' : '保存'}しました。`,
+        description: `${posts.length}件の投稿を予約しました。`,
       });
 
       navigate("/scheduled-posts");
     } catch (error) {
-      console.error('Error saving posts:', error);
+      console.error('Error scheduling posts:', error);
       toast({
         title: "エラー",
-        description: "投稿の保存に失敗しました。",
+        description: "投稿の予約に失敗しました。",
         variant: "destructive",
       });
     } finally {
-      setIsPublishing(false);
+      setIsScheduling(false);
     }
+  };
+
+  const generateImages = () => {
+    navigate("/image-generation", {
+      state: {
+        posts,
+        persona
+      }
+    });
   };
 
   if (!persona) {
@@ -150,9 +133,9 @@ const ReviewPosts = () => {
             <ArrowLeft className="h-4 w-4 mr-2" />
             戻る
           </Button>
-          <div>
-            <h1 className="text-3xl font-bold">投稿確認・編集</h1>
-            <p className="text-muted-foreground">生成された投稿を確認・編集してください</p>
+          <div className="flex-1">
+            <h1 className="text-3xl font-bold">生成投稿確認</h1>
+            <p className="text-muted-foreground">生成された投稿を確認・修正してください</p>
           </div>
         </div>
 
@@ -167,137 +150,80 @@ const ReviewPosts = () => {
               {persona.name}
             </CardTitle>
             <CardDescription>
-              トピック: {topic}
+              生成された投稿: {posts.length}件
             </CardDescription>
           </CardHeader>
         </Card>
 
-        {/* 投稿編集 */}
-        <Card>
-          <CardHeader>
-            <CardTitle>生成された投稿 ({posts.length}件)</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {posts.map((post, index) => (
-              <div key={index} className="border rounded-lg p-4 space-y-3">
+        {/* 投稿一覧 */}
+        <div className="space-y-4">
+          {posts.map((post, index) => (
+            <Card key={index}>
+              <CardHeader>
                 <div className="flex items-center justify-between">
-                  <Badge variant="outline">投稿 {index + 1}</Badge>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => deletePost(index)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                  <CardTitle className="text-lg">投稿 {index + 1}</CardTitle>
+                  <div className="flex items-center gap-2">
+                    {post.scheduled_for && (
+                      <Badge variant="outline" className="flex items-center gap-1">
+                        <Calendar className="h-3 w-3" />
+                        {format(new Date(post.scheduled_for), 'MM/dd', { locale: ja })}
+                        <Clock className="h-3 w-3 ml-1" />
+                        {format(new Date(post.scheduled_for), 'HH:mm', { locale: ja })}
+                      </Badge>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => deletePost(index)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
+              </CardHeader>
+              <CardContent>
                 <Textarea
-                  value={post}
+                  value={post.content}
                   onChange={(e) => updatePost(index, e.target.value)}
                   rows={4}
                   placeholder="投稿内容を編集..."
                 />
-              </div>
-            ))}
-          </CardContent>
-        </Card>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
 
-        {/* ハッシュタグ・スケジュール設定 */}
-        <Card>
-          <CardHeader>
-            <CardTitle>投稿設定</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* ハッシュタグ */}
-            <div className="space-y-2">
-              <Label>カスタムハッシュタグ</Label>
-              <div className="flex gap-2">
-                <Input
-                  placeholder="#ハッシュタグ"
-                  value={hashtagInput}
-                  onChange={(e) => setHashtagInput(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && addHashtag()}
-                />
-                <Button size="sm" onClick={addHashtag}>
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </div>
-              {customHashtags.length > 0 && (
-                <div className="flex flex-wrap gap-1">
-                  {customHashtags.map((hashtag, index) => (
-                    <Badge key={index} variant="secondary" className="text-xs">
-                      #{hashtag}
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-4 w-4 p-0 ml-1"
-                        onClick={() => removeHashtag(hashtag)}
-                      >
-                        <X className="h-3 w-3" />
-                      </Button>
-                    </Badge>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* スケジュール設定 */}
-            <div className="space-y-3">
-              <Label>投稿スケジュール（オプション）</Label>
-              <div className="flex gap-2">
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" size="sm">
-                      <CalendarIcon className="h-4 w-4 mr-2" />
-                      {scheduledDate ? format(scheduledDate, 'MM/dd', { locale: ja }) : '日付選択'}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0">
-                    <Calendar
-                      mode="single"
-                      selected={scheduledDate}
-                      onSelect={setScheduledDate}
-                      disabled={(date) => date < new Date()}
-                    />
-                  </PopoverContent>
-                </Popover>
-                <Input
-                  type="time"
-                  value={scheduledTime}
-                  onChange={(e) => setScheduledTime(e.target.value)}
-                  className="w-32"
-                />
-              </div>
-
-              <div className="flex gap-2">
-                <Button 
-                  onClick={() => savePosts('draft')} 
-                  disabled={isPublishing || posts.length === 0}
-                  variant="outline"
-                  className="flex-1"
-                >
-                  {isPublishing ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  ) : (
-                    <Send className="h-4 w-4 mr-2" />
-                  )}
-                  下書き保存
-                </Button>
-                <Button 
-                  onClick={() => savePosts('scheduled')} 
-                  disabled={isPublishing || !scheduledDate || posts.length === 0}
-                  className="flex-1"
-                >
-                  {isPublishing ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  ) : (
-                    <Clock className="h-4 w-4 mr-2" />
-                  )}
-                  予約投稿
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        {/* アクションボタン */}
+        <div className="flex gap-4">
+          <Button 
+            onClick={scheduleAllPosts} 
+            disabled={isScheduling || posts.length === 0}
+            className="flex-1"
+            size="lg"
+          >
+            {isScheduling ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                予約中...
+              </>
+            ) : (
+              <>
+                <Calendar className="h-4 w-4 mr-2" />
+                投稿を予約する
+              </>
+            )}
+          </Button>
+          <Button 
+            onClick={generateImages}
+            variant="outline"
+            className="flex-1"
+            size="lg"
+            disabled={posts.length === 0}
+          >
+            <ImageIcon className="h-4 w-4 mr-2" />
+            画像を生成
+          </Button>
+        </div>
       </div>
     </div>
   );
