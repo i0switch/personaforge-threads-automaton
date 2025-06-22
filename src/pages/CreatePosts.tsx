@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -174,7 +175,8 @@ const CreatePosts = () => {
                         {persona.name}
                       </div>
                     </SelectItem>
-                  </SelectContent>
+                  ))}
+                </SelectContent>
               </Select>
               {selectedPersonaData && (
                 <div className="p-3 bg-muted rounded-lg">
