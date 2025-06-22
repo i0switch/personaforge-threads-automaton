@@ -127,7 +127,10 @@ const CreatePosts = () => {
 
     try {
       const { data, error } = await supabase.functions.invoke('generate-image-prompt', {
-        body: { postContent }
+        body: { 
+          postContent,
+          persona: personas.find(p => p.id === selectedPersona)
+        }
       });
 
       if (error) throw error;
@@ -252,27 +255,22 @@ const CreatePosts = () => {
       }
 
       if (data?.success && data?.posts && data.posts.length > 0) {
-        // Convert posts to GeneratedPost format and automatically generate image prompts
-        const postsWithImageData: GeneratedPost[] = data.posts.map((post: any) => ({
-          content: post.content,
-          imagePrompt: '',
-          negativePrompt: '',
-          generatedImage: ''
-        }));
+        // データベースから取得した投稿を直接使用
+        const posts = data.posts;
+        console.log('Generated posts from database:', posts);
         
-        setGeneratedPosts(postsWithImageData);
-        setGeneratingImagePrompts(new Array(postsWithImageData.length).fill(false));
-        setGeneratingImages(new Array(postsWithImageData.length).fill(false));
-        setShowImageGeneration(true);
-
-        // Auto-generate image prompts for all posts
-        postsWithImageData.forEach((post, index) => {
-          generateImagePrompt(post.content, index);
+        // 確認画面に遷移
+        const selectedPersonaData = personas.find(p => p.id === selectedPersona);
+        navigate("/review-posts", {
+          state: {
+            posts: posts,
+            persona: selectedPersonaData
+          }
         });
 
         toast({
           title: "成功",
-          description: `${data.posts.length}件の投稿を生成しました。`,
+          description: `${posts.length}件の投稿を生成しました。`,
         });
       } else {
         throw new Error('投稿の生成に失敗しました');
