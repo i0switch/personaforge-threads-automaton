@@ -15,7 +15,11 @@ import { ja } from "date-fns/locale";
 import type { Database } from "@/integrations/supabase/types";
 
 type Post = Database['public']['Tables']['posts']['Row'] & {
-  personas?: Database['public']['Tables']['personas']['Row'];
+  personas?: {
+    name: string;
+    avatar_url: string | null;
+    threads_access_token: string | null;
+  };
 };
 
 const ScheduledPosts = () => {

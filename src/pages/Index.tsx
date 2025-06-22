@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -17,7 +16,10 @@ import type { Database } from "@/integrations/supabase/types";
 
 type Persona = Database['public']['Tables']['personas']['Row'];
 type ActivityLog = Database['public']['Tables']['activity_logs']['Row'] & {
-  personas?: Database['public']['Tables']['personas']['Row'];
+  personas?: {
+    name: string;
+    avatar_url: string | null;
+  };
 };
 
 const Index = () => {

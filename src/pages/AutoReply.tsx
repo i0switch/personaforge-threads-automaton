@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -18,7 +17,10 @@ import type { Database } from "@/integrations/supabase/types";
 
 type Persona = Database['public']['Tables']['personas']['Row'];
 type AutoReply = Database['public']['Tables']['auto_replies']['Row'] & {
-  personas?: Database['public']['Tables']['personas']['Row'];
+  personas?: {
+    name: string;
+    avatar_url: string | null;
+  };
 };
 
 const AutoReply = () => {
@@ -196,6 +198,8 @@ const AutoReply = () => {
         description: "自動返信ルールの削除に失敗しました。",
         variant: "destructive",
       });
+    } finally {
+      setIsCreating(false);
     }
   };
 
@@ -411,7 +415,6 @@ const AutoReply = () => {
                           <Switch
                             checked={reply.is_active}
                             onCheckedChange={() => toggleAutoReply(reply.id, reply.is_active)}
-                            size="sm"
                           />
                         </div>
                         <div className="flex gap-1">
