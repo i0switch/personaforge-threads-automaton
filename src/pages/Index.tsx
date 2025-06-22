@@ -101,7 +101,7 @@ const Index = () => {
       path: "/image-generation"
     },
     {
-      title: "ペルソナ設定",
+      title: "新規ペルソナ作成",
       description: "キャラクター設定を管理",
       icon: Users,
       color: "bg-purple-500", 
