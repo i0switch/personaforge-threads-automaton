@@ -1,7 +1,7 @@
 
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { Client } from "https://esm.sh/@gradio/client@1.15.3";
+import { Client, handle_file } from "https://esm.sh/@gradio/client@1.15.3";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -43,7 +43,7 @@ serve(async (req) => {
       up_factor
     });
 
-    // Handle the face image - convert File to Blob if needed
+    // Handle the face image - convert to Blob
     let imageBlob;
     if (face_image instanceof File) {
       console.log('Converting File to Blob');
@@ -64,28 +64,37 @@ serve(async (req) => {
       imageBlob = face_image;
     }
 
-    console.log('Image blob type:', imageBlob?.type);
-    console.log('Image blob size:', imageBlob?.size);
+    if (!imageBlob || imageBlob.size === 0) {
+      throw new Error('Invalid image data: Blob is empty or undefined');
+    }
+
+    console.log('Image blob type:', imageBlob.type);
+    console.log('Image blob size:', imageBlob.size);
 
     // Connect to the Gradio space
     const client = await Client.connect(space_url);
     
     console.log('Connected to Gradio space successfully');
 
-    // Call the predict function with the correct parameter mapping
-    const result = await client.predict("/predict", {
-      face_np: imageBlob,
-      subject: subject || "portrait",
-      add_prompt: add_prompt || "",
-      add_neg: add_neg || "blurry, low quality, distorted",
-      cfg: cfg || 6,
-      ip_scale: ip_scale || 0.65,
-      steps: steps || 20,
-      w: w || 512,
-      h: h || 768,
-      upscale: upscale !== undefined ? upscale : true,
-      up_factor: up_factor || 2
-    });
+    // Use handle_file to properly register the image blob
+    const imageRef = handle_file(imageBlob);
+    console.log('Image registered with handle_file');
+
+    // Call the predict function with correct parameter order (matching app.py)
+    // The order must match exactly: [face_image, subject, add_prompt, add_neg, cfg, ip_scale, steps, w, h, upscale, up_factor]
+    const result = await client.predict(0, [
+      imageRef,                                        // Face image (data[0] - REQUIRED!)
+      subject || "portrait",                           // subject
+      add_prompt || "",                                // add_prompt
+      add_neg || "blurry, low quality, distorted",     // add_neg
+      cfg || 6,                                        // cfg
+      ip_scale || 0.65,                                // ip_scale
+      steps || 20,                                     // steps
+      w || 512,                                        // w
+      h || 768,                                        // h
+      upscale !== undefined ? upscale : true,          // upscale
+      up_factor || 2                                   // up_factor
+    ]);
 
     console.log('Gradio result structure:', result);
 
@@ -93,9 +102,10 @@ serve(async (req) => {
       throw new Error('No image data returned from Gradio space');
     }
 
-    // The result should contain the image data (base64 or URL)
+    // The result should contain the generated image data
     const imageData = result.data[0];
     console.log('Generated image data type:', typeof imageData);
+    console.log('Generated image data preview:', typeof imageData === 'string' ? imageData.substring(0, 100) + '...' : imageData);
     
     return new Response(
       JSON.stringify({
