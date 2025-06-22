@@ -12,6 +12,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
 import { ja } from "date-fns/locale";
 import type { Database } from "@/integrations/supabase/types";
+import { ImageGenerator } from "@/components/ImageGenerator";
 
 type Persona = Database['public']['Tables']['personas']['Row'];
 type Post = Database['public']['Tables']['posts']['Row'];
@@ -37,6 +38,10 @@ const ImageGeneration = () => {
     if (state) {
       setPosts(state.posts);
       setPersona(state.persona);
+      // 自動でプロンプト生成を開始
+      state.posts.forEach((_, index) => {
+        generateImagePrompt(index);
+      });
     } else {
       navigate("/create-posts");
     }
@@ -102,7 +107,7 @@ const ImageGeneration = () => {
 
   return (
     <div className="min-h-screen bg-background p-6">
-      <div className="max-w-4xl mx-auto space-y-6">
+      <div className="max-w-6xl mx-auto space-y-6">
         <div className="flex items-center gap-4">
           <Button variant="outline" size="sm" onClick={() => navigate(-1)}>
             <ArrowLeft className="h-4 w-4 mr-2" />
@@ -110,7 +115,7 @@ const ImageGeneration = () => {
           </Button>
           <div className="flex-1">
             <h1 className="text-3xl font-bold">AI画像生成</h1>
-            <p className="text-muted-foreground">投稿に適した自撮り画像生成プロンプトを作成</p>
+            <p className="text-muted-foreground">投稿に適した自撮り画像生成プロンプトを作成・画像生成</p>
           </div>
         </div>
 
@@ -125,70 +130,86 @@ const ImageGeneration = () => {
               {persona.name}
             </CardTitle>
             <CardDescription>
-              {posts.length}件の投稿用画像プロンプトを生成
+              {posts.length}件の投稿用画像プロンプトを生成・画像生成
             </CardDescription>
           </CardHeader>
         </Card>
 
-        {/* 投稿別画像生成 */}
-        <div className="space-y-4">
-          {posts.map((post, index) => (
-            <Card key={index}>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-lg">投稿 {index + 1}</CardTitle>
-                  <div className="flex items-center gap-2">
-                    {post.scheduled_for && (
-                      <Badge variant="outline">
-                        {format(new Date(post.scheduled_for), 'MM/dd HH:mm', { locale: ja })}
-                      </Badge>
-                    )}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* 左側：投稿別画像プロンプト生成 */}
+          <div className="space-y-4">
+            <h2 className="text-xl font-semibold">投稿プロンプト</h2>
+            {posts.map((post, index) => (
+              <Card key={index}>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-lg">投稿 {index + 1}</CardTitle>
+                    <div className="flex items-center gap-2">
+                      {post.scheduled_for && (
+                        <Badge variant="outline">
+                          {format(new Date(post.scheduled_for), 'MM/dd HH:mm', { locale: ja })}
+                        </Badge>
+                      )}
+                    </div>
                   </div>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <h4 className="font-medium mb-2">投稿内容:</h4>
-                  <p className="text-sm text-muted-foreground bg-muted p-3 rounded">
-                    {post.content}
-                  </p>
-                </div>
-                
-                {generatedPrompts[index] && (
+                </CardHeader>
+                <CardContent className="space-y-4">
                   <div>
-                    <h4 className="font-medium mb-2">生成された画像プロンプト:</h4>
-                    <p className="text-sm bg-primary/5 p-3 rounded border-l-4 border-primary">
-                      {generatedPrompts[index]}
+                    <h4 className="font-medium mb-2">投稿内容:</h4>
+                    <p className="text-sm text-muted-foreground bg-muted p-3 rounded">
+                      {post.content}
                     </p>
                   </div>
-                )}
-
-                <Button
-                  onClick={() => generateImagePrompt(index)}
-                  disabled={generatingPrompts.has(index)}
-                  variant={generatedPrompts[index] ? "outline" : "default"}
-                  className="w-full"
-                >
-                  {generatingPrompts.has(index) ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      プロンプト生成中...
-                    </>
-                  ) : generatedPrompts[index] ? (
-                    <>
-                      <Sparkles className="h-4 w-4 mr-2" />
-                      プロンプトを再生成
-                    </>
-                  ) : (
-                    <>
-                      <ImageIcon className="h-4 w-4 mr-2" />
-                      画像プロンプト生成
-                    </>
+                  
+                  {generatedPrompts[index] && (
+                    <div>
+                      <h4 className="font-medium mb-2">生成された画像プロンプト:</h4>
+                      <p className="text-sm bg-primary/5 p-3 rounded border-l-4 border-primary">
+                        {generatedPrompts[index]}
+                      </p>
+                    </div>
                   )}
-                </Button>
-              </CardContent>
-            </Card>
-          ))}
+
+                  {generatingPrompts.has(index) && (
+                    <div className="flex items-center justify-center py-4">
+                      <Loader2 className="h-6 w-6 animate-spin mr-2" />
+                      <span>プロンプト生成中...</span>
+                    </div>
+                  )}
+
+                  <Button
+                    onClick={() => generateImagePrompt(index)}
+                    disabled={generatingPrompts.has(index)}
+                    variant={generatedPrompts[index] ? "outline" : "default"}
+                    className="w-full"
+                  >
+                    {generatingPrompts.has(index) ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        プロンプト生成中...
+                      </>
+                    ) : generatedPrompts[index] ? (
+                      <>
+                        <Sparkles className="h-4 w-4 mr-2" />
+                        プロンプトを再生成
+                      </>
+                    ) : (
+                      <>
+                        <ImageIcon className="h-4 w-4 mr-2" />
+                        画像プロンプト生成
+                      </>
+                    )}
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          {/* 右側：画像生成 */}
+          <div className="space-y-4">
+            <h2 className="text-xl font-semibold">画像生成</h2>
+            <ImageGenerator />
+          </div>
         </div>
       </div>
     </div>
