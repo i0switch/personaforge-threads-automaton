@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -91,6 +92,24 @@ const ImageGeneration = () => {
     }
   };
 
+  const generateImage = async (postIndex: number) => {
+    const prompt = generatedPrompts[postIndex];
+    if (!prompt) {
+      toast({
+        title: "エラー",
+        description: "まずプロンプトを生成してください。",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // ここで実際の画像生成を行う処理を追加
+    toast({
+      title: "開発中",
+      description: "画像生成機能は開発中です。右側の画像生成エリアをご利用ください。",
+    });
+  };
+
   if (!persona) {
     return (
       <div className="min-h-screen bg-background p-6">
@@ -176,29 +195,35 @@ const ImageGeneration = () => {
                     </div>
                   )}
 
-                  <Button
-                    onClick={() => generateImagePrompt(index)}
-                    disabled={generatingPrompts.has(index)}
-                    variant={generatedPrompts[index] ? "outline" : "default"}
-                    className="w-full"
-                  >
-                    {generatingPrompts.has(index) ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        プロンプト生成中...
-                      </>
-                    ) : generatedPrompts[index] ? (
-                      <>
-                        <Sparkles className="h-4 w-4 mr-2" />
-                        プロンプトを再生成
-                      </>
-                    ) : (
-                      <>
-                        <ImageIcon className="h-4 w-4 mr-2" />
-                        画像プロンプト生成
-                      </>
-                    )}
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={() => generateImagePrompt(index)}
+                      disabled={generatingPrompts.has(index)}
+                      variant="outline"
+                      className="flex-1"
+                    >
+                      {generatingPrompts.has(index) ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          プロンプト生成中...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="h-4 w-4 mr-2" />
+                          プロンプト再生成
+                        </>
+                      )}
+                    </Button>
+                    
+                    <Button
+                      onClick={() => generateImage(index)}
+                      disabled={!generatedPrompts[index]}
+                      className="flex-1"
+                    >
+                      <ImageIcon className="h-4 w-4 mr-2" />
+                      画像を生成
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             ))}
