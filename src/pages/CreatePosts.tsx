@@ -125,7 +125,7 @@ const CreatePosts = () => {
         throw error;
       }
 
-      if (data.success && data.posts && data.posts.length > 0) {
+      if (data?.success && data?.posts && data.posts.length > 0) {
         const selectedPersonaData = personas.find(p => p.id === selectedPersona);
         
         console.log('Navigating to review posts with:', {
@@ -230,13 +230,15 @@ const CreatePosts = () => {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Calendar
-                mode="multiple"
-                selected={selectedDates}
-                onSelect={(dates) => setSelectedDates(dates || [])}
-                disabled={(date) => date < new Date()}
-                className="rounded-md border"
-              />
+              <div className="flex justify-center">
+                <Calendar
+                  mode="multiple"
+                  selected={selectedDates}
+                  onSelect={(dates) => setSelectedDates(dates || [])}
+                  disabled={(date) => date < new Date()}
+                  className="rounded-md border w-full"
+                />
+              </div>
               {selectedDates.length > 0 && (
                 <div className="mt-3">
                   <p className="text-sm font-medium mb-2">選択された日付:</p>
