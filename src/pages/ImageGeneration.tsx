@@ -56,21 +56,53 @@ const ImageGeneration = () => {
 
   useEffect(() => {
     const state = location.state as ImageGenerationState;
-    if (state) {
+    if (state && state.posts && state.persona) {
       console.log('ImageGeneration: Received state with posts:', state.posts);
       console.log('ImageGeneration: Received persona:', state.persona);
-      setPosts(state.posts);
+      
+      // データの整合性チェック
+      const validPosts = state.posts.filter(post => 
+        post && typeof post === 'object' && post.content && post.scheduled_for
+      );
+      
+      if (validPosts.length === 0) {
+        console.error('ImageGeneration: No valid posts found');
+        toast({
+          title: "エラー",
+          description: "有効な投稿データが見つかりません。",
+          variant: "destructive",
+        });
+        navigate("/create-posts");
+        return;
+      }
+      
+      setPosts(validPosts);
       setPersona(state.persona);
+      
+      // ペルソナのアバター画像をリファレンス画像として設定
+      if (state.persona.avatar_url) {
+        fetch(state.persona.avatar_url)
+          .then(response => response.blob())
+          .then(blob => {
+            const file = new File([blob], 'persona-avatar.jpg', { type: blob.type });
+            setReferenceImage(file);
+            setReferenceImagePreview(state.persona.avatar_url!);
+          })
+          .catch(error => {
+            console.error('Failed to load persona avatar:', error);
+          });
+      }
+      
       // 自動でプロンプト生成を開始
-      state.posts.forEach((_, index) => {
+      validPosts.forEach((_, index) => {
         console.log(`ImageGeneration: Starting prompt generation for post ${index}`);
         generateImagePrompt(index);
       });
     } else {
-      console.log('ImageGeneration: No state found, redirecting to create-posts');
+      console.log('ImageGeneration: No valid state found, redirecting to create-posts');
       navigate("/create-posts");
     }
-  }, [location.state, navigate]);
+  }, [location.state, navigate, toast]);
 
   const handleReferenceImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -86,8 +118,8 @@ const ImageGeneration = () => {
 
   const generateImagePrompt = async (postIndex: number) => {
     const post = posts[postIndex];
-    if (!post) {
-      console.error(`ImageGeneration: No post found at index ${postIndex}`);
+    if (!post || !post.content) {
+      console.error(`ImageGeneration: No valid post found at index ${postIndex}`);
       return;
     }
 
@@ -233,6 +265,22 @@ const ImageGeneration = () => {
         newSet.delete(postIndex);
         return newSet;
       });
+    }
+  };
+
+  // 日付をフォーマットする際の安全な処理
+  const formatScheduledDate = (scheduledFor: string | null) => {
+    if (!scheduledFor) return '未設定';
+    
+    try {
+      const date = new Date(scheduledFor);
+      if (isNaN(date.getTime())) {
+        return '無効な日付';
+      }
+      return format(date, 'M月d日 HH:mm', { locale: ja });
+    } catch (error) {
+      console.error('Date formatting error:', error);
+      return '日付エラー';
     }
   };
 
@@ -426,14 +474,16 @@ const ImageGeneration = () => {
             <Card key={index}>
               <CardHeader>
                 <div className="flex items-center justify-between">
-                  <CardTitle className="text-lg">投稿予定: {format(new Date(post.scheduled_for!), 'M月d日 HH:mm', { locale: ja })}</CardTitle>
+                  <CardTitle className="text-lg">
+                    投稿予定: {formatScheduledDate(post.scheduled_for)}
+                  </CardTitle>
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div>
                   <p className="text-sm text-muted-foreground mb-2">投稿内容:</p>
                   <p className="text-sm bg-muted p-3 rounded">
-                    {post.content}
+                    {post.content || '内容が取得できませんでした'}
                   </p>
                 </div>
                 
