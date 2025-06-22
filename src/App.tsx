@@ -1,4 +1,3 @@
-
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -9,7 +8,6 @@ import { ProtectedRoute } from "@/components/ProtectedRoute";
 import Index from "./pages/Index";
 import PersonaSetup from "./pages/PersonaSetup";
 import CreatePosts from "./pages/CreatePosts";
-import ReviewPosts from "./pages/ReviewPosts";
 import ScheduledPosts from "./pages/ScheduledPosts";
 import AutoReply from "./pages/AutoReply";
 import ImageGeneration from "./pages/ImageGeneration";
@@ -31,7 +29,6 @@ const App = () => (
             <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
             <Route path="/persona-setup" element={<ProtectedRoute><PersonaSetup /></ProtectedRoute>} />
             <Route path="/create-posts" element={<ProtectedRoute><CreatePosts /></ProtectedRoute>} />
-            <Route path="/review-posts" element={<ProtectedRoute><ReviewPosts /></ProtectedRoute>} />
             <Route path="/scheduled-posts" element={<ProtectedRoute><ScheduledPosts /></ProtectedRoute>} />
             <Route path="/auto-reply" element={<ProtectedRoute><AutoReply /></ProtectedRoute>} />
             <Route path="/image-generation" element={<ProtectedRoute><ImageGeneration /></ProtectedRoute>} />

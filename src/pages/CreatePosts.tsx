@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Calendar } from "@/components/ui/calendar";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ArrowLeft, Calendar as CalendarIcon, Clock, Send, Sparkles, Loader2, Plus, X } from "lucide-react";
@@ -27,22 +28,15 @@ const CreatePosts = () => {
   
   const [personas, setPersonas] = useState<Persona[]>([]);
   const [selectedPersona, setSelectedPersona] = useState<string>("");
-  const [topics, setTopics] = useState<string[]>([]);
-  const [newTopic, setNewTopic] = useState("");
-  const [selectedDates, setSelectedDates] = useState<Date[]>([]);
-  const [selectedTimes, setSelectedTimes] = useState<string[]>([]);
-  const [customPrompt, setCustomPrompt] = useState("");
+  const [topic, setTopic] = useState("");
+  const [postCount, setPostCount] = useState(3);
+  const [generatedPosts, setGeneratedPosts] = useState<string[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
-
-  // 30分単位の時間スロット
-  const timeSlots = [
-    "00:00", "00:30", "01:00", "01:30", "02:00", "02:30", "03:00", "03:30",
-    "04:00", "04:30", "05:00", "05:30", "06:00", "06:30", "07:00", "07:30",
-    "08:00", "08:30", "09:00", "09:30", "10:00", "10:30", "11:00", "11:30",
-    "12:00", "12:30", "13:00", "13:30", "14:00", "14:30", "15:00", "15:30",
-    "16:00", "16:30", "17:00", "17:30", "18:00", "18:30", "19:00", "19:30",
-    "20:00", "20:30", "21:00", "21:30", "22:00", "22:30", "23:00", "23:30"
-  ];
+  const [scheduledDate, setScheduledDate] = useState<Date>();
+  const [scheduledTime, setScheduledTime] = useState("12:00");
+  const [customHashtags, setCustomHashtags] = useState<string[]>([]);
+  const [hashtagInput, setHashtagInput] = useState("");
+  const [isPublishing, setIsPublishing] = useState(false);
 
   useEffect(() => {
     loadPersonas();
@@ -73,47 +67,11 @@ const CreatePosts = () => {
     }
   };
 
-  const addTopic = () => {
-    const trimmedTopic = newTopic.trim();
-    if (trimmedTopic && !topics.includes(trimmedTopic)) {
-      setTopics([...topics, trimmedTopic]);
-      setNewTopic("");
-    }
-  };
-
-  const removeTopic = (topicToRemove: string) => {
-    setTopics(topics.filter(topic => topic !== topicToRemove));
-  };
-
-  const handleDateSelect = (date: Date | undefined) => {
-    if (!date) return;
-    
-    const isSelected = selectedDates.some(selectedDate => 
-      selectedDate.toDateString() === date.toDateString()
-    );
-    
-    if (isSelected) {
-      setSelectedDates(selectedDates.filter(selectedDate => 
-        selectedDate.toDateString() !== date.toDateString()
-      ));
-    } else {
-      setSelectedDates([...selectedDates, date]);
-    }
-  };
-
-  const handleTimeToggle = (time: string) => {
-    if (selectedTimes.includes(time)) {
-      setSelectedTimes(selectedTimes.filter(t => t !== time));
-    } else {
-      setSelectedTimes([...selectedTimes, time]);
-    }
-  };
-
   const generatePosts = async () => {
-    if (!selectedPersona || topics.length === 0 || selectedDates.length === 0 || selectedTimes.length === 0) {
+    if (!selectedPersona || !topic.trim()) {
       toast({
         title: "エラー",
-        description: "ペルソナ、トピック、日付、時間を選択してください。",
+        description: "ペルソナとトピックを選択してください。",
         variant: "destructive",
       });
       return;
@@ -121,31 +79,24 @@ const CreatePosts = () => {
 
     setIsGenerating(true);
     try {
+      const selectedPersonaData = personas.find(p => p.id === selectedPersona);
+      
       const { data, error } = await supabase.functions.invoke('generate-posts', {
         body: {
           personaId: selectedPersona,
-          topics,
-          selectedDates: selectedDates.map(date => date.toISOString()),
-          selectedTimes,
-          customPrompt
+          topic: topic,
+          postCount: postCount,
+          persona: selectedPersonaData
         }
       });
 
       if (error) throw error;
       
+      setGeneratedPosts(data.posts || []);
       toast({
         title: "成功",
-        description: `${data.generated_count}件の投稿を生成しました。`,
+        description: `${data.posts?.length || 0}件の投稿を生成しました。`,
       });
-
-      // リセット
-      setTopics([]);
-      setSelectedDates([]);
-      setSelectedTimes([]);
-      setCustomPrompt("");
-
-      // 投稿確認ページに遷移
-      navigate("/review-posts");
     } catch (error) {
       console.error('Error generating posts:', error);
       toast({
@@ -158,251 +109,311 @@ const CreatePosts = () => {
     }
   };
 
+  const addHashtag = () => {
+    if (hashtagInput.trim() && !customHashtags.includes(hashtagInput.trim())) {
+      setCustomHashtags([...customHashtags, hashtagInput.trim()]);
+      setHashtagInput("");
+    }
+  };
+
+  const removeHashtag = (hashtag: string) => {
+    setCustomHashtags(customHashtags.filter(h => h !== hashtag));
+  };
+
+  const savePosts = async (status: 'draft' | 'scheduled' = 'draft') => {
+    if (generatedPosts.length === 0) return;
+
+    setIsPublishing(true);
+    try {
+      const scheduledFor = scheduledDate && status === 'scheduled' 
+        ? new Date(`${format(scheduledDate, 'yyyy-MM-dd')} ${scheduledTime}:00`)
+        : null;
+
+      const postsToSave = generatedPosts.map(content => ({
+        user_id: user!.id,
+        persona_id: selectedPersona,
+        content,
+        hashtags: customHashtags,
+        platform: 'threads',
+        status,
+        scheduled_for: scheduledFor?.toISOString()
+      }));
+
+      const { error } = await supabase
+        .from('posts')
+        .insert(postsToSave);
+
+      if (error) throw error;
+
+      // Log activity
+      await supabase
+        .from('activity_logs')
+        .insert({
+          user_id: user!.id,
+          persona_id: selectedPersona,
+          action_type: status === 'scheduled' ? 'posts_scheduled' : 'posts_created',
+          description: `${generatedPosts.length}件の投稿を${status === 'scheduled' ? '予約' : '作成'}しました`,
+          metadata: { postCount: generatedPosts.length, topic }
+        });
+
+      toast({
+        title: "成功",
+        description: `投稿を${status === 'scheduled' ? '予約' : '保存'}しました。`,
+      });
+
+      setGeneratedPosts([]);
+      setTopic("");
+      setScheduledDate(undefined);
+      setCustomHashtags([]);
+    } catch (error) {
+      console.error('Error saving posts:', error);
+      toast({
+        title: "エラー",
+        description: "投稿の保存に失敗しました。",
+        variant: "destructive",
+      });
+    } finally {
+      setIsPublishing(false);
+    }
+  };
+
   const selectedPersonaData = personas.find(p => p.id === selectedPersona);
-  const totalPosts = selectedDates.length * selectedTimes.length;
 
   return (
-    <div className="max-w-4xl mx-auto p-6 space-y-6">
-      <div className="flex items-center gap-4">
-        <Button variant="outline" size="sm" onClick={() => navigate("/")}>
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          戻る
-        </Button>
-        <div>
-          <h1 className="text-3xl font-bold">新規投稿作成</h1>
-          <p className="text-muted-foreground">AIでThreads投稿を一括生成</p>
+    <div className="min-h-screen bg-background p-6">
+      <div className="max-w-4xl mx-auto space-y-6">
+        <div className="flex items-center gap-4">
+          <Button variant="outline" size="sm" onClick={() => navigate("/")}>
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            戻る
+          </Button>
+          <div>
+            <h1 className="text-3xl font-bold">新規投稿作成</h1>
+            <p className="text-muted-foreground">AIでThreads投稿を一括生成</p>
+          </div>
         </div>
-      </div>
 
-      <div className="space-y-6">
-        {/* ペルソナ選択 */}
-        <Card>
-          <CardHeader>
-            <CardTitle>ペルソナ選択</CardTitle>
-            <CardDescription>投稿するキャラクターを選択</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <Select value={selectedPersona} onValueChange={setSelectedPersona}>
-              <SelectTrigger>
-                <SelectValue placeholder="ペルソナを選択" />
-              </SelectTrigger>
-              <SelectContent>
-                {personas.map((persona) => (
-                  <SelectItem key={persona.id} value={persona.id}>
-                    <div className="flex items-center gap-2">
-                      <Avatar className="h-6 w-6">
-                        <AvatarImage src={persona.avatar_url || ""} />
-                        <AvatarFallback>{persona.name[0]}</AvatarFallback>
-                      </Avatar>
-                      {persona.name}
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            
-            {selectedPersonaData && (
-              <div className="p-3 bg-muted rounded-lg">
-                <div className="flex items-center gap-2 mb-2">
-                  <Avatar className="h-8 w-8">
-                    <AvatarImage src={selectedPersonaData.avatar_url || ""} />
-                    <AvatarFallback>{selectedPersonaData.name[0]}</AvatarFallback>
-                  </Avatar>
-                  <span className="font-medium">{selectedPersonaData.name}</span>
-                </div>
-                {selectedPersonaData.personality && (
-                  <p className="text-sm text-muted-foreground">{selectedPersonaData.personality}</p>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* トピック設定 */}
-        <Card>
-          <CardHeader>
-            <CardTitle>投稿トピック</CardTitle>
-            <CardDescription>投稿内容のテーマを設定</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex gap-2">
-              <Input
-                placeholder="トピックを入力"
-                value={newTopic}
-                onChange={(e) => setNewTopic(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && addTopic()}
-              />
-              <Button size="sm" onClick={addTopic}>
-                <Plus className="h-4 w-4" />
-              </Button>
-            </div>
-            {topics.length > 0 && (
-              <div className="flex flex-wrap gap-1">
-                {topics.map((topic, index) => (
-                  <Badge key={index} variant="secondary" className="text-xs">
-                    {topic}
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-4 w-4 p-0 ml-1"
-                      onClick={() => removeTopic(topic)}
-                    >
-                      <X className="h-3 w-3" />
-                    </Button>
-                  </Badge>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* 日付と時間選択 */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* 日付選択 */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* 設定パネル */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <CalendarIcon className="h-5 w-5" />
-                日付選択
+                <Sparkles className="h-5 w-5" />
+                投稿生成設定
               </CardTitle>
               <CardDescription>
-                投稿する日付を複数選択できます
+                ペルソナとトピックを選択して投稿を生成します
               </CardDescription>
             </CardHeader>
-            <CardContent>
-              <Calendar
-                mode="single"
-                selected={undefined}
-                onSelect={handleDateSelect}
-                disabled={(date) => date < new Date()}
-                className="rounded-md border"
-              />
-              {selectedDates.length > 0 && (
-                <div className="mt-4">
-                  <p className="text-sm font-medium mb-2">選択された日付:</p>
+            <CardContent className="space-y-4">
+              {/* ペルソナ選択 */}
+              <div className="space-y-2">
+                <Label>ペルソナ選択</Label>
+                <Select value={selectedPersona} onValueChange={setSelectedPersona}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="ペルソナを選択" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {personas.map((persona) => (
+                      <SelectItem key={persona.id} value={persona.id}>
+                        <div className="flex items-center gap-2">
+                          <Avatar className="h-6 w-6">
+                            <AvatarImage src={persona.avatar_url || ""} />
+                            <AvatarFallback>{persona.name[0]}</AvatarFallback>
+                          </Avatar>
+                          {persona.name}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {selectedPersonaData && (
+                  <div className="p-3 bg-muted rounded-lg">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Avatar className="h-8 w-8">
+                        <AvatarImage src={selectedPersonaData.avatar_url || ""} />
+                        <AvatarFallback>{selectedPersonaData.name[0]}</AvatarFallback>
+                      </Avatar>
+                      <span className="font-medium">{selectedPersonaData.name}</span>
+                    </div>
+                    {selectedPersonaData.personality && (
+                      <p className="text-sm text-muted-foreground">{selectedPersonaData.personality}</p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* トピック入力 */}
+              <div className="space-y-2">
+                <Label>投稿トピック</Label>
+                <Textarea
+                  placeholder="どのようなトピックについて投稿しますか？"
+                  value={topic}
+                  onChange={(e) => setTopic(e.target.value)}
+                  rows={3}
+                />
+              </div>
+
+              {/* 投稿数設定 */}
+              <div className="space-y-2">
+                <Label>生成する投稿数</Label>
+                <Select value={postCount.toString()} onValueChange={(value) => setPostCount(parseInt(value))}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">1件</SelectItem>
+                    <SelectItem value="3">3件</SelectItem>
+                    <SelectItem value="5">5件</SelectItem>
+                    <SelectItem value="10">10件</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* ハッシュタグ */}
+              <div className="space-y-2">
+                <Label>カスタムハッシュタグ</Label>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="#ハッシュタグ"
+                    value={hashtagInput}
+                    onChange={(e) => setHashtagInput(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && addHashtag()}
+                  />
+                  <Button size="sm" onClick={addHashtag}>
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+                {customHashtags.length > 0 && (
                   <div className="flex flex-wrap gap-1">
-                    {selectedDates.map((date, index) => (
+                    {customHashtags.map((hashtag, index) => (
                       <Badge key={index} variant="secondary" className="text-xs">
-                        {format(date, 'MM/dd', { locale: ja })}
+                        #{hashtag}
                         <Button
                           size="sm"
                           variant="ghost"
                           className="h-4 w-4 p-0 ml-1"
-                          onClick={() => {
-                            setSelectedDates(selectedDates.filter((_, i) => i !== index));
-                          }}
+                          onClick={() => removeHashtag(hashtag)}
                         >
                           <X className="h-3 w-3" />
                         </Button>
                       </Badge>
                     ))}
                   </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* 時間選択 */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Clock className="h-5 w-5" />
-                時間選択
-              </CardTitle>
-              <CardDescription>
-                投稿する時間を複数選択できます（30分刻み）
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 gap-2 max-h-60 overflow-y-auto">
-                {timeSlots.map((time) => (
-                  <div key={time} className="flex items-center space-x-2">
-                    <Checkbox
-                      id={time}
-                      checked={selectedTimes.includes(time)}
-                      onCheckedChange={() => handleTimeToggle(time)}
-                    />
-                    <Label htmlFor={time} className="text-sm">
-                      {time}
-                    </Label>
-                  </div>
-                ))}
+                )}
               </div>
-              {selectedTimes.length > 0 && (
-                <div className="mt-4">
-                  <p className="text-sm font-medium mb-2">選択された時間: {selectedTimes.length}件</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
 
-        {/* カスタムプロンプト */}
-        <Card>
-          <CardHeader>
-            <CardTitle>カスタムプロンプト（オプション）</CardTitle>
-            <CardDescription>特別な指示があれば入力してください</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Textarea
-              placeholder="例: もっとカジュアルに、絵文字を多用して、など"
-              value={customPrompt}
-              onChange={(e) => setCustomPrompt(e.target.value)}
-              rows={3}
-            />
-          </CardContent>
-        </Card>
-
-        {/* 生成サマリー */}
-        {(selectedDates.length > 0 || selectedTimes.length > 0 || topics.length > 0) && (
-          <Card>
-            <CardHeader>
-              <CardTitle>生成サマリー</CardTitle>
-              <CardDescription>
-                以下の設定で投稿を生成します
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-center mb-6">
-                <div>
-                  <div className="text-2xl font-bold text-blue-600">{topics.length}</div>
-                  <p className="text-sm text-muted-foreground">トピック</p>
-                </div>
-                <div>
-                  <div className="text-2xl font-bold text-green-600">{selectedDates.length}</div>
-                  <p className="text-sm text-muted-foreground">日付</p>
-                </div>
-                <div>
-                  <div className="text-2xl font-bold text-purple-600">{selectedTimes.length}</div>
-                  <p className="text-sm text-muted-foreground">時間</p>
-                </div>
-                <div>
-                  <div className="text-2xl font-bold text-orange-600">{totalPosts}</div>
-                  <p className="text-sm text-muted-foreground">合計投稿数</p>
-                </div>
-              </div>
-              
               <Button 
                 onClick={generatePosts} 
-                disabled={isGenerating || !selectedPersona || topics.length === 0 || selectedDates.length === 0 || selectedTimes.length === 0}
+                disabled={isGenerating || !topic.trim() || !selectedPersona}
                 className="w-full"
-                size="lg"
               >
                 {isGenerating ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    生成中... ({totalPosts}件の投稿を作成中)
+                    生成中...
                   </>
                 ) : (
                   <>
                     <Sparkles className="h-4 w-4 mr-2" />
-                    {totalPosts}件の投稿を生成
+                    投稿を生成
                   </>
                 )}
               </Button>
             </CardContent>
           </Card>
-        )}
+
+          {/* 生成結果・スケジュール設定 */}
+          <Card>
+            <CardHeader>
+              <CardTitle>生成された投稿</CardTitle>
+              <CardDescription>
+                {generatedPosts.length > 0 
+                  ? `${generatedPosts.length}件の投稿が生成されました`
+                  : "投稿を生成してください"
+                }
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {generatedPosts.length > 0 ? (
+                <>
+                  <div className="space-y-3 max-h-60 overflow-y-auto">
+                    {generatedPosts.map((post, index) => (
+                      <div key={index} className="p-3 border rounded-lg">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Badge variant="outline">投稿 {index + 1}</Badge>
+                        </div>
+                        <p className="text-sm whitespace-pre-wrap">{post}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* スケジュール設定 */}
+                  <div className="space-y-3 border-t pt-4">
+                    <Label>投稿スケジュール（オプション）</Label>
+                    <div className="flex gap-2">
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button variant="outline" size="sm">
+                            <CalendarIcon className="h-4 w-4 mr-2" />
+                            {scheduledDate ? format(scheduledDate, 'MM/dd', { locale: ja }) : '日付選択'}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0">
+                          <Calendar
+                            mode="single"
+                            selected={scheduledDate}
+                            onSelect={setScheduledDate}
+                            disabled={(date) => date < new Date()}
+                          />
+                        </PopoverContent>
+                      </Popover>
+                      <Input
+                        type="time"
+                        value={scheduledTime}
+                        onChange={(e) => setScheduledTime(e.target.value)}
+                        className="w-32"
+                      />
+                    </div>
+
+                    <div className="flex gap-2">
+                      <Button 
+                        onClick={() => savePosts('draft')} 
+                        disabled={isPublishing}
+                        variant="outline"
+                        className="flex-1"
+                      >
+                        {isPublishing ? (
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        ) : (
+                          <Send className="h-4 w-4 mr-2" />
+                        )}
+                        下書き保存
+                      </Button>
+                      <Button 
+                        onClick={() => savePosts('scheduled')} 
+                        disabled={isPublishing || !scheduledDate}
+                        className="flex-1"
+                      >
+                        {isPublishing ? (
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        ) : (
+                          <Clock className="h-4 w-4 mr-2" />
+                        )}
+                        予約投稿
+                      </Button>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Sparkles className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p>トピックを入力して投稿を生成してください</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   );
