@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -165,7 +164,7 @@ const CreatePosts = () => {
 
   return (
     <div className="min-h-screen bg-background p-6">
-      <div className="max-w-4xl mx-auto space-y-6">
+      <div className="max-w-2xl mx-auto space-y-6">
         <div className="flex items-center gap-4">
           <Button variant="outline" size="sm" onClick={() => navigate("/")}>
             <ArrowLeft className="h-4 w-4 mr-2" />
@@ -177,168 +176,162 @@ const CreatePosts = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* 左カラム：設定 */}
-          <div className="space-y-6">
-            {/* ペルソナ選択 */}
-            <Card>
-              <CardHeader>
-                <CardTitle>ペルソナ選択</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Select value={selectedPersona} onValueChange={setSelectedPersona}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="ペルソナを選択" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {personas.map((persona) => (
-                      <SelectItem key={persona.id} value={persona.id}>
-                        <div className="flex items-center gap-2">
-                          <Avatar className="h-6 w-6">
-                            <AvatarImage src={persona.avatar_url || ""} />
-                            <AvatarFallback>{persona.name[0]}</AvatarFallback>
-                          </Avatar>
-                          {persona.name}
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {selectedPersonaData && (
-                  <div className="p-3 bg-muted rounded-lg mt-3">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Avatar className="h-8 w-8">
-                        <AvatarImage src={selectedPersonaData.avatar_url || ""} />
-                        <AvatarFallback>{selectedPersonaData.name[0]}</AvatarFallback>
-                      </Avatar>
-                      <span className="font-medium">{selectedPersonaData.name}</span>
-                    </div>
-                    {selectedPersonaData.personality && (
-                      <p className="text-sm text-muted-foreground">{selectedPersonaData.personality}</p>
-                    )}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* 日付選択 */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <CalendarIcon className="h-5 w-5" />
-                  投稿日選択
-                </CardTitle>
-                <CardDescription>
-                  投稿したい日付を選択してください（複数選択可能）
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Calendar
-                  mode="multiple"
-                  selected={selectedDates}
-                  onSelect={(dates) => setSelectedDates(dates || [])}
-                  disabled={(date) => date < new Date()}
-                  className="rounded-md border"
-                />
-                {selectedDates.length > 0 && (
-                  <div className="mt-3">
-                    <p className="text-sm font-medium mb-2">選択された日付:</p>
-                    <div className="flex flex-wrap gap-1">
-                      {selectedDates.map((date, index) => (
-                        <span key={index} className="bg-primary/10 text-primary px-2 py-1 rounded text-sm">
-                          {format(date, 'MM/dd', { locale: ja })}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* 右カラム：時間選択・内容入力 */}
-          <div className="space-y-6">
-            {/* 時間選択 */}
-            <Card>
-              <CardHeader>
-                <CardTitle>投稿時間選択</CardTitle>
-                <CardDescription>
-                  投稿したい時間を選択してください（30分間隔）
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-4 gap-2 max-h-64 overflow-y-auto">
-                  {timeOptions.map((time) => (
-                    <div key={time} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={time}
-                        checked={selectedTimes.includes(time)}
-                        onCheckedChange={() => handleTimeToggle(time)}
-                      />
-                      <label htmlFor={time} className="text-sm font-medium">
-                        {time}
-                      </label>
-                    </div>
+        <div className="space-y-6">
+          {/* ペルソナ選択 */}
+          <Card>
+            <CardHeader>
+              <CardTitle>ペルソナ選択</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Select value={selectedPersona} onValueChange={setSelectedPersona}>
+                <SelectTrigger>
+                  <SelectValue placeholder="ペルソナを選択" />
+                </SelectTrigger>
+                <SelectContent>
+                  {personas.map((persona) => (
+                    <SelectItem key={persona.id} value={persona.id}>
+                      <div className="flex items-center gap-2">
+                        <Avatar className="h-6 w-6">
+                          <AvatarImage src={persona.avatar_url || ""} />
+                          <AvatarFallback>{persona.name[0]}</AvatarFallback>
+                        </Avatar>
+                        {persona.name}
+                      </div>
+                    </SelectItem>
                   ))}
-                </div>
-                {selectedTimes.length > 0 && (
-                  <div className="mt-3">
-                    <p className="text-sm font-medium mb-2">選択された時間: {selectedTimes.length}件</p>
+                </SelectContent>
+              </Select>
+              {selectedPersonaData && (
+                <div className="p-3 bg-muted rounded-lg mt-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Avatar className="h-8 w-8">
+                      <AvatarImage src={selectedPersonaData.avatar_url || ""} />
+                      <AvatarFallback>{selectedPersonaData.name[0]}</AvatarFallback>
+                    </Avatar>
+                    <span className="font-medium">{selectedPersonaData.name}</span>
                   </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* 投稿内容入力 */}
-            <Card>
-              <CardHeader>
-                <CardTitle>投稿内容</CardTitle>
-                <CardDescription>
-                  投稿したいトピックを入力してください（1行1トピック）
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <Label>投稿トピック</Label>
-                  <Textarea
-                    placeholder="例：&#10;今日の朝活について&#10;おすすめのカフェ紹介&#10;仕事の効率化ツール"
-                    value={topics}
-                    onChange={(e) => setTopics(e.target.value)}
-                    rows={4}
-                  />
+                  {selectedPersonaData.personality && (
+                    <p className="text-sm text-muted-foreground">{selectedPersonaData.personality}</p>
+                  )}
                 </div>
-                <div>
-                  <Label>カスタムプロンプト（オプション）</Label>
-                  <Textarea
-                    placeholder="特別な指示があれば入力してください"
-                    value={customPrompt}
-                    onChange={(e) => setCustomPrompt(e.target.value)}
-                    rows={3}
-                  />
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* 生成ボタン */}
-            <Button 
-              onClick={generatePosts} 
-              disabled={isGenerating || !topics.trim() || !selectedPersona || selectedDates.length === 0 || selectedTimes.length === 0}
-              className="w-full"
-              size="lg"
-            >
-              {isGenerating ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  生成中...
-                </>
-              ) : (
-                <>
-                  <Sparkles className="h-4 w-4 mr-2" />
-                  投稿を生成
-                </>
               )}
-            </Button>
-          </div>
+            </CardContent>
+          </Card>
+
+          {/* 日付選択 */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <CalendarIcon className="h-5 w-5" />
+                投稿日選択
+              </CardTitle>
+              <CardDescription>
+                投稿したい日付を選択してください（複数選択可能）
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Calendar
+                mode="multiple"
+                selected={selectedDates}
+                onSelect={(dates) => setSelectedDates(dates || [])}
+                disabled={(date) => date < new Date()}
+                className="rounded-md border"
+              />
+              {selectedDates.length > 0 && (
+                <div className="mt-3">
+                  <p className="text-sm font-medium mb-2">選択された日付:</p>
+                  <div className="flex flex-wrap gap-1">
+                    {selectedDates.map((date, index) => (
+                      <span key={index} className="bg-primary/10 text-primary px-2 py-1 rounded text-sm">
+                        {format(date, 'MM/dd', { locale: ja })}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* 時間選択 */}
+          <Card>
+            <CardHeader>
+              <CardTitle>投稿時間選択</CardTitle>
+              <CardDescription>
+                投稿したい時間を選択してください（30分間隔）
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-4 gap-2 max-h-64 overflow-y-auto">
+                {timeOptions.map((time) => (
+                  <div key={time} className="flex items-center space-x-2">
+                    <Checkbox
+                      id={time}
+                      checked={selectedTimes.includes(time)}
+                      onCheckedChange={() => handleTimeToggle(time)}
+                    />
+                    <label htmlFor={time} className="text-sm font-medium">
+                      {time}
+                    </label>
+                  </div>
+                ))}
+              </div>
+              {selectedTimes.length > 0 && (
+                <div className="mt-3">
+                  <p className="text-sm font-medium mb-2">選択された時間: {selectedTimes.length}件</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* 投稿内容入力 */}
+          <Card>
+            <CardHeader>
+              <CardTitle>投稿内容</CardTitle>
+              <CardDescription>
+                投稿したいトピックを入力してください（1行1トピック）
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <Label>投稿トピック</Label>
+                <Textarea
+                  placeholder="例：&#10;今日の朝活について&#10;おすすめのカフェ紹介&#10;仕事の効率化ツール"
+                  value={topics}
+                  onChange={(e) => setTopics(e.target.value)}
+                  rows={4}
+                />
+              </div>
+              <div>
+                <Label>カスタムプロンプト（オプション）</Label>
+                <Textarea
+                  placeholder="特別な指示があれば入力してください"
+                  value={customPrompt}
+                  onChange={(e) => setCustomPrompt(e.target.value)}
+                  rows={3}
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* 生成ボタン */}
+          <Button 
+            onClick={generatePosts} 
+            disabled={isGenerating || !topics.trim() || !selectedPersona || selectedDates.length === 0 || selectedTimes.length === 0}
+            className="w-full"
+            size="lg"
+          >
+            {isGenerating ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                生成中...
+              </>
+            ) : (
+              <>
+                <Sparkles className="h-4 w-4 mr-2" />
+                投稿を生成
+              </>
+            )}
+          </Button>
         </div>
       </div>
     </div>
