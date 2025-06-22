@@ -179,11 +179,18 @@ const CreatePosts = () => {
         // 生成された投稿をセット
         setGeneratedPosts(data.posts);
         
-        // Initialize image prompts for each post
+        // Generate image prompts for each post based on content
         const prompts: Record<string, string> = {};
-        data.posts.forEach((post: Post, index: number) => {
-          prompts[post.id] = `Photograph, professional photograph, of a woman in an off-shoulder dress, smiling playfully. City night bokeh background, diffused light. Close-up, slightly angled shot. Happy, confident expression.`;
-        });
+        for (const post of data.posts) {
+          try {
+            const imagePrompt = await generateImagePromptFromContent(post.content);
+            prompts[post.id] = imagePrompt;
+          } catch (error) {
+            console.error('Failed to generate image prompt for post:', post.id, error);
+            // Fallback to a default selfie prompt
+            prompts[post.id] = "selfie photo, smiling woman, casual outfit, natural lighting, morning time, cozy atmosphere";
+          }
+        }
         setImagePrompts(prompts);
         
         // ステップ2（生成・編集）に進む
@@ -205,6 +212,33 @@ const CreatePosts = () => {
       });
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const generateImagePromptFromContent = async (postContent: string): Promise<string> => {
+    try {
+      console.log('Generating image prompt for content:', postContent);
+      
+      const { data, error } = await supabase.functions.invoke('generate-image-prompt', {
+        body: {
+          postContent: postContent
+        }
+      });
+
+      if (error) {
+        console.error('Error generating image prompt:', error);
+        throw error;
+      }
+
+      if (data?.success && data?.imagePrompt) {
+        console.log('Generated image prompt:', data.imagePrompt);
+        return data.imagePrompt;
+      } else {
+        throw new Error('Failed to generate image prompt');
+      }
+    } catch (error) {
+      console.error('Error in generateImagePromptFromContent:', error);
+      throw error;
     }
   };
 
@@ -265,11 +299,10 @@ const CreatePosts = () => {
     try {
       console.log('Starting image generation for post:', postIndex);
       
+      // Convert image to base64 string for Edge Function
       let imageBase64: string;
       
-      // Convert image to base64 string for reliable transmission
       if (faceImage) {
-        // Convert File to base64
         console.log('Converting File to base64:', faceImage.name, faceImage.type, faceImage.size);
         const reader = new FileReader();
         imageBase64 = await new Promise((resolve, reject) => {
@@ -278,17 +311,20 @@ const CreatePosts = () => {
           reader.readAsDataURL(faceImage);
         });
       } else if (faceImagePreview) {
-        // Use preview URL directly (should already be in correct format)
         console.log('Using preview URL as base64');
         imageBase64 = faceImagePreview;
       } else {
         throw new Error('No image available');
       }
 
+      // Get the generated prompt for this specific post
+      const postPrompt = imagePrompts[post.id] || "selfie photo, smiling woman, casual outfit, natural lighting";
+      console.log('Using image prompt for this post:', postPrompt);
+
       const requestBody = {
         space_url: "i0switch/my-image-generator",
-        face_image: imageBase64, // Always send as base64 string
-        subject: subject || "portrait",
+        face_image: imageBase64,
+        subject: postPrompt, // Use the generated prompt instead of fixed subject
         add_prompt: additionalPrompt || "",
         add_neg: additionalNegative || "blurry, low quality, distorted",
         cfg: cfg[0],
@@ -300,7 +336,7 @@ const CreatePosts = () => {
         up_factor: upFactor[0]
       };
 
-      console.log('Sending request to generate-image-gradio with base64 image');
+      console.log('Sending request to generate-image-gradio with generated prompt');
 
       const { data, error } = await supabase.functions.invoke('generate-image-gradio', {
         body: requestBody
@@ -819,7 +855,7 @@ const CreatePosts = () => {
                     <div>
                       <p className="text-sm font-medium mb-2">画像プロンプト</p>
                       <div className="text-sm bg-primary/5 p-3 rounded border-l-4 border-primary">
-                        {imagePrompts[post.id] || "Photograph, professional photograph, of a woman in an off-shoulder dress, smiling playfully. City night bokeh background, diffused light. Close-up, slightly angled shot. Happy, confident expression."}
+                        {imagePrompts[post.id] || "selfie photo, smiling woman, casual outfit, natural lighting, morning time, cozy atmosphere"}
                       </div>
                     </div>
 
