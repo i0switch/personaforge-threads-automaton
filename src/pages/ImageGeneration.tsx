@@ -403,7 +403,7 @@ const ImageGeneration = () => {
               <Checkbox
                 id="upscale"
                 checked={upscale}
-                onCheckedChange={setUpscale}
+                onCheckedChange={(checked) => setUpscale(checked === true)}
               />
               <Label htmlFor="upscale">アップスケールを有効にする</Label>
             </div>
@@ -484,7 +484,7 @@ const ImageGeneration = () => {
 
                 <Button
                   onClick={() => generateImage(index)}
-                  disabled={generatingImages.has(index) || generatingPrompts.has(index) || !referenceImage}
+                  disabled={generatingImages.has(index) || generatingPrompts.has(index) || !referenceImage || !generatedPrompts[index]}
                   className="w-full"
                   size="lg"
                 >
