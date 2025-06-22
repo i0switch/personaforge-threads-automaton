@@ -43,42 +43,70 @@ serve(async (req) => {
       up_factor
     });
 
-    // Handle the face image - convert to Blob
+    console.log('Face image type:', typeof face_image);
+    console.log('Face image instanceof File:', face_image instanceof File);
+
+    // Handle the face image - convert to proper Blob
     let imageBlob;
-    if (face_image instanceof File) {
-      console.log('Converting File to Blob');
-      const arrayBuffer = await face_image.arrayBuffer();
-      imageBlob = new Blob([arrayBuffer], { type: face_image.type });
-    } else if (typeof face_image === 'string' && face_image.startsWith('data:')) {
-      // Handle base64 data URL
-      console.log('Converting base64 to Blob');
-      const response = await fetch(face_image);
-      imageBlob = await response.blob();
-    } else if (typeof face_image === 'string' && face_image.startsWith('http')) {
-      // Handle URL
-      console.log('Fetching image from URL');
-      const response = await fetch(face_image);
-      imageBlob = await response.blob();
-    } else {
-      // Assume it's already a Blob
-      imageBlob = face_image;
+    
+    if (!face_image) {
+      throw new Error('Face image is required but not provided');
     }
 
+    if (face_image instanceof File) {
+      console.log('Processing File object:', face_image.name, face_image.type, face_image.size);
+      // File is already a valid input for handle_file, but let's convert to Blob for consistency
+      const arrayBuffer = await face_image.arrayBuffer();
+      imageBlob = new Blob([arrayBuffer], { type: face_image.type || 'image/png' });
+    } else if (typeof face_image === 'string') {
+      if (face_image.startsWith('data:image/')) {
+        // Handle base64 data URL
+        console.log('Converting base64 data URL to Blob');
+        const response = await fetch(face_image);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch base64 data: ${response.status}`);
+        }
+        imageBlob = await response.blob();
+      } else if (face_image.startsWith('http')) {
+        // Handle URL
+        console.log('Fetching image from URL:', face_image.substring(0, 50) + '...');
+        const response = await fetch(face_image);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch image from URL: ${response.status}`);
+        }
+        imageBlob = await response.blob();
+      } else {
+        // Assume it's a base64 string without prefix
+        console.log('Converting base64 string to Blob');
+        const base64Data = face_image.includes(',') ? face_image.split(',')[1] : face_image;
+        const binaryString = atob(base64Data);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        imageBlob = new Blob([bytes], { type: 'image/png' });
+      }
+    } else if (face_image instanceof Blob) {
+      console.log('Using provided Blob');
+      imageBlob = face_image;
+    } else {
+      throw new Error(`Unsupported face_image type: ${typeof face_image}`);
+    }
+
+    // Validate the blob
     if (!imageBlob || imageBlob.size === 0) {
       throw new Error('Invalid image data: Blob is empty or undefined');
     }
 
-    console.log('Image blob type:', imageBlob.type);
-    console.log('Image blob size:', imageBlob.size);
+    console.log('Final image blob - type:', imageBlob.type, 'size:', imageBlob.size);
 
     // Connect to the Gradio space
     const client = await Client.connect(space_url);
-    
     console.log('Connected to Gradio space successfully');
 
     // Use handle_file to properly register the image blob
     const imageRef = handle_file(imageBlob);
-    console.log('Image registered with handle_file');
+    console.log('Image registered with handle_file successfully');
 
     // Call the predict function with correct parameter order (matching app.py)
     // The order must match exactly: [face_image, subject, add_prompt, add_neg, cfg, ip_scale, steps, w, h, upscale, up_factor]
