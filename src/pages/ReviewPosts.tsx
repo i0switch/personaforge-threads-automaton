@@ -181,13 +181,37 @@ const ReviewPosts = () => {
                   </div>
                 </div>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-4">
                 <Textarea
                   value={post.content}
                   onChange={(e) => updatePost(index, e.target.value)}
                   rows={4}
                   placeholder="投稿内容を編集..."
                 />
+                
+                {/* 画像プレビュー */}
+                {post.images && post.images.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium text-muted-foreground">添付画像:</div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {post.images.map((imageUrl, imageIndex) => (
+                        <div key={imageIndex} className="relative">
+                          <img
+                            src={imageUrl}
+                            alt={`投稿画像 ${imageIndex + 1}`}
+                            className="w-full max-w-md mx-auto rounded-lg border object-cover"
+                            style={{ maxHeight: '300px' }}
+                            onError={(e) => {
+                              console.error('Failed to load image:', imageUrl);
+                              const target = e.target as HTMLImageElement;
+                              target.style.display = 'none';
+                            }}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           ))}
