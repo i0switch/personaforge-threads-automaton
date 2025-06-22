@@ -60,8 +60,8 @@ const CreatePosts = () => {
   const [upscale, setUpscale] = useState(true);
   const [upFactor, setUpFactor] = useState([2]);
 
-  // Image generation state
-  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
+  // Image generation state - track per post instead of globally
+  const [generatingImages, setGeneratingImages] = useState<Record<string, boolean>>({});
 
   // 30分間隔の時間選択肢を生成
   const timeOptions = [];
@@ -248,6 +248,8 @@ const CreatePosts = () => {
   };
 
   const generateImageForPost = async (postIndex: number) => {
+    const post = generatedPosts[postIndex];
+    
     if (!faceImage && !faceImagePreview) {
       toast({
         title: "エラー",
@@ -257,7 +259,9 @@ const CreatePosts = () => {
       return;
     }
 
-    setIsGeneratingImage(true);
+    // Set generating state for this specific post
+    setGeneratingImages(prev => ({ ...prev, [post.id]: true }));
+    
     try {
       console.log('Starting image generation for post:', postIndex);
       
@@ -317,7 +321,8 @@ const CreatePosts = () => {
         variant: "destructive",
       });
     } finally {
-      setIsGeneratingImage(false);
+      // Clear generating state for this specific post
+      setGeneratingImages(prev => ({ ...prev, [post.id]: false }));
     }
   };
 
@@ -803,11 +808,11 @@ const CreatePosts = () => {
 
                     <Button 
                       onClick={() => generateImageForPost(index)}
-                      disabled={isGeneratingImage || (!faceImage && !faceImagePreview)}
+                      disabled={generatingImages[post.id] || (!faceImage && !faceImagePreview)}
                       className="w-full" 
                       size="lg"
                     >
-                      {isGeneratingImage ? (
+                      {generatingImages[post.id] ? (
                         <>
                           <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                           画像生成中...
