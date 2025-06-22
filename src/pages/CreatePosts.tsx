@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
-import { ArrowLeft, Calendar as CalendarIcon, Sparkles, Loader2, Image as ImageIcon, Wand2, Upload, X } from "lucide-react";
+import { ArrowLeft, Calendar as CalendarIcon, Sparkles, Loader2, Image as ImageIcon, Wand2, Upload, X, Check, RotateCcw } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -67,6 +66,10 @@ const CreatePosts = () => {
 
   // Image generation state - track per post instead of globally
   const [generatingImages, setGeneratingImages] = useState<Record<string, boolean>>({});
+  
+  // Add state to track posts that have had images generated and need review
+  const [postsNeedingReview, setPostsNeedingReview] = useState<Set<string>>(new Set());
+  const [reviewedPosts, setReviewedPosts] = useState<Set<string>>(new Set());
 
   // 30分間隔の時間選択肢を生成
   const timeOptions = [];
@@ -265,6 +268,18 @@ const CreatePosts = () => {
       delete newPostImagePreviews[post.id];
       setPostImages(newPostImages);
       setPostImagePreviews(newPostImagePreviews);
+      
+      // Remove from review tracking
+      setPostsNeedingReview(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(post.id);
+        return newSet;
+      });
+      setReviewedPosts(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(post.id);
+        return newSet;
+      });
     }
     setGeneratedPosts(generatedPosts.filter((_, i) => i !== index));
   };
@@ -458,6 +473,9 @@ const CreatePosts = () => {
         };
         setGeneratedPosts(updatedPosts);
 
+        // Mark this post as needing review
+        setPostsNeedingReview(prev => new Set(prev).add(post.id));
+
         toast({
           title: "成功",
           description: "画像を生成しました。",
@@ -478,12 +496,52 @@ const CreatePosts = () => {
     }
   };
 
+  // Handle image approval (keep the generated image)
+  const approveGeneratedImage = (postId: string) => {
+    setReviewedPosts(prev => new Set(prev).add(postId));
+    setPostsNeedingReview(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(postId);
+      return newSet;
+    });
+    
+    toast({
+      title: "承認済み",
+      description: "生成された画像を使用します。",
+    });
+  };
+
+  // Handle image regeneration
+  const regenerateImage = (postIndex: number) => {
+    const post = generatedPosts[postIndex];
+    
+    // Remove from review tracking
+    setPostsNeedingReview(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(post.id);
+      return newSet;
+    });
+    setReviewedPosts(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(post.id);
+      return newSet;
+    });
+    
+    // Regenerate the image
+    generateImageForPost(postIndex);
+  };
+
   const selectedPersonaData = personas.find(p => p.id === selectedPersona);
 
   // Filter posts that don't have uploaded images for step 3
   const postsForImageGeneration = generatedPosts.filter((post, index) => {
     return !postImagePreviews[post.id] && (!post.images || post.images.length === 0);
   });
+
+  // Check if all generated images have been reviewed
+  const allImagesReviewed = postsForImageGeneration.every(post => 
+    reviewedPosts.has(post.id) || !post.images || post.images.length === 0
+  );
 
   return (
     <div className="min-h-screen bg-background p-6">
@@ -764,7 +822,7 @@ const CreatePosts = () => {
                               </Label>
                             </div>
                             <p className="mt-1 text-sm text-gray-500">
-                              JPG, PNG, G  up to 10MB
+                              JPG, PNG, GIF up to 10MB
                             </p>
                           </div>
                         </div>
@@ -988,6 +1046,9 @@ const CreatePosts = () => {
                 <div className="space-y-4">
                   {postsForImageGeneration.map((post, originalIndex) => {
                     const actualIndex = generatedPosts.findIndex(p => p.id === post.id);
+                    const needsReview = postsNeedingReview.has(post.id);
+                    const isReviewed = reviewedPosts.has(post.id);
+                    
                     return (
                       <Card key={post.id}>
                         <CardHeader>
@@ -1009,12 +1070,60 @@ const CreatePosts = () => {
                           </div>
 
                           {post.images && post.images.length > 0 ? (
-                            <div className="border rounded-lg p-2">
-                              <img
-                                src={post.images[0]}
-                                alt="Generated"
-                                className="w-full max-w-md mx-auto rounded"
-                              />
+                            <div className="space-y-4">
+                              <div className="border rounded-lg p-2">
+                                <img
+                                  src={post.images[0]}
+                                  alt="Generated"
+                                  className="w-full max-w-md mx-auto rounded"
+                                />
+                              </div>
+                              
+                              {needsReview && (
+                                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                                  <p className="text-sm font-medium text-yellow-800 mb-3">
+                                    生成された画像を確認してください
+                                  </p>
+                                  <div className="flex gap-2">
+                                    <Button
+                                      onClick={() => approveGeneratedImage(post.id)}
+                                      size="sm"
+                                      className="flex-1"
+                                    >
+                                      <Check className="h-4 w-4 mr-2" />
+                                      この画像を使用
+                                    </Button>
+                                    <Button
+                                      onClick={() => regenerateImage(actualIndex)}
+                                      variant="outline"
+                                      size="sm"
+                                      className="flex-1"
+                                      disabled={generatingImages[post.id]}
+                                    >
+                                      {generatingImages[post.id] ? (
+                                        <>
+                                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                          再生成中...
+                                        </>
+                                      ) : (
+                                        <>
+                                          <RotateCcw className="h-4 w-4 mr-2" />
+                                          再生成
+                                        </>
+                                      )}
+                                    </Button>
+                                  </div>
+                                </div>
+                              )}
+                              
+                              {isReviewed && (
+                                <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                                  <div className="flex items-center text-sm text-green-800">
+                                    <Check className="h-4 w-4 mr-2" />
+                                    この画像の使用が承認されました
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           ) : (
                             <div className="flex items-center justify-center p-8 border-2 border-dashed border-gray-300 rounded-lg">
@@ -1025,24 +1134,26 @@ const CreatePosts = () => {
                             </div>
                           )}
 
-                          <Button 
-                            onClick={() => generateImageForPost(actualIndex)}
-                            disabled={generatingImages[post.id] || (!faceImage && !faceImagePreview)}
-                            className="w-full" 
-                            size="lg"
-                          >
-                            {generatingImages[post.id] ? (
-                              <>
-                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                画像生成中...
-                              </>
-                            ) : (
-                              <>
-                                <ImageIcon className="h-4 w-4 mr-2" />
-                                画像生成
-                              </>
-                            )}
-                          </Button>
+                          {!post.images || post.images.length === 0 ? (
+                            <Button 
+                              onClick={() => generateImageForPost(actualIndex)}
+                              disabled={generatingImages[post.id] || (!faceImage && !faceImagePreview)}
+                              className="w-full" 
+                              size="lg"
+                            >
+                              {generatingImages[post.id] ? (
+                                <>
+                                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                  画像生成中...
+                                </>
+                              ) : (
+                                <>
+                                  <ImageIcon className="h-4 w-4 mr-2" />
+                                  画像生成
+                                </>
+                              )}
+                            </Button>
+                          ) : null}
                         </CardContent>
                       </Card>
                     );
@@ -1064,9 +1175,16 @@ const CreatePosts = () => {
                 onClick={scheduleAllPosts}
                 className="flex-1"
                 size="lg"
-                disabled={generatedPosts.length === 0}
+                disabled={generatedPosts.length === 0 || (!allImagesReviewed && postsForImageGeneration.length > 0)}
               >
-                投稿を保存
+                {!allImagesReviewed && postsForImageGeneration.length > 0 ? (
+                  <>
+                    <ImageIcon className="h-4 w-4 mr-2" />
+                    画像確認が未完了
+                  </>
+                ) : (
+                  "投稿を保存"
+                )}
               </Button>
             </div>
           </div>
