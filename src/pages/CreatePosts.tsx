@@ -101,6 +101,14 @@ const CreatePosts = () => {
 
     setIsGenerating(true);
     try {
+      console.log('Starting post generation with:', {
+        personaId: selectedPersona,
+        topics: topics.split('\n').filter(t => t.trim()),
+        selectedDates: selectedDates.map(d => d.toISOString()),
+        selectedTimes,
+        customPrompt
+      });
+
       const { data, error } = await supabase.functions.invoke('generate-posts', {
         body: {
           personaId: selectedPersona,
@@ -111,22 +119,41 @@ const CreatePosts = () => {
         }
       });
 
-      if (error) throw error;
+      console.log('Generate posts response:', data);
 
-      if (data.success) {
+      if (error) {
+        console.error('Supabase function error:', error);
+        throw error;
+      }
+
+      if (data.success && data.posts && data.posts.length > 0) {
+        const selectedPersonaData = personas.find(p => p.id === selectedPersona);
+        
+        console.log('Navigating to review posts with:', {
+          posts: data.posts,
+          persona: selectedPersonaData
+        });
+
         toast({
           title: "成功",
-          description: `${data.generated_count}件の投稿を生成しました。`,
+          description: `${data.posts.length}件の投稿を生成しました。`,
         });
-        navigate("/scheduled-posts");
+
+        // Navigate to review page
+        navigate("/review-posts", {
+          state: {
+            posts: data.posts,
+            persona: selectedPersonaData
+          }
+        });
       } else {
-        throw new Error('投稿生成に失敗しました');
+        throw new Error('投稿の生成に失敗しました');
       }
     } catch (error) {
       console.error('Error generating posts:', error);
       toast({
         title: "エラー",
-        description: "投稿の生成に失敗しました。",
+        description: "投稿の生成に失敗しました。詳細はコンソールを確認してください。",
         variant: "destructive",
       });
     } finally {
