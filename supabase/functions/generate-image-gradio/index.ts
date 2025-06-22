@@ -30,21 +30,7 @@ serve(async (req) => {
     } = await req.json();
 
     console.log('Connecting to Gradio space:', space_url);
-
-    // Convert File to Blob if needed
-    let imageBlob;
-    if (face_image instanceof File) {
-      const arrayBuffer = await face_image.arrayBuffer();
-      imageBlob = new Blob([arrayBuffer], { type: face_image.type });
-    } else {
-      // Assume it's already a Blob or similar
-      imageBlob = face_image;
-    }
-
-    // Connect to the Gradio space
-    const client = await Client.connect(space_url);
-    
-    console.log('Calling predict with parameters:', {
+    console.log('Parameters:', {
       subject,
       add_prompt,
       add_neg,
@@ -57,11 +43,41 @@ serve(async (req) => {
       up_factor
     });
 
+    // Handle the face image - convert File to Blob if needed
+    let imageBlob;
+    if (face_image instanceof File) {
+      console.log('Converting File to Blob');
+      const arrayBuffer = await face_image.arrayBuffer();
+      imageBlob = new Blob([arrayBuffer], { type: face_image.type });
+    } else if (typeof face_image === 'string' && face_image.startsWith('data:')) {
+      // Handle base64 data URL
+      console.log('Converting base64 to Blob');
+      const response = await fetch(face_image);
+      imageBlob = await response.blob();
+    } else if (typeof face_image === 'string' && face_image.startsWith('http')) {
+      // Handle URL
+      console.log('Fetching image from URL');
+      const response = await fetch(face_image);
+      imageBlob = await response.blob();
+    } else {
+      // Assume it's already a Blob
+      imageBlob = face_image;
+    }
+
+    console.log('Image blob type:', imageBlob?.type);
+    console.log('Image blob size:', imageBlob?.size);
+
+    // Connect to the Gradio space
+    const client = await Client.connect(space_url);
+    
+    console.log('Connected to Gradio space successfully');
+
+    // Call the predict function with the correct parameter mapping
     const result = await client.predict("/predict", {
       face_np: imageBlob,
-      subject: subject || "Hello!!",
-      add_prompt: add_prompt || "Hello!!",
-      add_neg: add_neg || "Hello!!",
+      subject: subject || "portrait",
+      add_prompt: add_prompt || "",
+      add_neg: add_neg || "blurry, low quality, distorted",
       cfg: cfg || 6,
       ip_scale: ip_scale || 0.65,
       steps: steps || 20,
@@ -71,14 +87,15 @@ serve(async (req) => {
       up_factor: up_factor || 2
     });
 
-    console.log('Gradio result:', result);
+    console.log('Gradio result structure:', result);
 
     if (!result.data || !result.data[0]) {
       throw new Error('No image data returned from Gradio space');
     }
 
-    // The result should contain the image URL or base64 data
+    // The result should contain the image data (base64 or URL)
     const imageData = result.data[0];
+    console.log('Generated image data type:', typeof imageData);
     
     return new Response(
       JSON.stringify({

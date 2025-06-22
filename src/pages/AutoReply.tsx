@@ -125,7 +125,8 @@ const AutoReply = () => {
       user_id: user!.id,
       trigger_keywords: [],
       response_template: "",
-      is_active: true
+      is_active: true,
+      persona_id: selectedPersona?.id || null
     };
 
     setRules([...rules, newRule as AutoReplyRule]);
@@ -175,7 +176,8 @@ const AutoReply = () => {
             .update({
               trigger_keywords: rule.trigger_keywords,
               response_template: rule.response_template,
-              is_active: rule.is_active
+              is_active: rule.is_active,
+              persona_id: rule.persona_id
             })
             .eq('id', rule.id);
 
@@ -188,7 +190,8 @@ const AutoReply = () => {
               user_id: user.id,
               trigger_keywords: rule.trigger_keywords,
               response_template: rule.response_template,
-              is_active: rule.is_active
+              is_active: rule.is_active,
+              persona_id: rule.persona_id
             }]);
 
           if (error) throw error;
@@ -226,6 +229,12 @@ const AutoReply = () => {
 
     setGeneratingReply(true);
     try {
+      console.log('Calling generate-auto-reply with:', {
+        postContent: testPostContent,
+        replyContent: testReplyContent,
+        persona: selectedPersona
+      });
+
       const { data, error } = await supabase.functions.invoke('generate-auto-reply', {
         body: {
           postContent: testPostContent,
@@ -233,6 +242,8 @@ const AutoReply = () => {
           persona: selectedPersona
         }
       });
+
+      console.log('Auto-reply response:', { data, error });
 
       if (error) {
         console.error('Auto-reply generation error:', error);
@@ -259,6 +270,21 @@ const AutoReply = () => {
       });
     } finally {
       setGeneratingReply(false);
+    }
+  };
+
+  // Toggle behavior handler
+  const handleAiAutoReplyToggle = (checked: boolean) => {
+    setAiAutoReplyEnabled(checked);
+    if (checked) {
+      setAutoReplyEnabled(false); // Turn off keyword auto-reply when AI is enabled
+    }
+  };
+
+  const handleKeywordAutoReplyToggle = (checked: boolean) => {
+    setAutoReplyEnabled(checked);
+    if (checked) {
+      setAiAutoReplyEnabled(false); // Turn off AI auto-reply when keyword is enabled
     }
   };
 
@@ -307,7 +333,7 @@ const AutoReply = () => {
               <Switch
                 id="auto-reply"
                 checked={autoReplyEnabled}
-                onCheckedChange={setAutoReplyEnabled}
+                onCheckedChange={handleKeywordAutoReplyToggle}
               />
               <Label htmlFor="auto-reply">キーワード自動返信を有効にする</Label>
             </div>
@@ -316,7 +342,7 @@ const AutoReply = () => {
               <Switch
                 id="ai-auto-reply"
                 checked={aiAutoReplyEnabled}
-                onCheckedChange={setAiAutoReplyEnabled}
+                onCheckedChange={handleAiAutoReplyToggle}
               />
               <Label htmlFor="ai-auto-reply">AI自動返信を有効にする</Label>
             </div>
@@ -453,25 +479,43 @@ const AutoReply = () => {
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+                <div className="space-y-4">
                   <div className="space-y-2">
-                    <Label>トリガーキーワード（カンマ区切り）</Label>
-                    <Input
-                      value={Array.isArray(rule.trigger_keywords) ? rule.trigger_keywords.join(', ') : ''}
-                      onChange={(e) => updateRule(index, 'trigger_keywords', e.target.value.split(',').map(k => k.trim()))}
-                      placeholder="例: こんにちは, おはよう, ありがとう"
-                    />
+                    <Label>ペルソナ選択</Label>
+                    <select 
+                      className="w-full p-2 border rounded-md"
+                      value={rule.persona_id || ""}
+                      onChange={(e) => updateRule(index, 'persona_id', e.target.value || null)}
+                    >
+                      <option value="">ペルソナを選択してください</option>
+                      {personas.map((persona) => (
+                        <option key={persona.id} value={persona.id}>
+                          {persona.name}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                   
-                  <div className="space-y-2">
-                    <Label>返信文</Label>
-                    <Textarea
-                      value={rule.response_template}
-                      onChange={(e) => updateRule(index, 'response_template', e.target.value)}
-                      placeholder="自動返信する文章を入力"
-                      rows={2}
-                    />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>トリガーキーワード（カンマ区切り）</Label>
+                      <Input
+                        value={Array.isArray(rule.trigger_keywords) ? rule.trigger_keywords.join(', ') : ''}
+                        onChange={(e) => updateRule(index, 'trigger_keywords', e.target.value.split(',').map(k => k.trim()))}
+                        placeholder="例: こんにちは, おはよう, ありがとう"
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label>返信文</Label>
+                      <Textarea
+                        value={rule.response_template}
+                        onChange={(e) => updateRule(index, 'response_template', e.target.value)}
+                        placeholder="自動返信する文章を入力"
+                        rows={2}
+                      />
+                    </div>
                   </div>
                 </div>
               </div>

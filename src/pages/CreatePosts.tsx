@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -44,6 +43,18 @@ const CreatePosts = () => {
   const [generatedPosts, setGeneratedPosts] = useState<Post[]>([]);
   const [faceImage, setFaceImage] = useState<File | null>(null);
   const [faceImagePreview, setFaceImagePreview] = useState<string>("");
+
+  // Image generation settings
+  const [subject, setSubject] = useState("portrait");
+  const [additionalPrompt, setAdditionalPrompt] = useState("");
+  const [additionalNegative, setAdditionalNegative] = useState("blurry, low quality, distorted");
+  const [cfg, setCfg] = useState(6);
+  const [ipScale, setIpScale] = useState(0.65);
+  const [steps, setSteps] = useState(20);
+  const [width, setWidth] = useState(512);
+  const [height, setHeight] = useState(768);
+  const [upscale, setUpscale] = useState(true);
+  const [upFactor, setUpFactor] = useState(2);
 
   // 30分間隔の時間選択肢を生成
   const timeOptions = [];
@@ -536,6 +547,135 @@ const CreatePosts = () => {
                       />
                     </div>
                   )}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* 画像生成設定 */}
+            <Card>
+              <CardHeader>
+                <CardTitle>画像生成設定</CardTitle>
+                <CardDescription>
+                  画像生成のパラメータを調整できます
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>被写体説明</Label>
+                    <Input
+                      value={subject}
+                      onChange={(e) => setSubject(e.target.value)}
+                      placeholder="例: portrait, business person"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>追加プロンプト</Label>
+                    <Input
+                      value={additionalPrompt}
+                      onChange={(e) => setAdditionalPrompt(e.target.value)}
+                      placeholder="追加の説明を入力"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>追加ネガティブ</Label>
+                  <Textarea
+                    value={additionalNegative}
+                    onChange={(e) => setAdditionalNegative(e.target.value)}
+                    placeholder="避けたい要素を入力"
+                    rows={2}
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  <div className="space-y-2">
+                    <Label>CFG: {cfg}</Label>
+                    <Input
+                      type="range"
+                      min="1"
+                      max="20"
+                      step="0.5"
+                      value={cfg}
+                      onChange={(e) => setCfg(parseFloat(e.target.value))}
+                      className="w-full"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>IP-Adapter scale: {ipScale}</Label>
+                    <Input
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.05"
+                      value={ipScale}
+                      onChange={(e) => setIpScale(parseFloat(e.target.value))}
+                      className="w-full"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Steps: {steps}</Label>
+                    <Input
+                      type="range"
+                      min="1"
+                      max="50"
+                      step="1"
+                      value={steps}
+                      onChange={(e) => setSteps(parseInt(e.target.value))}
+                      className="w-full"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>幅: {width}px</Label>
+                    <Input
+                      type="range"
+                      min="256"
+                      max="1024"
+                      step="64"
+                      value={width}
+                      onChange={(e) => setWidth(parseInt(e.target.value))}
+                      className="w-full"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>高さ: {height}px</Label>
+                    <Input
+                      type="range"
+                      min="256"
+                      max="1024"
+                      step="64"
+                      value={height}
+                      onChange={(e) => setHeight(parseInt(e.target.value))}
+                      className="w-full"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>倍率: {upFactor}x</Label>
+                    <Input
+                      type="range"
+                      min="1"
+                      max="4"
+                      step="1"
+                      value={upFactor}
+                      onChange={(e) => setUpFactor(parseInt(e.target.value))}
+                      className="w-full"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="upscale"
+                    checked={upscale}
+                    onCheckedChange={(checked) => setUpscale(checked === true)}
+                  />
+                  <Label htmlFor="upscale">アップスケールを有効にする</Label>
                 </div>
               </CardContent>
             </Card>
