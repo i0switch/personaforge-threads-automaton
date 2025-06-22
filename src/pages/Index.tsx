@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -16,7 +17,7 @@ import type { Database } from "@/integrations/supabase/types";
 
 type Persona = Database['public']['Tables']['personas']['Row'];
 type ActivityLog = Database['public']['Tables']['activity_logs']['Row'] & {
-  personas?: Pick<Database['public']['Tables']['personas']['Row'], 'name' | 'avatar_url'>;
+  personas?: Database['public']['Tables']['personas']['Row'];
 };
 
 const Index = () => {
@@ -155,7 +156,7 @@ const Index = () => {
         .from('activity_logs')
         .select(`
           *,
-          personas!inner(name, avatar_url)
+          personas(name, avatar_url)
         `)
         .eq('user_id', user.id)
         .gte('created_at', startDate.toISOString())
@@ -429,7 +430,7 @@ const Index = () => {
                               <Button
                                 size="sm"
                                 variant="outline"
-                                onClick={()={() => deletePersona(persona.id)}}
+                                onClick={() => deletePersona(persona.id)}
                                 disabled={deletingPersona === persona.id}
                               >
                                 {deletingPersona === persona.id ? (
