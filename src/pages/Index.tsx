@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -429,7 +430,7 @@ const Index = () => {
                               <Button
                                 size="sm"
                                 variant="outline"
-                                onClick={()={() => deletePersona(persona.id)}}
+                                onClick={() => deletePersona(persona.id)}
                                 disabled={deletingPersona === persona.id}
                               >
                                 {deletingPersona === persona.id ? (
