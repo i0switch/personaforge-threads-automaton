@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
-import { ArrowLeft, Calendar as CalendarIcon, Sparkles, Loader2, Image as ImageIcon, Wand2 } from "lucide-react";
+import { ArrowLeft, Calendar as CalendarIcon, Sparkles, Loader2, Image as ImageIcon, Wand2, Upload, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -47,6 +48,10 @@ const CreatePosts = () => {
 
   // Track image prompts separately since they're not in the database
   const [imagePrompts, setImagePrompts] = useState<Record<string, string>>({});
+
+  // Track uploaded images for each post
+  const [postImages, setPostImages] = useState<Record<string, File | null>>({});
+  const [postImagePreviews, setPostImagePreviews] = useState<Record<string, string>>({});
 
   // Image generation settings
   const [subject, setSubject] = useState("portrait");
@@ -182,13 +187,15 @@ const CreatePosts = () => {
         // Generate image prompts for each post based on content
         const prompts: Record<string, string> = {};
         for (const post of data.posts) {
-          try {
-            const imagePrompt = await generateImagePromptFromContent(post.content);
-            prompts[post.id] = imagePrompt;
-          } catch (error) {
-            console.error('Failed to generate image prompt for post:', post.id, error);
-            // Fallback to a default selfie prompt
-            prompts[post.id] = "selfie photo, smiling woman, casual outfit, natural lighting, morning time, cozy atmosphere";
+          if (post && post.id && post.content) {
+            try {
+              const imagePrompt = await generateImagePromptFromContent(post.content);
+              prompts[post.id] = imagePrompt;
+            } catch (error) {
+              console.error('Failed to generate image prompt for post:', post.id, error);
+              // Fallback to a default selfie prompt
+              prompts[post.id] = "selfie photo, smiling woman, casual outfit, natural lighting, morning time, cozy atmosphere";
+            }
           }
         }
         setImagePrompts(prompts);
@@ -249,6 +256,16 @@ const CreatePosts = () => {
   };
 
   const deletePost = (index: number) => {
+    const post = generatedPosts[index];
+    if (post?.id) {
+      // Remove associated image data
+      const newPostImages = { ...postImages };
+      const newPostImagePreviews = { ...postImagePreviews };
+      delete newPostImages[post.id];
+      delete newPostImagePreviews[post.id];
+      setPostImages(newPostImages);
+      setPostImagePreviews(newPostImagePreviews);
+    }
     setGeneratedPosts(generatedPosts.filter((_, i) => i !== index));
   };
 
@@ -259,11 +276,23 @@ const CreatePosts = () => {
   const scheduleAllPosts = async () => {
     if (generatedPosts.length === 0) return;
 
+    // Update posts with uploaded images
+    const updatedPosts = generatedPosts.map(post => {
+      const uploadedImage = postImagePreviews[post.id];
+      if (uploadedImage) {
+        return {
+          ...post,
+          images: [uploadedImage]
+        };
+      }
+      return post;
+    });
+
     const selectedPersonaData = personas.find(p => p.id === selectedPersona);
     
     navigate("/review-posts", {
       state: {
-        posts: generatedPosts,
+        posts: updatedPosts,
         persona: selectedPersonaData
       }
     });
@@ -279,6 +308,31 @@ const CreatePosts = () => {
       };
       reader.readAsDataURL(file);
     }
+  };
+
+  const handlePostImageChange = (postId: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setPostImages(prev => ({ ...prev, [postId]: file }));
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPostImagePreviews(prev => ({ ...prev, [postId]: reader.result as string }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const removePostImage = (postId: string) => {
+    setPostImages(prev => {
+      const newImages = { ...prev };
+      delete newImages[postId];
+      return newImages;
+    });
+    setPostImagePreviews(prev => {
+      const newPreviews = { ...prev };
+      delete newPreviews[postId];
+      return newPreviews;
+    });
   };
 
   const generateImageForPost = async (postIndex: number) => {
@@ -605,7 +659,7 @@ const CreatePosts = () => {
             <Card>
               <CardHeader>
                 <CardTitle>生成された投稿</CardTitle>
-                <CardDescription>投稿内容を確認・編集できます</CardDescription>
+                <CardDescription>投稿内容を確認・編集し、画像をアップロードできます</CardDescription>
               </CardHeader>
             </Card>
 
@@ -627,13 +681,60 @@ const CreatePosts = () => {
                       </Button>
                     </div>
                   </CardHeader>
-                  <CardContent>
+                  <CardContent className="space-y-4">
                     <Textarea
                       value={post.content}
                       onChange={(e) => updatePost(index, e.target.value)}
                       rows={4}
                       placeholder="投稿内容を編集..."
                     />
+
+                    {/* 画像アップロード機能 */}
+                    <div className="space-y-2">
+                      <Label>投稿画像（オプション）</Label>
+                      {postImagePreviews[post.id] ? (
+                        <div className="relative">
+                          <img
+                            src={postImagePreviews[post.id]}
+                            alt="Uploaded"
+                            className="w-full max-w-md mx-auto rounded-lg border"
+                          />
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            className="absolute top-2 right-2"
+                            onClick={() => removePostImage(post.id)}
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="border-2 border-dashed border-gray-300 rounded-lg p-4">
+                          <div className="text-center">
+                            <Upload className="mx-auto h-12 w-12 text-gray-400" />
+                            <div className="mt-2">
+                              <Input
+                                type="file"
+                                accept="image/*"
+                                onChange={(e) => handlePostImageChange(post.id, e)}
+                                className="hidden"
+                                id={`image-upload-${post.id}`}
+                              />
+                              <Label
+                                htmlFor={`image-upload-${post.id}`}
+                                className="cursor-pointer inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary hover:bg-primary/90"
+                              >
+                                <Upload className="h-4 w-4 mr-2" />
+                                画像をアップロード
+                              </Label>
+                            </div>
+                            <p className="mt-1 text-sm text-gray-500">
+                              JPG, PNG, GIF up to 10MB
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </CardContent>
                 </Card>
               ))}

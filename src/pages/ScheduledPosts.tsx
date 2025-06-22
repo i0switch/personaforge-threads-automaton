@@ -1,11 +1,12 @@
 
+
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ArrowLeft, Calendar, Clock, Send, Trash2, Edit, Loader2, Play } from "lucide-react";
+import { ArrowLeft, Calendar, Clock, Send, Trash2, Edit, Loader2, Play, Image as ImageIcon } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -207,6 +208,7 @@ const ScheduledPosts = () => {
                   <TableRow>
                     <TableHead>ペルソナ</TableHead>
                     <TableHead>内容</TableHead>
+                    <TableHead>画像</TableHead>
                     <TableHead>ステータス</TableHead>
                     <TableHead>予約日時</TableHead>
                     <TableHead>作成日</TableHead>
@@ -250,6 +252,26 @@ const ScheduledPosts = () => {
                             </div>
                           )}
                         </div>
+                      </TableCell>
+                      <TableCell>
+                        {post.images && post.images.length > 0 ? (
+                          <div className="flex items-center gap-2">
+                            <img
+                              src={post.images[0]}
+                              alt="Post image"
+                              className="w-12 h-12 object-cover rounded border"
+                            />
+                            {post.images.length > 1 && (
+                              <Badge variant="outline" className="text-xs">
+                                +{post.images.length - 1}
+                              </Badge>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-center w-12 h-12 bg-gray-100 rounded border">
+                            <ImageIcon className="h-4 w-4 text-gray-400" />
+                          </div>
+                        )}
                       </TableCell>
                       <TableCell>
                         {getStatusBadge(post)}
@@ -312,3 +334,4 @@ const ScheduledPosts = () => {
 };
 
 export default ScheduledPosts;
+
