@@ -1,4 +1,5 @@
 
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { Client } from "https://esm.sh/@gradio/client@1.15.3";
 
@@ -97,9 +98,10 @@ serve(async (req) => {
     const client = await Client.connect("i0switch/my-image-generator", clientOptions);
     console.log('Connected to Gradio client');
     
-    // クライアントのエンドポイント情報をログ出力
-    console.log('Client endpoints:', Object.keys(client.endpoints || {}));
-    console.log('Client view_api:', typeof client.view_api);
+    // クライアントのAPI構造を確認
+    console.log('=== API STRUCTURE ===');
+    const apiInfo = await client.view_api();
+    console.log('API Info:', JSON.stringify(apiInfo, null, 2));
     
     // Parameters for debugging
     console.log('=== PARAMETERS DEBUG ===');
@@ -115,11 +117,16 @@ serve(async (req) => {
     console.log('10. upscale:', upscale, typeof upscale);
     console.log('11. upscale_factor:', upscale_factor, typeof upscale_factor);
     
-    // JavaScriptのGradio Clientは配列形式で引数を順番通りに渡す（Pythonコードと同じ仕様）
-    console.log('Attempting to call predict with array parameters...');
+    // app.upload()を使用してファイルをアップロード
+    console.log('Uploading image file using app.upload()...');
+    const uploadedFile = await client.upload(imageFile);
+    console.log('File uploaded successfully:', uploadedFile);
+    
+    // 引数を正しい順序で配列に設定
+    console.log('Attempting to call predict with /predict endpoint...');
     
     const result = await client.predict("/predict", [
-      imageFile,           // 1. face_np: File object
+      uploadedFile,        // 1. face_np: File object (uploaded)
       prompt,              // 2. subject: string
       "",                  // 3. add_prompt: string (empty string)
       negative_prompt,     // 4. add_neg: string
@@ -213,3 +220,4 @@ serve(async (req) => {
     );
   }
 });
+
