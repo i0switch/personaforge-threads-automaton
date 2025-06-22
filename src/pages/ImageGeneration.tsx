@@ -4,7 +4,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { ArrowLeft, Image as ImageIcon, Sparkles, Loader2 } from "lucide-react";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Slider } from "@/components/ui/slider";
+import { ArrowLeft, Image as ImageIcon, Sparkles, Loader2, Upload } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -12,7 +15,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
 import { ja } from "date-fns/locale";
 import type { Database } from "@/integrations/supabase/types";
-import ImageGenerator from "@/components/ImageGenerator";
 
 type Persona = Database['public']['Tables']['personas']['Row'];
 type Post = Database['public']['Tables']['posts']['Row'];
@@ -32,6 +34,14 @@ const ImageGeneration = () => {
   const [persona, setPersona] = useState<Persona | null>(null);
   const [generatingPrompts, setGeneratingPrompts] = useState<Set<number>>(new Set());
   const [generatedPrompts, setGeneratedPrompts] = useState<{[key: number]: string}>({});
+  const [generatingImages, setGeneratingImages] = useState<Set<number>>(new Set());
+  const [generatedImages, setGeneratedImages] = useState<{[key: number]: string}>({});
+  
+  // InstantID設定
+  const [referenceImage, setReferenceImage] = useState<File | null>(null);
+  const [referenceImagePreview, setReferenceImagePreview] = useState<string>("");
+  const [ipAdapterScale, setIpAdapterScale] = useState([0.8]);
+  const [controlWeight, setControlWeight] = useState([0.8]);
 
   useEffect(() => {
     const state = location.state as ImageGenerationState;
@@ -46,6 +56,18 @@ const ImageGeneration = () => {
       navigate("/create-posts");
     }
   }, [location.state, navigate]);
+
+  const handleReferenceImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setReferenceImage(file);
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setReferenceImagePreview(e.target?.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   const generateImagePrompt = async (postIndex: number) => {
     const post = posts[postIndex];
@@ -103,11 +125,86 @@ const ImageGeneration = () => {
       return;
     }
 
-    // ここで実際の画像生成を行う処理を追加
-    toast({
-      title: "開発中",
-      description: "画像生成機能は開発中です。右側の画像生成エリアをご利用ください。",
-    });
+    if (!referenceImage) {
+      toast({
+        title: "エラー",
+        description: "リファレンス画像をアップロードしてください。",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setGeneratingImages(prev => new Set(prev).add(postIndex));
+
+    try {
+      // Convert image to base64
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const base64 = reader.result as string;
+
+          const { data, error } = await supabase.functions.invoke('generate-image-huggingface', {
+            body: {
+              face_image_b64: base64,
+              prompt: prompt,
+              negative_prompt: "",
+              guidance_scale: 6.0,
+              ip_adapter_scale: ipAdapterScale[0],
+              num_inference_steps: 20,
+              width: 512,
+              height: 768,
+              upscale: true,
+              upscale_factor: 2
+            }
+          });
+
+          if (error) {
+            console.error('Edge function error:', error);
+            throw new Error(`画像生成に失敗しました: ${error.message}`);
+          }
+
+          if (!data || !data.image) {
+            throw new Error('画像データが返されませんでした');
+          }
+
+          setGeneratedImages(prev => ({
+            ...prev,
+            [postIndex]: data.image
+          }));
+
+          toast({
+            title: "生成完了",
+            description: "画像が正常に生成されました。",
+          });
+        } catch (error) {
+          console.error('Error generating image:', error);
+          toast({
+            title: "エラー",
+            description: error.message || "画像生成に失敗しました。",
+            variant: "destructive",
+          });
+        } finally {
+          setGeneratingImages(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(postIndex);
+            return newSet;
+          });
+        }
+      };
+      reader.readAsDataURL(referenceImage);
+    } catch (error) {
+      console.error('Error generating image:', error);
+      toast({
+        title: "エラー",
+        description: "画像生成に失敗しました。",
+        variant: "destructive",
+      });
+      setGeneratingImages(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(postIndex);
+        return newSet;
+      });
+    }
   };
 
   if (!persona) {
@@ -132,108 +229,151 @@ const ImageGeneration = () => {
             戻る
           </Button>
           <div className="flex-1">
-            <h1 className="text-3xl font-bold">AI画像生成</h1>
-            <p className="text-muted-foreground">投稿に適した自撮り画像生成プロンプトを作成・画像生成</p>
+            <h1 className="text-3xl font-bold">InstantID 設定</h1>
+            <p className="text-muted-foreground">特定の人物の顔で画像を生成するためのリファレンス画像をアップロードしてください。</p>
           </div>
         </div>
 
-        {/* ペルソナ情報 */}
+        {/* InstantID設定 */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Avatar className="h-8 w-8">
-                <AvatarImage src={persona.avatar_url || ""} />
-                <AvatarFallback>{persona.name[0]}</AvatarFallback>
-              </Avatar>
-              {persona.name}
-            </CardTitle>
-            <CardDescription>
-              {posts.length}件の投稿用画像プロンプトを生成・画像生成
-            </CardDescription>
+            <CardTitle>リファレンス画像</CardTitle>
           </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <div className="flex items-center gap-4">
+                <Input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleReferenceImageChange}
+                  className="flex-1"
+                />
+                <Upload className="h-4 w-4 text-muted-foreground" />
+              </div>
+              <p className="text-sm text-muted-foreground">JPG, PNG形式の人物画像をアップロードしてください</p>
+              {referenceImagePreview && (
+                <div className="mt-4">
+                  <img
+                    src={referenceImagePreview}
+                    alt="Reference preview"
+                    className="w-32 h-32 object-cover rounded-lg border"
+                  />
+                  <p className="text-sm text-green-600 mt-2">✓ リファレンス画像がアップロードされました</p>
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <Label>IP Adapter Scale</Label>
+                <div className="px-3">
+                  <Slider
+                    value={ipAdapterScale}
+                    onValueChange={setIpAdapterScale}
+                    min={0}
+                    max={1.5}
+                    step={0.05}
+                    className="w-full"
+                  />
+                  <p className="text-sm text-muted-foreground mt-1">デフォルト: {ipAdapterScale[0]}</p>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Control Weight</Label>
+                <div className="px-3">
+                  <Slider
+                    value={controlWeight}
+                    onValueChange={setControlWeight}
+                    min={0}
+                    max={1.5}
+                    step={0.05}
+                    className="w-full"
+                  />
+                  <p className="text-sm text-muted-foreground mt-1">デフォルト: {controlWeight[0]}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div className="flex items-start gap-2">
+                <div className="text-blue-500 mt-0.5">ℹ️</div>
+                <div className="text-sm text-blue-700">
+                  <strong>HuggingFace Spaces + Gemini APIを使用しています</strong><br />
+                  投稿内容をGemini APIが解析し、画像生成プロンプトを自動生成します。リファレンス画像をアップロードすると、その人物の顔で画像が生成されます。
+                </div>
+              </div>
+            </div>
+          </CardContent>
         </Card>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* 左側：投稿別画像プロンプト生成 */}
-          <div className="space-y-4">
-            <h2 className="text-xl font-semibold">投稿プロンプト</h2>
-            {posts.map((post, index) => (
-              <Card key={index}>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-lg">投稿 {index + 1}</CardTitle>
-                    <div className="flex items-center gap-2">
-                      {post.scheduled_for && (
-                        <Badge variant="outline">
-                          {format(new Date(post.scheduled_for), 'MM/dd HH:mm', { locale: ja })}
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <h4 className="font-medium mb-2">投稿内容:</h4>
-                    <p className="text-sm text-muted-foreground bg-muted p-3 rounded">
-                      {post.content}
-                    </p>
-                  </div>
-                  
-                  {generatedPrompts[index] && (
-                    <div>
-                      <h4 className="font-medium mb-2">生成された画像プロンプト:</h4>
-                      <p className="text-sm bg-primary/5 p-3 rounded border-l-4 border-primary">
-                        {generatedPrompts[index]}
-                      </p>
-                    </div>
-                  )}
-
-                  {generatingPrompts.has(index) && (
+        {/* 投稿別画像生成 */}
+        <div className="space-y-4">
+          {posts.map((post, index) => (
+            <Card key={index}>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-lg">投稿予定: {format(new Date(post.scheduled_for!), 'M月d日 HH:mm', { locale: ja })}</CardTitle>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <p className="text-sm text-muted-foreground mb-2">投稿内容:</p>
+                  <p className="text-sm bg-muted p-3 rounded">
+                    {post.content}
+                  </p>
+                </div>
+                
+                <div>
+                  <p className="text-sm font-medium mb-2">画像プロンプト</p>
+                  {generatingPrompts.has(index) ? (
                     <div className="flex items-center justify-center py-4">
                       <Loader2 className="h-6 w-6 animate-spin mr-2" />
                       <span>プロンプト生成中...</span>
                     </div>
+                  ) : generatedPrompts[index] ? (
+                    <p className="text-sm bg-primary/5 p-3 rounded border-l-4 border-primary">
+                      {generatedPrompts[index]}
+                    </p>
+                  ) : (
+                    <div className="text-sm text-muted-foreground p-3 bg-muted rounded">
+                      プロンプトを生成中...
+                    </div>
                   )}
+                </div>
 
-                  <div className="flex gap-2">
-                    <Button
-                      onClick={() => generateImagePrompt(index)}
-                      disabled={generatingPrompts.has(index)}
-                      variant="outline"
-                      className="flex-1"
-                    >
-                      {generatingPrompts.has(index) ? (
-                        <>
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          プロンプト生成中...
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="h-4 w-4 mr-2" />
-                          プロンプト再生成
-                        </>
-                      )}
-                    </Button>
-                    
-                    <Button
-                      onClick={() => generateImage(index)}
-                      disabled={!generatedPrompts[index]}
-                      className="flex-1"
-                    >
+                {generatedImages[index] && (
+                  <div>
+                    <p className="text-sm font-medium mb-2">生成された画像:</p>
+                    <img
+                      src={generatedImages[index]}
+                      alt="Generated"
+                      className="w-full max-w-md h-auto rounded-lg shadow-lg"
+                    />
+                  </div>
+                )}
+
+                <Button
+                  onClick={() => generateImage(index)}
+                  disabled={generatingImages.has(index) || !generatedPrompts[index] || !referenceImage}
+                  className="w-full"
+                  size="lg"
+                >
+                  {generatingImages.has(index) ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      画像生成中...
+                    </>
+                  ) : (
+                    <>
                       <ImageIcon className="h-4 w-4 mr-2" />
                       画像を生成
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-
-          {/* 右側：画像生成 */}
-          <div className="space-y-4">
-            <h2 className="text-xl font-semibold">画像生成</h2>
-            <ImageGenerator />
-          </div>
+                    </>
+                  )}
+                </Button>
+              </CardContent>
+            </Card>
+          ))}
         </div>
       </div>
     </div>
