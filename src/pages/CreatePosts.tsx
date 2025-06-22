@@ -265,29 +265,42 @@ const CreatePosts = () => {
     try {
       console.log('Starting image generation for post:', postIndex);
       
-      // Use the face image or convert preview URL to blob
-      let imageToSend = faceImage;
-      if (!imageToSend && faceImagePreview) {
-        const response = await fetch(faceImagePreview);
-        const blob = await response.blob();
-        imageToSend = new File([blob], 'reference.jpg', { type: blob.type });
+      let imageToSend: File | string;
+      
+      // Use the uploaded file if available
+      if (faceImage) {
+        imageToSend = faceImage;
+        console.log('Using uploaded file:', faceImage.name, faceImage.type, faceImage.size);
+      } else if (faceImagePreview) {
+        // If no file but preview exists (persona avatar), use the preview URL directly
+        imageToSend = faceImagePreview;
+        console.log('Using preview URL:', faceImagePreview.substring(0, 50) + '...');
+      } else {
+        throw new Error('No image available');
       }
 
+      const requestBody = {
+        space_url: "i0switch/my-image-generator",
+        face_image: imageToSend,
+        subject: subject || "portrait",
+        add_prompt: additionalPrompt || "",
+        add_neg: additionalNegative || "blurry, low quality, distorted",
+        cfg: cfg[0],
+        ip_scale: ipScale[0],
+        steps: steps[0],
+        w: width[0],
+        h: height[0],
+        upscale: upscale,
+        up_factor: upFactor[0]
+      };
+
+      console.log('Sending request to generate-image-gradio:', {
+        ...requestBody,
+        face_image: imageToSend instanceof File ? `[File: ${imageToSend.name}]` : `[URL: ${typeof imageToSend === 'string' ? imageToSend.substring(0, 50) + '...' : imageToSend}]`
+      });
+
       const { data, error } = await supabase.functions.invoke('generate-image-gradio', {
-        body: {
-          space_url: "i0switch/my-image-generator",
-          face_image: imageToSend,
-          subject: subject,
-          add_prompt: additionalPrompt,
-          add_neg: additionalNegative,
-          cfg: cfg[0],
-          ip_scale: ipScale[0],
-          steps: steps[0],
-          w: width[0],
-          h: height[0],
-          upscale: upscale,
-          up_factor: upFactor[0]
-        }
+        body: requestBody
       });
 
       console.log('Image generation response:', data);
