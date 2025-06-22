@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Calendar, Bot, Image, Settings, BarChart3, Clock, Users, Zap, LogOut, Plus, Edit, Trash2, Loader2, TrendingUp } from "lucide-react";
+import { Calendar, Bot, Settings, BarChart3, Clock, Users, Zap, LogOut, Plus, Edit, Trash2, Loader2, TrendingUp } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -207,13 +207,6 @@ const Index = () => {
       icon: Bot,
       color: "bg-blue-500",
       path: "/create-posts"
-    },
-    {
-      title: "AI画像生成",
-      description: "顔画像からAI画像生成",
-      icon: Image,
-      color: "bg-pink-500",
-      path: "/image-generation"
     },
     {
       title: "新規ペルソナ作成",
