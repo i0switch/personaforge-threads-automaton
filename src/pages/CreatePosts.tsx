@@ -8,6 +8,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Slider } from "@/components/ui/slider";
 import { ArrowLeft, Calendar as CalendarIcon, Sparkles, Loader2, Image as ImageIcon, Wand2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -48,13 +49,16 @@ const CreatePosts = () => {
   const [subject, setSubject] = useState("portrait");
   const [additionalPrompt, setAdditionalPrompt] = useState("");
   const [additionalNegative, setAdditionalNegative] = useState("blurry, low quality, distorted");
-  const [cfg, setCfg] = useState(6);
-  const [ipScale, setIpScale] = useState(0.65);
-  const [steps, setSteps] = useState(20);
-  const [width, setWidth] = useState(512);
-  const [height, setHeight] = useState(768);
+  const [cfg, setCfg] = useState([6]);
+  const [ipScale, setIpScale] = useState([0.65]);
+  const [steps, setSteps] = useState([20]);
+  const [width, setWidth] = useState([512]);
+  const [height, setHeight] = useState([768]);
   const [upscale, setUpscale] = useState(true);
-  const [upFactor, setUpFactor] = useState(2);
+  const [upFactor, setUpFactor] = useState([2]);
+
+  // Image generation state
+  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
 
   // 30分間隔の時間選択肢を生成
   const timeOptions = [];
@@ -230,6 +234,80 @@ const CreatePosts = () => {
         setFaceImagePreview(reader.result as string);
       };
       reader.readAsDataURL(file);
+    }
+  };
+
+  const generateImageForPost = async (postIndex: number) => {
+    if (!faceImage && !faceImagePreview) {
+      toast({
+        title: "エラー",
+        description: "リファレンス画像をアップロードしてください。",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsGeneratingImage(true);
+    try {
+      console.log('Starting image generation for post:', postIndex);
+      
+      // Use the face image or convert preview URL to blob
+      let imageToSend = faceImage;
+      if (!imageToSend && faceImagePreview) {
+        const response = await fetch(faceImagePreview);
+        const blob = await response.blob();
+        imageToSend = new File([blob], 'reference.jpg', { type: blob.type });
+      }
+
+      const { data, error } = await supabase.functions.invoke('generate-image-gradio', {
+        body: {
+          space_url: "i0switch/my-image-generator",
+          face_image: imageToSend,
+          subject: subject,
+          add_prompt: additionalPrompt,
+          add_neg: additionalNegative,
+          cfg: cfg[0],
+          ip_scale: ipScale[0],
+          steps: steps[0],
+          w: width[0],
+          h: height[0],
+          upscale: upscale,
+          up_factor: upFactor[0]
+        }
+      });
+
+      console.log('Image generation response:', data);
+
+      if (error) {
+        console.error('Image generation error:', error);
+        throw error;
+      }
+
+      if (data?.success && data?.image) {
+        // Update the specific post with the generated image
+        const updatedPosts = [...generatedPosts];
+        updatedPosts[postIndex] = { 
+          ...updatedPosts[postIndex], 
+          image_url: data.image 
+        };
+        setGeneratedPosts(updatedPosts);
+
+        toast({
+          title: "成功",
+          description: "画像を生成しました。",
+        });
+      } else {
+        throw new Error('画像の生成に失敗しました');
+      }
+    } catch (error) {
+      console.error('Error generating image:', error);
+      toast({
+        title: "エラー",
+        description: "画像の生成に失敗しました。",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGeneratingImage(false);
     }
   };
 
@@ -589,81 +667,75 @@ const CreatePosts = () => {
                   />
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <Label>CFG: {cfg}</Label>
-                    <Input
-                      type="range"
-                      min="1"
-                      max="20"
-                      step="0.5"
+                    <Label>CFG: {cfg[0]}</Label>
+                    <Slider
                       value={cfg}
-                      onChange={(e) => setCfg(parseFloat(e.target.value))}
+                      onValueChange={setCfg}
+                      min={1}
+                      max={20}
+                      step={0.5}
                       className="w-full"
                     />
                   </div>
 
                   <div className="space-y-2">
-                    <Label>IP-Adapter scale: {ipScale}</Label>
-                    <Input
-                      type="range"
-                      min="0"
-                      max="1"
-                      step="0.05"
+                    <Label>IP-Adapter scale: {ipScale[0]}</Label>
+                    <Slider
                       value={ipScale}
-                      onChange={(e) => setIpScale(parseFloat(e.target.value))}
+                      onValueChange={setIpScale}
+                      min={0}
+                      max={1}
+                      step={0.05}
                       className="w-full"
                     />
                   </div>
 
                   <div className="space-y-2">
-                    <Label>Steps: {steps}</Label>
-                    <Input
-                      type="range"
-                      min="1"
-                      max="50"
-                      step="1"
+                    <Label>Steps: {steps[0]}</Label>
+                    <Slider
                       value={steps}
-                      onChange={(e) => setSteps(parseInt(e.target.value))}
+                      onValueChange={setSteps}
+                      min={1}
+                      max={50}
+                      step={1}
                       className="w-full"
                     />
                   </div>
 
                   <div className="space-y-2">
-                    <Label>幅: {width}px</Label>
-                    <Input
-                      type="range"
-                      min="256"
-                      max="1024"
-                      step="64"
+                    <Label>幅: {width[0]}px</Label>
+                    <Slider
                       value={width}
-                      onChange={(e) => setWidth(parseInt(e.target.value))}
+                      onValueChange={setWidth}
+                      min={256}
+                      max={1024}
+                      step={64}
                       className="w-full"
                     />
                   </div>
 
                   <div className="space-y-2">
-                    <Label>高さ: {height}px</Label>
-                    <Input
-                      type="range"
-                      min="256"
-                      max="1024"
-                      step="64"
+                    <Label>高さ: {height[0]}px</Label>
+                    <Slider
                       value={height}
-                      onChange={(e) => setHeight(parseInt(e.target.value))}
+                      onValueChange={setHeight}
+                      min={256}
+                      max={1024}
+                      step={64}
                       className="w-full"
                     />
                   </div>
 
                   <div className="space-y-2">
-                    <Label>倍率: {upFactor}x</Label>
-                    <Input
-                      type="range"
-                      min="1"
-                      max="4"
-                      step="1"
+                    <Label>倍率: {upFactor[0]}x</Label>
+                    <Slider
                       value={upFactor}
-                      onChange={(e) => setUpFactor(parseInt(e.target.value))}
+                      onValueChange={setUpFactor}
+                      min={1}
+                      max={4}
+                      step={1}
                       className="w-full"
                     />
                   </div>
@@ -698,20 +770,44 @@ const CreatePosts = () => {
                     <div>
                       <p className="text-sm font-medium mb-2">画像プロンプト</p>
                       <div className="text-sm bg-primary/5 p-3 rounded border-l-4 border-primary">
-                        Photograph, professional photograph, of a woman in an off-shoulder dress, smiling playfully. City night bokeh background, diffused light. Close-up, slightly angled shot. Happy, confident expression.
+                        {post.image_prompt || "Photograph, professional photograph, of a woman in an off-shoulder dress, smiling playfully. City night bokeh background, diffused light. Close-up, slightly angled shot. Happy, confident expression."}
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-center p-8 border-2 border-dashed border-gray-300 rounded-lg">
-                      <div className="text-center">
-                        <ImageIcon className="mx-auto h-12 w-12 text-gray-400" />
-                        <p className="mt-2 text-sm text-gray-500">画像を生成してください</p>
+                    {post.image_url ? (
+                      <div className="border rounded-lg p-2">
+                        <img
+                          src={post.image_url}
+                          alt="Generated"
+                          className="w-full max-w-md mx-auto rounded"
+                        />
                       </div>
-                    </div>
+                    ) : (
+                      <div className="flex items-center justify-center p-8 border-2 border-dashed border-gray-300 rounded-lg">
+                        <div className="text-center">
+                          <ImageIcon className="mx-auto h-12 w-12 text-gray-400" />
+                          <p className="mt-2 text-sm text-gray-500">画像を生成してください</p>
+                        </div>
+                      </div>
+                    )}
 
-                    <Button className="w-full" size="lg">
-                      <ImageIcon className="h-4 w-4 mr-2" />
-                      画像生成
+                    <Button 
+                      onClick={() => generateImageForPost(index)}
+                      disabled={isGeneratingImage || (!faceImage && !faceImagePreview)}
+                      className="w-full" 
+                      size="lg"
+                    >
+                      {isGeneratingImage ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          画像生成中...
+                        </>
+                      ) : (
+                        <>
+                          <ImageIcon className="h-4 w-4 mr-2" />
+                          画像生成
+                        </>
+                      )}
                     </Button>
                   </CardContent>
                 </Card>
