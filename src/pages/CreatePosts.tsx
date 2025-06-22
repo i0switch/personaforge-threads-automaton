@@ -45,6 +45,9 @@ const CreatePosts = () => {
   const [faceImage, setFaceImage] = useState<File | null>(null);
   const [faceImagePreview, setFaceImagePreview] = useState<string>("");
 
+  // Track image prompts separately since they're not in the database
+  const [imagePrompts, setImagePrompts] = useState<Record<string, string>>({});
+
   // Image generation settings
   const [subject, setSubject] = useState("portrait");
   const [additionalPrompt, setAdditionalPrompt] = useState("");
@@ -176,6 +179,13 @@ const CreatePosts = () => {
         // 生成された投稿をセット
         setGeneratedPosts(data.posts);
         
+        // Initialize image prompts for each post
+        const prompts: Record<string, string> = {};
+        data.posts.forEach((post: Post, index: number) => {
+          prompts[post.id] = `Photograph, professional photograph, of a woman in an off-shoulder dress, smiling playfully. City night bokeh background, diffused light. Close-up, slightly angled shot. Happy, confident expression.`;
+        });
+        setImagePrompts(prompts);
+        
         // ステップ2（生成・編集）に進む
         setCurrentStep(2);
 
@@ -284,11 +294,11 @@ const CreatePosts = () => {
       }
 
       if (data?.success && data?.image) {
-        // Update the specific post with the generated image
+        // Update the specific post with the generated image using the images array
         const updatedPosts = [...generatedPosts];
         updatedPosts[postIndex] = { 
           ...updatedPosts[postIndex], 
-          image_url: data.image 
+          images: [data.image] 
         };
         setGeneratedPosts(updatedPosts);
 
@@ -770,14 +780,14 @@ const CreatePosts = () => {
                     <div>
                       <p className="text-sm font-medium mb-2">画像プロンプト</p>
                       <div className="text-sm bg-primary/5 p-3 rounded border-l-4 border-primary">
-                        {post.image_prompt || "Photograph, professional photograph, of a woman in an off-shoulder dress, smiling playfully. City night bokeh background, diffused light. Close-up, slightly angled shot. Happy, confident expression."}
+                        {imagePrompts[post.id] || "Photograph, professional photograph, of a woman in an off-shoulder dress, smiling playfully. City night bokeh background, diffused light. Close-up, slightly angled shot. Happy, confident expression."}
                       </div>
                     </div>
 
-                    {post.image_url ? (
+                    {post.images && post.images.length > 0 ? (
                       <div className="border rounded-lg p-2">
                         <img
-                          src={post.image_url}
+                          src={post.images[0]}
                           alt="Generated"
                           className="w-full max-w-md mx-auto rounded"
                         />
