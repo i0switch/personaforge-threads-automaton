@@ -1,92 +1,75 @@
+
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Bot, MessageCircle, Save, Plus, Trash2, Loader2, Edit } from "lucide-react";
+import { ArrowLeft, Zap, Plus, Trash2, Edit, Loader2, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 
-type AutoReply = Database['public']['Tables']['auto_replies']['Row'];
 type Persona = Database['public']['Tables']['personas']['Row'];
-type Profile = Database['public']['Tables']['profiles']['Row'];
+type AutoReply = Database['public']['Tables']['auto_replies']['Row'] & {
+  personas?: Database['public']['Tables']['personas']['Row'];
+};
 
 const AutoReply = () => {
   const navigate = useNavigate();
-  const { toast } = useToast();
   const { user } = useAuth();
+  const { toast } = useToast();
   
-  const [autoReplies, setAutoReplies] = useState<AutoReply[]>([]);
   const [personas, setPersonas] = useState<Persona[]>([]);
-  const [profile, setProfile] = useState<Profile | null>(null);
+  const [autoReplies, setAutoReplies] = useState<AutoReply[]>([]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   
-  const [newRule, setNewRule] = useState({
-    trigger_keywords: "",
-    response_template: "",
-    persona_id: ""
-  });
-
-  // Debug: Check component state
-  useEffect(() => {
-    console.log('AutoReply component state:', {
-      loading,
-      saving,
-      personas: personas.length,
-      newRule,
-      hasPersonas: personas.length > 0
-    });
-  }, [loading, saving, personas.length, newRule]);
+  // Form states
+  const [selectedPersona, setSelectedPersona] = useState<string>("");
+  const [triggerKeywords, setTriggerKeywords] = useState<string[]>([]);
+  const [keywordInput, setKeywordInput] = useState("");
+  const [responseTemplate, setResponseTemplate] = useState("");
+  const [isActive, setIsActive] = useState(true);
 
   useEffect(() => {
-    if (user) {
-      loadData();
-    }
+    loadData();
   }, [user]);
 
   const loadData = async () => {
+    if (!user) return;
+    
     setLoading(true);
     try {
-      // Load auto replies, personas, and profile in parallel
-      const [repliesResult, personasResult, profileResult] = await Promise.all([
-        supabase
-          .from('auto_replies')
-          .select('*')
-          .eq('user_id', user?.id)
-          .order('created_at', { ascending: false }),
-        supabase
-          .from('personas')
-          .select('*')
-          .eq('user_id', user?.id),
-        supabase
-          .from('profiles')
-          .select('*')
-          .eq('user_id', user?.id)
-          .single()
-      ]);
+      // Load personas
+      const { data: personasData, error: personasError } = await supabase
+        .from('personas')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
 
-      if (repliesResult.error) throw repliesResult.error;
-      if (personasResult.error) throw personasResult.error;
-      if (profileResult.error && profileResult.error.code !== 'PGRST116') throw profileResult.error;
+      if (personasError) throw personasError;
+      setPersonas(personasData || []);
 
-      setAutoReplies(repliesResult.data || []);
-      setPersonas(personasResult.data || []);
-      setProfile(profileResult.data || null);
-      
-      // Auto-select first persona if available
-      if (personasResult.data && personasResult.data.length > 0 && !newRule.persona_id) {
-        setNewRule(prev => ({ ...prev, persona_id: personasResult.data[0].id }));
-      }
+      // Load auto replies
+      const { data: repliesData, error: repliesError } = await supabase
+        .from('auto_replies')
+        .select(`
+          *,
+          personas(name, avatar_url)
+        `)
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (repliesError) throw repliesError;
+      setAutoReplies(repliesData || []);
     } catch (error) {
       console.error('Error loading data:', error);
       toast({
@@ -99,175 +82,159 @@ const AutoReply = () => {
     }
   };
 
-  const addReplyRule = async () => {
-    console.log('addReplyRule called', { newRule }); // Debug log
-    
-    if (!newRule.response_template.trim() || !newRule.persona_id) {
-      console.log('Validation failed:', {
-        keywords: newRule.trigger_keywords.trim(),
-        template: newRule.response_template.trim(),
-        persona: newRule.persona_id
-      });
+  const addKeyword = () => {
+    if (keywordInput.trim() && !triggerKeywords.includes(keywordInput.trim())) {
+      setTriggerKeywords([...triggerKeywords, keywordInput.trim()]);
+      setKeywordInput("");
+    }
+  };
+
+  const removeKeyword = (keyword: string) => {
+    setTriggerKeywords(triggerKeywords.filter(k => k !== keyword));
+  };
+
+  const resetForm = () => {
+    setSelectedPersona("");
+    setTriggerKeywords([]);
+    setKeywordInput("");
+    setResponseTemplate("");
+    setIsActive(true);
+    setEditingId(null);
+  };
+
+  const saveAutoReply = async () => {
+    if (!selectedPersona || triggerKeywords.length === 0 || !responseTemplate.trim()) {
       toast({
         title: "エラー",
-        description: "ペルソナと返信テンプレートは必須項目です。",
+        description: "すべての項目を入力してください。",
         variant: "destructive",
       });
       return;
     }
 
-    setSaving(true);
+    setIsCreating(true);
     try {
-      console.log('Starting to save rule...'); // Debug log
-      const keywordsArray = newRule.trigger_keywords.split(',').map(k => k.trim()).filter(k => k);
-      console.log('Keywords array:', keywordsArray); // Debug log
-      
-      const insertData = {
-        trigger_keywords: keywordsArray,
-        response_template: newRule.response_template,
-        persona_id: newRule.persona_id,
-        user_id: user?.id,
-        is_active: true
+      const data = {
+        user_id: user!.id,
+        persona_id: selectedPersona,
+        trigger_keywords: triggerKeywords,
+        response_template: responseTemplate,
+        is_active: isActive
       };
-      
-      console.log('Insert data:', insertData); // Debug log
-      
-      const { data, error } = await supabase
-        .from('auto_replies')
-        .insert([insertData])
-        .select()
-        .single();
 
-      console.log('Supabase response:', { data, error }); // Debug log
+      let error;
+      if (editingId) {
+        ({ error } = await supabase
+          .from('auto_replies')
+          .update(data)
+          .eq('id', editingId)
+          .eq('user_id', user!.id));
+      } else {
+        ({ error } = await supabase
+          .from('auto_replies')
+          .insert([data]));
+      }
 
       if (error) throw error;
 
-      setAutoReplies(prev => [data, ...prev]);
-      setNewRule({
-        trigger_keywords: "",
-        response_template: "",
-        persona_id: newRule.persona_id // Keep the selected persona
-      });
-      
-      console.log('Rule added successfully:', data); // Debug log
+      // Log activity
+      await supabase
+        .from('activity_logs')
+        .insert({
+          user_id: user!.id,
+          persona_id: selectedPersona,
+          action_type: editingId ? 'auto_reply_updated' : 'auto_reply_created',
+          description: `自動返信ルールを${editingId ? '更新' : '作成'}しました`
+        });
+
       toast({
-        title: "返信ルールを追加しました",
-        description: "新しい自動返信ルールが作成されました。",
+        title: "成功",
+        description: `自動返信ルールを${editingId ? '更新' : '作成'}しました。`,
       });
+
+      resetForm();
+      loadData();
     } catch (error) {
-      console.error('Error adding reply rule:', error);
+      console.error('Error saving auto reply:', error);
       toast({
         title: "エラー",
-        description: `返信ルールの追加に失敗しました: ${error.message}`,
+        description: "自動返信ルールの保存に失敗しました。",
         variant: "destructive",
       });
     } finally {
-      setSaving(false);
+      setIsCreating(false);
     }
   };
 
-  const deleteReplyRule = async (id: string) => {
+  const editAutoReply = (reply: AutoReply) => {
+    setEditingId(reply.id);
+    setSelectedPersona(reply.persona_id || "");
+    setTriggerKeywords(reply.trigger_keywords || []);
+    setResponseTemplate(reply.response_template);
+    setIsActive(reply.is_active);
+  };
+
+  const deleteAutoReply = async (id: string) => {
     try {
       const { error } = await supabase
         .from('auto_replies')
         .delete()
         .eq('id', id)
-        .eq('user_id', user?.id);
+        .eq('user_id', user!.id);
 
       if (error) throw error;
 
-      setAutoReplies(prev => prev.filter(rule => rule.id !== id));
+      setAutoReplies(prev => prev.filter(r => r.id !== id));
       toast({
-        title: "返信ルールを削除しました",
-        description: "選択した返信ルールを削除しました。",
+        title: "成功",
+        description: "自動返信ルールを削除しました。",
       });
     } catch (error) {
-      console.error('Error deleting reply rule:', error);
+      console.error('Error deleting auto reply:', error);
       toast({
         title: "エラー",
-        description: "返信ルールの削除に失敗しました。",
+        description: "自動返信ルールの削除に失敗しました。",
         variant: "destructive",
       });
     }
   };
 
-  const toggleRule = async (id: string, currentStatus: boolean) => {
+  const toggleAutoReply = async (id: string, currentStatus: boolean) => {
     try {
       const { error } = await supabase
         .from('auto_replies')
         .update({ is_active: !currentStatus })
         .eq('id', id)
-        .eq('user_id', user?.id);
+        .eq('user_id', user!.id);
 
       if (error) throw error;
 
-      setAutoReplies(prev => prev.map(rule => 
-        rule.id === id ? { ...rule, is_active: !currentStatus } : rule
-      ));
-      
-      const statusText = !currentStatus ? '有効' : '無効';
+      setAutoReplies(prev => 
+        prev.map(r => r.id === id ? { ...r, is_active: !currentStatus } : r)
+      );
+
       toast({
-        title: `返信ルールを${statusText}にしました`,
-        description: `返信ルールの状態を更新しました。`,
-      });
-    } catch (error) {
-      console.error('Error toggling rule:', error);
-      toast({
-        title: "エラー",
-        description: "返信ルールの状態更新に失敗しました。",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const getPersonaName = (personaId: string | null) => {
-    if (!personaId) return "不明";
-    const persona = personas.find(p => p.id === personaId);
-    return persona?.name || "不明";
-  };
-
-  const getPersonaAvatar = (personaId: string | null) => {
-    if (!personaId) return null;
-    const persona = personas.find(p => p.id === personaId);
-    return persona?.avatar_url || null;
-  };
-
-  const toggleAutoReply = async (enabled: boolean) => {
-    try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ auto_reply_enabled: enabled })
-        .eq('user_id', user?.id);
-
-      if (error) throw error;
-
-      setProfile(prev => prev ? { ...prev, auto_reply_enabled: enabled } : null);
-      
-      const statusText = enabled ? '有効' : '無効';
-      toast({
-        title: `AI自動返信機能を${statusText}にしました`,
-        description: `リプライ取得によるAI自動返信機能の状態を更新しました。`,
+        title: "成功",
+        description: `自動返信を${!currentStatus ? '有効' : '無効'}にしました。`,
       });
     } catch (error) {
       console.error('Error toggling auto reply:', error);
       toast({
         title: "エラー",
-        description: "AI自動返信機能の状態更新に失敗しました。",
+        description: "設定の変更に失敗しました。",
         variant: "destructive",
       });
     }
   };
 
-  // Stats calculations
-  const activeRules = autoReplies.filter(r => r.is_active).length;
-  const totalRules = autoReplies.length;
-
   if (loading) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="h-12 w-12 animate-spin mx-auto mb-4" />
-          <p className="text-muted-foreground">データを読み込み中...</p>
+      <div className="min-h-screen bg-background p-6">
+        <div className="max-w-4xl mx-auto">
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin mr-2" />
+            <span>読み込み中...</span>
+          </div>
         </div>
       </div>
     );
@@ -275,301 +242,222 @@ const AutoReply = () => {
 
   return (
     <div className="min-h-screen bg-background p-6">
-      <div className="max-w-6xl mx-auto space-y-6">
-        {/* Header */}
+      <div className="max-w-4xl mx-auto space-y-6">
         <div className="flex items-center gap-4">
-          <Button onClick={() => navigate("/")} variant="ghost" size="sm">
+          <Button variant="outline" size="sm" onClick={() => navigate("/")}>
             <ArrowLeft className="h-4 w-4 mr-2" />
             戻る
           </Button>
           <div>
-            <h1 className="text-3xl font-bold text-foreground">自動返信設定</h1>
-            <p className="text-muted-foreground">AIによる自動返信の設定と管理</p>
+            <h1 className="text-3xl font-bold">自動返信設定</h1>
+            <p className="text-muted-foreground">
+              返信ルールを設定して自動応答を管理
+            </p>
           </div>
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* 設定フォーム */}
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">アクティブルール</CardTitle>
-              <Bot className="h-4 w-4 text-muted-foreground" />
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Zap className="h-5 w-5" />
+                {editingId ? '自動返信ルール編集' : '新規自動返信ルール'}
+              </CardTitle>
+              <CardDescription>
+                トリガーキーワードと返信テンプレートを設定
+              </CardDescription>
             </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{activeRules}</div>
-              <p className="text-xs text-muted-foreground">有効な返信ルール</p>
-            </CardContent>
-          </Card>
+            <CardContent className="space-y-4">
+              {/* ペルソナ選択 */}
+              <div className="space-y-2">
+                <Label>ペルソナ選択</Label>
+                <Select value={selectedPersona} onValueChange={setSelectedPersona}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="ペルソナを選択" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {personas.map((persona) => (
+                      <SelectItem key={persona.id} value={persona.id}>
+                        <div className="flex items-center gap-2">
+                          <Avatar className="h-6 w-6">
+                            <AvatarImage src={persona.avatar_url || ""} />
+                            <AvatarFallback>{persona.name[0]}</AvatarFallback>
+                          </Avatar>
+                          {persona.name}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">総ルール数</CardTitle>
-              <MessageCircle className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{totalRules}</div>
-              <p className="text-xs text-muted-foreground">設定済みルール</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">ペルソナ数</CardTitle>
-              <Bot className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{personas.length}</div>
-              <p className="text-xs text-muted-foreground">利用可能ペルソナ</p>
-            </CardContent>
-          </Card>
-        </div>
-
-        <Tabs defaultValue="rules" className="space-y-6" onValueChange={(value) => console.log('Tab changed to:', value)}>
-          <TabsList>
-            <TabsTrigger value="rules">返信ルール ({totalRules})</TabsTrigger>
-            <TabsTrigger value="add" onClick={() => console.log('Add tab clicked')}>新規作成</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="add" className="space-y-6">
-            {/* AI Auto Reply Global Control */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-3">
-                  <Bot className="h-5 w-5" />
-                  リプライ取得によるAI自動返信機能
-                </CardTitle>
-                <CardDescription>
-                  すべての自動返信機能を一括で制御します
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <Avatar className="h-8 w-8">
-                      <AvatarImage src={profile?.avatar_url || ""} />
-                      <AvatarFallback>
-                        {profile?.display_name?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || 'U'}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <p className="font-medium">
-                        {profile?.display_name || user?.email || 'ユーザー'}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        {profile?.auto_reply_enabled ? 'AI自動返信が有効です' : 'AI自動返信が無効です'}
-                      </p>
-                    </div>
-                  </div>
-                  <Switch
-                    checked={profile?.auto_reply_enabled || false}
-                    onCheckedChange={toggleAutoReply}
+              {/* トリガーキーワード */}
+              <div className="space-y-2">
+                <Label>トリガーキーワード</Label>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="キーワードを入力"
+                    value={keywordInput}
+                    onChange={(e) => setKeywordInput(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && addKeyword()}
                   />
-                </div>
-                {!profile?.auto_reply_enabled && (
-                  <div className="mt-4 p-3 bg-muted rounded-md">
-                    <p className="text-sm text-muted-foreground">
-                      💡 AI自動返信機能を有効にすると、設定したルールに基づいてThreadsのリプライに自動返信します
-                    </p>
-                  </div>
-                )}
-                {profile?.auto_reply_enabled && (
-                  <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md dark:bg-blue-950 dark:border-blue-800">
-                    <p className="text-sm text-blue-700 dark:text-blue-300">
-                      ⚠️ AI自動返信機能が有効です。この機能がONの場合、キーワードトリガー返信は無効化され、すべてのリプライに対してAIが文脈を理解した自動返信を生成します。
-                    </p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>新しい返信ルールを追加</CardTitle>
-                <CardDescription>
-                  特定のキーワードに対する自動返信を設定します
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {personas.length === 0 ? (
-                  <div className="text-center py-8">
-                    <Bot className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                    <h3 className="text-lg font-semibold mb-2">ペルソナが必要です</h3>
-                    <p className="text-muted-foreground mb-4">
-                      自動返信を設定する前に、ペルソナを作成してください。
-                    </p>
-                    <Button onClick={() => navigate("/persona-setup")}>
-                      ペルソナを作成
-                    </Button>
-                  </div>
-                ) : (
-                  <>
-                    <div className="space-y-2">
-                      <Label htmlFor="persona">使用するペルソナ</Label>
-                      <Select value={newRule.persona_id} onValueChange={(value) => setNewRule(prev => ({ ...prev, persona_id: value }))}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="ペルソナを選択" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {personas.map((persona) => (
-                            <SelectItem key={persona.id} value={persona.id}>
-                              <div className="flex items-center gap-3">
-                                <Avatar className="h-6 w-6">
-                                  <AvatarImage src={persona.avatar_url || ""} />
-                                  <AvatarFallback>{persona.name[0]?.toUpperCase()}</AvatarFallback>
-                                </Avatar>
-                                <span>{persona.name}</span>
-                              </div>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="trigger">トリガーキーワード（オプション）</Label>
-                      <Input
-                        id="trigger"
-                        value={newRule.trigger_keywords}
-                        onChange={(e) => setNewRule(prev => ({ ...prev, trigger_keywords: e.target.value }))}
-                        placeholder="例: ありがとう, 質問, こんにちは (カンマ区切り)"
-                        disabled={saving}
-                      />
-                      <div className="text-sm text-muted-foreground space-y-1">
-                        <p>・複数のキーワードはカンマで区切って入力してください</p>
-                        <p>・<strong>空白にすると、すべてのリプライに対して文脈を理解した自動返信を生成します</strong></p>
-                        <p>・キーワード指定時は、そのキーワードを含むリプライにのみ返信します</p>
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="response">自動返信テンプレート</Label>
-                      <Textarea
-                        id="response"
-                        value={newRule.response_template}
-                        onChange={(e) => setNewRule(prev => ({ ...prev, response_template: e.target.value }))}
-                        placeholder="自動返信で送信するメッセージのテンプレートを入力"
-                        rows={4}
-                        disabled={saving}
-                      />
-                      <p className="text-sm text-muted-foreground">
-                        選択したペルソナの特徴を活かした返信が生成されます
-                      </p>
-                    </div>
-
-                    <Button 
-                      type="button"
-                      onClick={(e) => {
-                        console.log('Button clicked!', e);
-                        console.log('Current form state:', newRule);
-                        console.log('Saving state:', saving);
-                        console.log('Button disabled?', saving);
-                        e.preventDefault();
-                        e.stopPropagation();
-                        addReplyRule();
-                      }} 
-                      disabled={saving} 
-                      className="w-full cursor-pointer"
-                      style={{ pointerEvents: saving ? 'none' : 'auto' }}
-                    >
-                      {saving ? (
-                        <>
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          作成中...
-                        </>
-                      ) : (
-                        <>
-                          <Plus className="h-4 w-4 mr-2" />
-                          返信ルールを追加
-                        </>
-                      )}
-                    </Button>
-                  </>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="rules" className="space-y-6">
-            {autoReplies.length === 0 ? (
-              <Card>
-                <CardContent className="text-center py-12">
-                  <MessageCircle className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                  <h3 className="text-lg font-semibold mb-2">返信ルールがありません</h3>
-                  <p className="text-muted-foreground mb-4">
-                    新しい自動返信ルールを作成して、効率的な対応を始めましょう。
-                  </p>
-                  <Button onClick={() => navigate("/auto-reply?tab=add")}>
-                    返信ルールを作成
+                  <Button size="sm" onClick={addKeyword}>
+                    <Plus className="h-4 w-4" />
                   </Button>
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="space-y-4">
-                {autoReplies.map((rule) => (
-                  <Card key={rule.id} className={!rule.is_active ? "opacity-50" : ""}>
-                    <CardHeader>
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-4">
-                          <Avatar className="h-10 w-10">
-                            <AvatarImage src={getPersonaAvatar(rule.persona_id) || ""} />
+                </div>
+                {triggerKeywords.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {triggerKeywords.map((keyword, index) => (
+                      <Badge key={index} variant="secondary">
+                        {keyword}
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-4 w-4 p-0 ml-1"
+                          onClick={() => removeKeyword(keyword)}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* 返信テンプレート */}
+              <div className="space-y-2">
+                <Label>返信テンプレート</Label>
+                <Textarea
+                  placeholder="自動返信のテンプレートを入力してください"
+                  value={responseTemplate}
+                  onChange={(e) => setResponseTemplate(e.target.value)}
+                  rows={4}
+                />
+                <p className="text-xs text-muted-foreground">
+                  {'{user}'}でユーザー名、{'{content}'}で元投稿内容を参照できます
+                </p>
+              </div>
+
+              {/* 有効/無効切り替え */}
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="is-active"
+                  checked={isActive}
+                  onCheckedChange={setIsActive}
+                />
+                <Label htmlFor="is-active">自動返信を有効にする</Label>
+              </div>
+
+              <div className="flex gap-2">
+                <Button 
+                  onClick={saveAutoReply} 
+                  disabled={isCreating}
+                  className="flex-1"
+                >
+                  {isCreating ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      保存中...
+                    </>
+                  ) : (
+                    <>
+                      <Zap className="h-4 w-4 mr-2" />
+                      {editingId ? '更新' : '作成'}
+                    </>
+                  )}
+                </Button>
+                {editingId && (
+                  <Button onClick={resetForm} variant="outline">
+                    キャンセル
+                  </Button>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* 既存ルール一覧 */}
+          <Card>
+            <CardHeader>
+              <CardTitle>自動返信ルール一覧</CardTitle>
+              <CardDescription>
+                {autoReplies.length > 0 
+                  ? `${autoReplies.length}個のルールが設定されています`
+                  : "自動返信ルールはありません"
+                }
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {autoReplies.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Zap className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p>自動返信ルールを作成してください</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {autoReplies.map((reply) => (
+                    <div key={reply.id} className="border rounded-lg p-4">
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <Avatar className="h-8 w-8">
+                            <AvatarImage src={reply.personas?.avatar_url || ""} />
                             <AvatarFallback>
-                              {getPersonaName(rule.persona_id)[0]?.toUpperCase()}
+                              {reply.personas?.name?.[0] || "P"}
                             </AvatarFallback>
                           </Avatar>
-                          <div>
-                            <h3 className="font-semibold">{getPersonaName(rule.persona_id)}</h3>
-                            <div className="flex items-center gap-2">
-                              <Badge variant={rule.is_active ? "default" : "secondary"}>
-                                {rule.is_active ? "有効" : "無効"}
-                              </Badge>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
+                          <span className="font-medium">
+                            {reply.personas?.name || "不明"}
+                          </span>
                           <Switch
-                            checked={rule.is_active}
-                            onCheckedChange={() => toggleRule(rule.id, rule.is_active)}
-                          />
-                          <Button
-                            onClick={() => deleteReplyRule(rule.id)}
-                            variant="outline"
+                            checked={reply.is_active}
+                            onCheckedChange={() => toggleAutoReply(reply.id, reply.is_active)}
                             size="sm"
+                          />
+                        </div>
+                        <div className="flex gap-1">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => editAutoReply(reply)}
                           >
-                            <Trash2 className="h-4 w-4" />
+                            <Edit className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => deleteAutoReply(reply.id)}
+                          >
+                            <Trash2 className="h-3 w-3" />
                           </Button>
                         </div>
                       </div>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div>
-                        <Label className="text-sm font-medium">トリガーキーワード</Label>
-                        <div className="flex flex-wrap gap-2 mt-2">
-                          {rule.trigger_keywords && rule.trigger_keywords.length > 0 ? (
-                            rule.trigger_keywords.map((keyword, index) => (
-                              <Badge key={index} variant="outline">
+                      
+                      <div className="space-y-2">
+                        <div>
+                          <p className="text-sm font-medium mb-1">トリガーキーワード:</p>
+                          <div className="flex flex-wrap gap-1">
+                            {reply.trigger_keywords?.map((keyword, index) => (
+                              <Badge key={index} variant="outline" className="text-xs">
                                 {keyword}
                               </Badge>
-                            ))
-                          ) : (
-                            <Badge variant="secondary" className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
-                              🧠 文脈理解型 (すべてのリプライに対応)
-                            </Badge>
-                          )}
+                            ))}
+                          </div>
+                        </div>
+                        
+                        <div>
+                          <p className="text-sm font-medium mb-1">返信テンプレート:</p>
+                          <p className="text-sm text-muted-foreground bg-muted p-2 rounded">
+                            {reply.response_template}
+                          </p>
                         </div>
                       </div>
-                      <div>
-                        <Label className="text-sm font-medium">返信テンプレート</Label>
-                        <p className="text-sm text-muted-foreground mt-1 p-3 bg-muted rounded-md">
-                          {rule.response_template}
-                        </p>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
-          </TabsContent>
-        </Tabs>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   );

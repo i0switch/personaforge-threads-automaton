@@ -9,6 +9,97 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      activity_logs: {
+        Row: {
+          action_type: string
+          created_at: string
+          description: string | null
+          id: string
+          metadata: Json | null
+          persona_id: string | null
+          user_id: string
+        }
+        Insert: {
+          action_type: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          metadata?: Json | null
+          persona_id?: string | null
+          user_id: string
+        }
+        Update: {
+          action_type?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          metadata?: Json | null
+          persona_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "activity_logs_persona_id_fkey"
+            columns: ["persona_id"]
+            isOneToOne: false
+            referencedRelation: "personas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      analytics: {
+        Row: {
+          comments_count: number | null
+          created_at: string
+          date: string
+          engagement_rate: number | null
+          id: string
+          likes_count: number | null
+          persona_id: string | null
+          posts_count: number | null
+          replies_count: number | null
+          shares_count: number | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          comments_count?: number | null
+          created_at?: string
+          date: string
+          engagement_rate?: number | null
+          id?: string
+          likes_count?: number | null
+          persona_id?: string | null
+          posts_count?: number | null
+          replies_count?: number | null
+          shares_count?: number | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          comments_count?: number | null
+          created_at?: string
+          date?: string
+          engagement_rate?: number | null
+          id?: string
+          likes_count?: number | null
+          persona_id?: string | null
+          posts_count?: number | null
+          replies_count?: number | null
+          shares_count?: number | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "analytics_persona_id_fkey"
+            columns: ["persona_id"]
+            isOneToOne: false
+            referencedRelation: "personas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       auto_replies: {
         Row: {
           created_at: string
