@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,7 +11,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
 import { ja } from "date-fns/locale";
 import type { Database } from "@/integrations/supabase/types";
-import { ImageGenerator } from "@/components/ImageGenerator";
+import ImageGenerator from "@/components/ImageGenerator";
 
 type Persona = Database['public']['Tables']['personas']['Row'];
 type Post = Database['public']['Tables']['posts']['Row'];
@@ -207,7 +206,6 @@ const ImageGeneration = () => {
 
           {/* 右側：画像生成 */}
           <div className="space-y-4">
-            <h2 className="text-xl font-semibold">画像生成</h2>
             <ImageGenerator />
           </div>
         </div>
