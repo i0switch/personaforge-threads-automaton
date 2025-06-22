@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -144,6 +143,9 @@ const CreatePosts = () => {
       setSelectedDates([]);
       setSelectedTimes([]);
       setCustomPrompt("");
+
+      // 投稿確認ページに遷移
+      navigate("/scheduled-posts");
     } catch (error) {
       console.error('Error generating posts:', error);
       toast({
