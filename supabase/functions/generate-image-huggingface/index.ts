@@ -1,5 +1,6 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { Client } from "https://esm.sh/@gradio/client@1.10.3";
+import { Client } from "https://esm.sh/@gradio/client@1.15.3";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -100,21 +101,22 @@ serve(async (req) => {
     console.log('Client endpoints:', Object.keys(client.endpoints || {}));
     console.log('Client view_api:', typeof client.view_api);
     
+    // Parameters for debugging
+    console.log('=== PARAMETERS DEBUG ===');
+    console.log('1. imageFile:', imageFile ? `File(${imageFile.size} bytes, ${imageFile.type})` : 'null');
+    console.log('2. prompt (subject):', prompt);
+    console.log('3. additional prompt (empty):', "");
+    console.log('4. negative_prompt:', negative_prompt);
+    console.log('5. guidance_scale:', guidance_scale, typeof guidance_scale);
+    console.log('6. ip_adapter_scale:', ip_adapter_scale, typeof ip_adapter_scale);
+    console.log('7. num_inference_steps:', num_inference_steps, typeof num_inference_steps);
+    console.log('8. width:', width, typeof width);
+    console.log('9. height:', height, typeof height);
+    console.log('10. upscale:', upscale, typeof upscale);
+    console.log('11. upscale_factor:', upscale_factor, typeof upscale_factor);
+    
     // JavaScriptのGradio Clientは配列形式で引数を順番通りに渡す（Pythonコードと同じ仕様）
     console.log('Attempting to call predict with array parameters...');
-    console.log('Parameters:', {
-      imageFile: imageFile ? `File(${imageFile.size} bytes)` : 'null',
-      prompt: prompt,
-      additionalPrompt: "",
-      negativePrompt: negative_prompt,
-      guidanceScale: guidance_scale,
-      ipAdapterScale: ip_adapter_scale,
-      numSteps: num_inference_steps,
-      width: width,
-      height: height,
-      upscale: upscale,
-      upscaleFactor: upscale_factor
-    });
     
     const result = await client.predict("/predict", [
       imageFile,           // 1. face_np: File object
