@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -18,6 +19,7 @@ import { ja } from "date-fns/locale";
 import type { Database } from "@/integrations/supabase/types";
 
 type Persona = Database['public']['Tables']['personas']['Row'];
+type Post = Database['public']['Tables']['posts']['Row'];
 
 interface GeneratedPost {
   content: string;
@@ -31,6 +33,7 @@ const CreatePosts = () => {
   const { user } = useAuth();
   const { toast } = useToast();
   
+  const [currentStep, setCurrentStep] = useState(1);
   const [personas, setPersonas] = useState<Persona[]>([]);
   const [selectedPersona, setSelectedPersona] = useState<string>("");
   const [selectedDates, setSelectedDates] = useState<Date[]>([]);
@@ -38,10 +41,7 @@ const CreatePosts = () => {
   const [topics, setTopics] = useState("");
   const [customPrompt, setCustomPrompt] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
-  const [generatedPosts, setGeneratedPosts] = useState<GeneratedPost[]>([]);
-  const [showImageGeneration, setShowImageGeneration] = useState(false);
-  const [generatingImagePrompts, setGeneratingImagePrompts] = useState<boolean[]>([]);
-  const [generatingImages, setGeneratingImages] = useState<boolean[]>([]);
+  const [generatedPosts, setGeneratedPosts] = useState<Post[]>([]);
   const [faceImage, setFaceImage] = useState<File | null>(null);
   const [faceImagePreview, setFaceImagePreview] = useState<string>("");
 
@@ -120,103 +120,6 @@ const CreatePosts = () => {
     }
   };
 
-  const generateImagePrompt = async (postContent: string, index: number) => {
-    const newGeneratingStates = [...generatingImagePrompts];
-    newGeneratingStates[index] = true;
-    setGeneratingImagePrompts(newGeneratingStates);
-
-    try {
-      const { data, error } = await supabase.functions.invoke('generate-image-prompt', {
-        body: { 
-          postContent,
-          persona: personas.find(p => p.id === selectedPersona)
-        }
-      });
-
-      if (error) throw error;
-
-      if (data?.success && data?.imagePrompt) {
-        const updatedPosts = [...generatedPosts];
-        updatedPosts[index] = {
-          ...updatedPosts[index],
-          imagePrompt: data.imagePrompt
-        };
-        setGeneratedPosts(updatedPosts);
-      }
-    } catch (error) {
-      console.error('Error generating image prompt:', error);
-      toast({
-        title: "エラー",
-        description: "画像プロンプトの生成に失敗しました。",
-        variant: "destructive",
-      });
-    } finally {
-      newGeneratingStates[index] = false;
-      setGeneratingImagePrompts(newGeneratingStates);
-    }
-  };
-
-  const generateImage = async (index: number) => {
-    const post = generatedPosts[index];
-    if (!post.imagePrompt || !faceImage) {
-      toast({
-        title: "エラー",
-        description: "画像プロンプトとリファレンス画像が必要です。",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const newGeneratingStates = [...generatingImages];
-    newGeneratingStates[index] = true;
-    setGeneratingImages(newGeneratingStates);
-
-    try {
-      const formData = new FormData();
-      formData.append('faceImage', faceImage);
-      formData.append('subject', post.imagePrompt);
-      formData.append('additionalPrompt', '');
-      formData.append('additionalNegative', post.negativePrompt || '');
-      formData.append('guidanceScale', '7');
-      formData.append('ipAdapterScale', '0.6');
-      formData.append('numSteps', '20');
-      formData.append('width', '1024');
-      formData.append('height', '1024');
-      formData.append('upscale', 'false');
-      formData.append('upscaleFactor', '2');
-
-      const { data, error } = await supabase.functions.invoke('generate-image-stable-diffusion', {
-        body: formData
-      });
-
-      if (error) throw error;
-
-      if (data?.image) {
-        const updatedPosts = [...generatedPosts];
-        updatedPosts[index] = {
-          ...updatedPosts[index],
-          generatedImage: data.image
-        };
-        setGeneratedPosts(updatedPosts);
-
-        toast({
-          title: "成功",
-          description: "画像を生成しました。",
-        });
-      }
-    } catch (error) {
-      console.error('Error generating image:', error);
-      toast({
-        title: "エラー",
-        description: "画像の生成に失敗しました。",
-        variant: "destructive",
-      });
-    } finally {
-      newGeneratingStates[index] = false;
-      setGeneratingImages(newGeneratingStates);
-    }
-  };
-
   const generatePosts = async () => {
     if (!selectedPersona || !topics.trim() || selectedDates.length === 0 || selectedTimes.length === 0) {
       toast({
@@ -255,22 +158,15 @@ const CreatePosts = () => {
       }
 
       if (data?.success && data?.posts && data.posts.length > 0) {
-        // データベースから取得した投稿を直接使用
-        const posts = data.posts;
-        console.log('Generated posts from database:', posts);
+        // 生成された投稿をセット
+        setGeneratedPosts(data.posts);
         
-        // 確認画面に遷移
-        const selectedPersonaData = personas.find(p => p.id === selectedPersona);
-        navigate("/review-posts", {
-          state: {
-            posts: posts,
-            persona: selectedPersonaData
-          }
-        });
+        // ステップ2（生成・編集）に進む
+        setCurrentStep(2);
 
         toast({
           title: "成功",
-          description: `${posts.length}件の投稿を生成しました。`,
+          description: `${data.posts.length}件の投稿を生成しました。`,
         });
       } else {
         throw new Error('投稿の生成に失敗しました');
@@ -287,16 +183,28 @@ const CreatePosts = () => {
     }
   };
 
-  const proceedToReview = () => {
+  const updatePost = (index: number, content: string) => {
+    const updatedPosts = [...generatedPosts];
+    updatedPosts[index] = { ...updatedPosts[index], content };
+    setGeneratedPosts(updatedPosts);
+  };
+
+  const deletePost = (index: number) => {
+    setGeneratedPosts(generatedPosts.filter((_, i) => i !== index));
+  };
+
+  const proceedToImageGeneration = () => {
+    setCurrentStep(3);
+  };
+
+  const scheduleAllPosts = async () => {
+    if (generatedPosts.length === 0) return;
+
     const selectedPersonaData = personas.find(p => p.id === selectedPersona);
     
     navigate("/review-posts", {
       state: {
-        posts: generatedPosts.map(post => ({
-          content: post.content,
-          imagePrompt: post.imagePrompt,
-          generatedImage: post.generatedImage
-        })),
+        posts: generatedPosts,
         persona: selectedPersonaData
       }
     });
@@ -314,20 +222,11 @@ const CreatePosts = () => {
     }
   };
 
-  const updateNegativePrompt = (index: number, value: string) => {
-    const updatedPosts = [...generatedPosts];
-    updatedPosts[index] = {
-      ...updatedPosts[index],
-      negativePrompt: value
-    };
-    setGeneratedPosts(updatedPosts);
-  };
-
   const selectedPersonaData = personas.find(p => p.id === selectedPersona);
 
   return (
     <div className="min-h-screen bg-background p-6">
-      <div className="max-w-2xl mx-auto space-y-6">
+      <div className="max-w-4xl mx-auto space-y-6">
         <div className="flex items-center gap-4">
           <Button variant="outline" size="sm" onClick={() => navigate("/")}>
             <ArrowLeft className="h-4 w-4 mr-2" />
@@ -339,7 +238,32 @@ const CreatePosts = () => {
           </div>
         </div>
 
-        {!showImageGeneration ? (
+        {/* ステップインジケーター */}
+        <div className="flex items-center justify-center space-x-8 py-4">
+          <div className="flex items-center">
+            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white font-medium ${currentStep === 1 ? 'bg-primary' : currentStep > 1 ? 'bg-green-500' : 'bg-gray-300'}`}>
+              1
+            </div>
+            <span className="ml-2 font-medium">設定</span>
+          </div>
+          <div className={`flex-1 h-0.5 ${currentStep > 1 ? 'bg-green-500' : 'bg-gray-300'}`}></div>
+          <div className="flex items-center">
+            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white font-medium ${currentStep === 2 ? 'bg-primary' : currentStep > 2 ? 'bg-green-500' : 'bg-gray-300'}`}>
+              2
+            </div>
+            <span className="ml-2 font-medium">生成・編集</span>
+          </div>
+          <div className={`flex-1 h-0.5 ${currentStep > 2 ? 'bg-green-500' : 'bg-gray-300'}`}></div>
+          <div className="flex items-center">
+            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white font-medium ${currentStep === 3 ? 'bg-primary' : 'bg-gray-300'}`}>
+              3
+            </div>
+            <span className="ml-2 font-medium">画像生成</span>
+          </div>
+        </div>
+
+        {/* ステップ1: 設定 */}
+        {currentStep === 1 && (
           <div className="space-y-6">
             {/* ペルソナ選択 */}
             <Card>
@@ -499,9 +423,96 @@ const CreatePosts = () => {
               )}
             </Button>
           </div>
-        ) : (
+        )}
+
+        {/* ステップ2: 生成・編集 */}
+        {currentStep === 2 && (
           <div className="space-y-6">
-            {/* Reference Image Upload */}
+            <Card>
+              <CardHeader>
+                <CardTitle>生成された投稿</CardTitle>
+                <CardDescription>投稿内容を確認・編集できます</CardDescription>
+              </CardHeader>
+            </Card>
+
+            {/* 投稿一覧 */}
+            <div className="space-y-4">
+              {generatedPosts.map((post, index) => (
+                <Card key={index}>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-lg">
+                        {post.scheduled_for ? format(new Date(post.scheduled_for), 'M月d日 HH:mm', { locale: ja }) : `投稿 ${index + 1}`}
+                      </CardTitle>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => deletePost(index)}
+                      >
+                        削除
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <Textarea
+                      value={post.content}
+                      onChange={(e) => updatePost(index, e.target.value)}
+                      rows={4}
+                      placeholder="投稿内容を編集..."
+                    />
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+
+            {/* アクションボタン */}
+            <div className="flex gap-4">
+              <Button 
+                onClick={() => setCurrentStep(1)}
+                variant="outline"
+                className="flex-1"
+                size="lg"
+              >
+                設定に戻る
+              </Button>
+              <Button 
+                onClick={scheduleAllPosts}
+                variant="outline"
+                className="flex-1"
+                size="lg"
+                disabled={generatedPosts.length === 0}
+              >
+                投稿を保存
+              </Button>
+              <Button 
+                onClick={proceedToImageGeneration}
+                className="flex-1"
+                size="lg"
+                disabled={generatedPosts.length === 0}
+              >
+                <ImageIcon className="h-4 w-4 mr-2" />
+                画像を生成
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* ステップ3: 画像生成 */}
+        {currentStep === 3 && (
+          <div className="space-y-6">
+            <Card className="bg-blue-50 border border-blue-200">
+              <CardContent className="p-4">
+                <div className="flex items-start gap-2">
+                  <div className="text-blue-500 mt-0.5">ℹ️</div>
+                  <div className="text-sm text-blue-700">
+                    <strong>HuggingFace Spaces + Gemini APIを使用</strong><br />
+                    投稿内容をGemini APIが解析し、画像生成プロンプトを自動生成します。リファレンス画像をアップロードすると、その人物の顔で画像が生成されます。
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* リファレンス画像アップロード */}
             <Card>
               <CardHeader>
                 <CardTitle>リファレンス画像</CardTitle>
@@ -529,102 +540,63 @@ const CreatePosts = () => {
               </CardContent>
             </Card>
 
-            {/* Generated Posts with Image Generation */}
-            <Card>
-              <CardHeader>
-                <CardTitle>生成された投稿と画像生成</CardTitle>
-                <CardDescription>
-                  各投稿の画像プロンプトを確認し、画像を生成してください
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {generatedPosts.map((post, index) => (
-                  <div key={index} className="border rounded-lg p-4 space-y-4">
+            {/* 投稿別画像生成プレビュー */}
+            <div className="space-y-4">
+              {generatedPosts.map((post, index) => (
+                <Card key={index}>
+                  <CardHeader>
+                    <CardTitle className="text-lg">
+                      投稿予定: {post.scheduled_for ? format(new Date(post.scheduled_for), 'M月d日 HH:mm', { locale: ja }) : `投稿 ${index + 1}`}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
                     <div>
-                      <h4 className="font-medium mb-2">投稿 {index + 1}</h4>
+                      <p className="text-sm text-muted-foreground mb-2">投稿内容:</p>
                       <p className="text-sm bg-muted p-3 rounded">{post.content}</p>
                     </div>
-
+                    
                     <div>
-                      <Label>画像プロンプト</Label>
-                      <div className="flex gap-2">
-                        <Textarea
-                          value={post.imagePrompt || ''}
-                          onChange={(e) => {
-                            const updatedPosts = [...generatedPosts];
-                            updatedPosts[index] = {
-                              ...updatedPosts[index],
-                              imagePrompt: e.target.value
-                            };
-                            setGeneratedPosts(updatedPosts);
-                          }}
-                          placeholder="画像プロンプトを生成中..."
-                          rows={2}
-                          disabled={generatingImagePrompts[index]}
-                        />
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => generateImagePrompt(post.content, index)}
-                          disabled={generatingImagePrompts[index]}
-                        >
-                          {generatingImagePrompts[index] ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Wand2 className="h-4 w-4" />
-                          )}
-                        </Button>
+                      <p className="text-sm font-medium mb-2">画像プロンプト</p>
+                      <div className="text-sm bg-primary/5 p-3 rounded border-l-4 border-primary">
+                        Photograph, professional photograph, of a woman in an off-shoulder dress, smiling playfully. City night bokeh background, diffused light. Close-up, slightly angled shot. Happy, confident expression.
                       </div>
                     </div>
 
-                    <div>
-                      <Label>ネガティブプロンプト</Label>
-                      <Textarea
-                        value={post.negativePrompt || ''}
-                        onChange={(e) => updateNegativePrompt(index, e.target.value)}
-                        placeholder="除外したい要素（オプション）"
-                        rows={2}
-                      />
-                    </div>
-
-                    <div className="flex gap-2">
-                      <Button
-                        onClick={() => generateImage(index)}
-                        disabled={generatingImages[index] || !post.imagePrompt || !faceImage}
-                        className="flex-1"
-                      >
-                        {generatingImages[index] ? (
-                          <>
-                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                            生成中...
-                          </>
-                        ) : (
-                          <>
-                            <ImageIcon className="h-4 w-4 mr-2" />
-                            画像生成
-                          </>
-                        )}
-                      </Button>
-                    </div>
-
-                    {post.generatedImage && (
-                      <div>
-                        <img
-                          src={post.generatedImage}
-                          alt="Generated"
-                          className="w-full h-auto rounded-lg"
-                        />
+                    <div className="flex items-center justify-center p-8 border-2 border-dashed border-gray-300 rounded-lg">
+                      <div className="text-center">
+                        <ImageIcon className="mx-auto h-12 w-12 text-gray-400" />
+                        <p className="mt-2 text-sm text-gray-500">画像を生成してください</p>
                       </div>
-                    )}
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
+                    </div>
 
-            {/* Proceed to Review */}
-            <Button onClick={proceedToReview} className="w-full" size="lg">
-              レビュー画面へ進む
-            </Button>
+                    <Button className="w-full" size="lg">
+                      <ImageIcon className="h-4 w-4 mr-2" />
+                      画像生成
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+
+            {/* 戻るボタン */}
+            <div className="flex gap-4">
+              <Button 
+                onClick={() => setCurrentStep(2)}
+                variant="outline"
+                className="flex-1"
+                size="lg"
+              >
+                編集に戻る
+              </Button>
+              <Button 
+                onClick={scheduleAllPosts}
+                className="flex-1"
+                size="lg"
+                disabled={generatedPosts.length === 0}
+              >
+                投稿を保存
+              </Button>
+            </div>
           </div>
         )}
       </div>
