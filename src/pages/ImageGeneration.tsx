@@ -6,7 +6,9 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Slider } from "@/components/ui/slider";
+import { Checkbox } from "@/components/ui/checkbox";
 import { ArrowLeft, Image as ImageIcon, Sparkles, Loader2, Upload, RefreshCw } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -38,11 +40,19 @@ const ImageGeneration = () => {
   const [generatedImages, setGeneratedImages] = useState<{[key: number]: string}>({});
   const [promptError, setPromptError] = useState<{[key: number]: string}>({});
   
-  // InstantID設定
+  // 画像生成設定
   const [referenceImage, setReferenceImage] = useState<File | null>(null);
   const [referenceImagePreview, setReferenceImagePreview] = useState<string>("");
-  const [ipAdapterScale, setIpAdapterScale] = useState([0.8]);
-  const [controlWeight, setControlWeight] = useState([0.8]);
+  const [subject, setSubject] = useState("");
+  const [additionalPrompt, setAdditionalPrompt] = useState("");
+  const [additionalNegative, setAdditionalNegative] = useState("");
+  const [cfg, setCfg] = useState([6]);
+  const [ipAdapterScale, setIpAdapterScale] = useState([0.65]);
+  const [steps, setSteps] = useState([20]);
+  const [width, setWidth] = useState([512]);
+  const [height, setHeight] = useState([768]);
+  const [upscale, setUpscale] = useState(true);
+  const [upscaleFactor, setUpscaleFactor] = useState([2]);
 
   useEffect(() => {
     const state = location.state as ImageGenerationState;
@@ -145,7 +155,7 @@ const ImageGeneration = () => {
     if (!prompt) {
       toast({
         title: "エラー",
-        description: "まずプロンプトを生成してください。",
+        description: "プロンプト生成が完了していません。",
         variant: "destructive",
       });
       return;
@@ -163,68 +173,61 @@ const ImageGeneration = () => {
     setGeneratingImages(prev => new Set(prev).add(postIndex));
 
     try {
-      // Convert image to base64
-      const reader = new FileReader();
-      reader.onload = async () => {
-        try {
-          const base64 = reader.result as string;
+      // HuggingFace Space URLの取得
+      const { data: spaceUrlData, error: spaceUrlError } = await supabase.functions.invoke('retrieve-secret', {
+        body: { secret_name: 'HUGGINGFACE_SPACE_URL' }
+      });
 
-          const { data, error } = await supabase.functions.invoke('generate-image-huggingface', {
-            body: {
-              face_image_b64: base64,
-              prompt: prompt,
-              negative_prompt: "",
-              guidance_scale: 6.0,
-              ip_adapter_scale: ipAdapterScale[0],
-              num_inference_steps: 20,
-              width: 512,
-              height: 768,
-              upscale: true,
-              upscale_factor: 2
-            }
-          });
+      if (spaceUrlError || !spaceUrlData?.secret_value) {
+        throw new Error('HuggingFace Space URLが設定されていません。設定画面で設定してください。');
+      }
 
-          if (error) {
-            console.error('Edge function error:', error);
-            throw new Error(`画像生成に失敗しました: ${error.message}`);
-          }
+      const spaceUrl = spaceUrlData.secret_value;
 
-          if (!data || !data.image) {
-            throw new Error('画像データが返されませんでした');
-          }
-
-          setGeneratedImages(prev => ({
-            ...prev,
-            [postIndex]: data.image
-          }));
-
-          toast({
-            title: "生成完了",
-            description: "画像が正常に生成されました。",
-          });
-        } catch (error) {
-          console.error('Error generating image:', error);
-          toast({
-            title: "エラー",
-            description: error.message || "画像生成に失敗しました。",
-            variant: "destructive",
-          });
-        } finally {
-          setGeneratingImages(prev => {
-            const newSet = new Set(prev);
-            newSet.delete(postIndex);
-            return newSet;
-          });
+      const { data, error } = await supabase.functions.invoke('generate-image-gradio', {
+        body: {
+          space_url: spaceUrl,
+          face_image: referenceImage,
+          subject: subject || "portrait",
+          add_prompt: `${prompt}, ${additionalPrompt}`.trim(),
+          add_neg: additionalNegative || "blurry, low quality, distorted",
+          cfg: cfg[0],
+          ip_scale: ipAdapterScale[0],
+          steps: steps[0],
+          w: width[0],
+          h: height[0],
+          upscale: upscale,
+          up_factor: upscaleFactor[0]
         }
-      };
-      reader.readAsDataURL(referenceImage);
+      });
+
+      if (error) {
+        console.error('Image generation error:', error);
+        throw new Error(`画像生成に失敗しました: ${error.message}`);
+      }
+
+      if (!data || !data.image) {
+        throw new Error('画像データが返されませんでした');
+      }
+
+      setGeneratedImages(prev => ({
+        ...prev,
+        [postIndex]: data.image
+      }));
+
+      toast({
+        title: "生成完了",
+        description: "画像が正常に生成されました。",
+      });
     } catch (error) {
       console.error('Error generating image:', error);
+      const errorMessage = error instanceof Error ? error.message : "画像生成に失敗しました。";
       toast({
         title: "エラー",
-        description: "画像生成に失敗しました。",
+        description: errorMessage,
         variant: "destructive",
       });
+    } finally {
       setGeneratingImages(prev => {
         const newSet = new Set(prev);
         newSet.delete(postIndex);
@@ -255,18 +258,21 @@ const ImageGeneration = () => {
             戻る
           </Button>
           <div className="flex-1">
-            <h1 className="text-3xl font-bold">InstantID 設定</h1>
-            <p className="text-muted-foreground">特定の人物の顔で画像を生成するためのリファレンス画像をアップロードしてください。</p>
+            <h1 className="text-3xl font-bold">AI画像生成</h1>
+            <p className="text-muted-foreground">投稿内容に合わせた画像を生成します</p>
           </div>
         </div>
 
-        {/* InstantID設定 */}
+        {/* 画像生成設定 */}
         <Card>
           <CardHeader>
-            <CardTitle>リファレンス画像</CardTitle>
+            <CardTitle>画像生成設定</CardTitle>
+            <CardDescription>リファレンス画像と生成パラメータを設定してください</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-6">
+            {/* リファレンス画像 */}
             <div className="space-y-2">
+              <Label>リファレンス画像（顔写真）</Label>
               <div className="flex items-center gap-4">
                 <Input
                   type="file"
@@ -276,7 +282,6 @@ const ImageGeneration = () => {
                 />
                 <Upload className="h-4 w-4 text-muted-foreground" />
               </div>
-              <p className="text-sm text-muted-foreground">JPG, PNG形式の人物画像をアップロードしてください</p>
               {referenceImagePreview && (
                 <div className="mt-4">
                   <img
@@ -289,43 +294,125 @@ const ImageGeneration = () => {
               )}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* 被写体説明と追加プロンプト */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>IP Adapter Scale</Label>
-                <div className="px-3">
-                  <Slider
-                    value={ipAdapterScale}
-                    onValueChange={setIpAdapterScale}
-                    min={0}
-                    max={1.5}
-                    step={0.05}
-                    className="w-full"
-                  />
-                  <p className="text-sm text-muted-foreground mt-1">デフォルト: {ipAdapterScale[0]}</p>
-                </div>
+                <Label>被写体説明</Label>
+                <Input
+                  value={subject}
+                  onChange={(e) => setSubject(e.target.value)}
+                  placeholder="例: portrait, business person"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>追加プロンプト</Label>
+                <Input
+                  value={additionalPrompt}
+                  onChange={(e) => setAdditionalPrompt(e.target.value)}
+                  placeholder="追加の説明を入力"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>ネガティブプロンプト</Label>
+              <Textarea
+                value={additionalNegative}
+                onChange={(e) => setAdditionalNegative(e.target.value)}
+                placeholder="避けたい要素を入力"
+                rows={2}
+              />
+            </div>
+
+            {/* 生成パラメータ */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div className="space-y-2">
+                <Label>CFG Scale: {cfg[0]}</Label>
+                <Slider
+                  value={cfg}
+                  onValueChange={setCfg}
+                  min={1}
+                  max={20}
+                  step={0.5}
+                  className="w-full"
+                />
               </div>
 
               <div className="space-y-2">
-                <Label>Control Weight</Label>
-                <div className="px-3">
-                  <Slider
-                    value={controlWeight}
-                    onValueChange={setControlWeight}
-                    min={0}
-                    max={1.5}
-                    step={0.05}
-                    className="w-full"
-                  />
-                  <p className="text-sm text-muted-foreground mt-1">デフォルト: {controlWeight[0]}</p>
-                </div>
+                <Label>IP Adapter Scale: {ipAdapterScale[0]}</Label>
+                <Slider
+                  value={ipAdapterScale}
+                  onValueChange={setIpAdapterScale}
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  className="w-full"
+                />
               </div>
+
+              <div className="space-y-2">
+                <Label>Steps: {steps[0]}</Label>
+                <Slider
+                  value={steps}
+                  onValueChange={setSteps}
+                  min={1}
+                  max={50}
+                  step={1}
+                  className="w-full"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>幅: {width[0]}px</Label>
+                <Slider
+                  value={width}
+                  onValueChange={setWidth}
+                  min={256}
+                  max={1024}
+                  step={64}
+                  className="w-full"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>高さ: {height[0]}px</Label>
+                <Slider
+                  value={height}
+                  onValueChange={setHeight}
+                  min={256}
+                  max={1024}
+                  step={64}
+                  className="w-full"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>アップスケール倍率: {upscaleFactor[0]}x</Label>
+                <Slider
+                  value={upscaleFactor}
+                  onValueChange={setUpscaleFactor}
+                  min={1}
+                  max={4}
+                  step={1}
+                  className="w-full"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="upscale"
+                checked={upscale}
+                onCheckedChange={setUpscale}
+              />
+              <Label htmlFor="upscale">アップスケールを有効にする</Label>
             </div>
 
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
               <div className="flex items-start gap-2">
                 <div className="text-blue-500 mt-0.5">ℹ️</div>
                 <div className="text-sm text-blue-700">
-                  <strong>HuggingFace Spaces + Gemini APIを使用しています</strong><br />
+                  <strong>HuggingFace Spaces + Gemini APIを使用</strong><br />
                   投稿内容をGemini APIが解析し、画像生成プロンプトを自動生成します。リファレンス画像をアップロードすると、その人物の顔で画像が生成されます。
                 </div>
               </div>
@@ -397,7 +484,7 @@ const ImageGeneration = () => {
 
                 <Button
                   onClick={() => generateImage(index)}
-                  disabled={generatingImages.has(index) || !generatedPrompts[index] || !referenceImage}
+                  disabled={generatingImages.has(index) || generatingPrompts.has(index) || !referenceImage}
                   className="w-full"
                   size="lg"
                 >
