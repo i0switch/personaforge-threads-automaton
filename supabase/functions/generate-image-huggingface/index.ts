@@ -1,4 +1,5 @@
 
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { Client } from "npm:@gradio/client@latest";
 
@@ -181,7 +182,8 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         success: true,
-        image: imageData,
+        image_data: imageData.split(',')[1], // フロントエンドが期待するbase64データのみ
+        image: imageData, // 完全なDataURL
         prompt: prompt,
         message: 'Image generated successfully'
       }),
@@ -198,6 +200,7 @@ serve(async (req) => {
     
     return new Response(
       JSON.stringify({ 
+        success: false,
         error: 'Image generation failed', 
         details: error.message,
         type: error.constructor.name
@@ -209,3 +212,4 @@ serve(async (req) => {
     );
   }
 });
+
