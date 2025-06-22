@@ -206,6 +206,7 @@ const ImageGeneration = () => {
 
           {/* 右側：画像生成 */}
           <div className="space-y-4">
+            <h2 className="text-xl font-semibold">画像生成</h2>
             <ImageGenerator />
           </div>
         </div>
