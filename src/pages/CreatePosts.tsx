@@ -314,11 +314,29 @@ const CreatePosts = () => {
       }
 
       if (data?.success && data?.image) {
+        // Extract the URL from the Gradio image object
+        let imageUrl: string;
+        
+        if (typeof data.image === 'string') {
+          // If it's already a string (URL or base64), use it directly
+          imageUrl = data.image;
+        } else if (data.image.url) {
+          // If it's a Gradio file object with URL property
+          imageUrl = data.image.url;
+        } else if (data.image.path) {
+          // If it only has path, construct the URL
+          imageUrl = `https://i0switch-my-image-generator.hf.space/gradio_api/file=${data.image.path}`;
+        } else {
+          throw new Error('Unable to extract image URL from response');
+        }
+
+        console.log('Extracted image URL:', imageUrl);
+
         // Update the specific post with the generated image using the images array
         const updatedPosts = [...generatedPosts];
         updatedPosts[postIndex] = { 
           ...updatedPosts[postIndex], 
-          images: [data.image] 
+          images: [imageUrl] 
         };
         setGeneratedPosts(updatedPosts);
 
