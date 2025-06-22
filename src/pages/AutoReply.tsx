@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -18,7 +17,7 @@ import type { Database } from "@/integrations/supabase/types";
 
 type Persona = Database['public']['Tables']['personas']['Row'];
 type AutoReply = Database['public']['Tables']['auto_replies']['Row'] & {
-  personas?: Database['public']['Tables']['personas']['Row'];
+  personas?: Pick<Database['public']['Tables']['personas']['Row'], 'name' | 'avatar_url'>;
 };
 
 const AutoReply = () => {
@@ -63,7 +62,7 @@ const AutoReply = () => {
         .from('auto_replies')
         .select(`
           *,
-          personas(name, avatar_url)
+          personas!inner(name, avatar_url)
         `)
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
@@ -411,7 +410,6 @@ const AutoReply = () => {
                           <Switch
                             checked={reply.is_active}
                             onCheckedChange={() => toggleAutoReply(reply.id, reply.is_active)}
-                            size="sm"
                           />
                         </div>
                         <div className="flex gap-1">

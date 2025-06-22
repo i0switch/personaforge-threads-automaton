@@ -17,7 +17,7 @@ import type { Database } from "@/integrations/supabase/types";
 
 type Persona = Database['public']['Tables']['personas']['Row'];
 type ActivityLog = Database['public']['Tables']['activity_logs']['Row'] & {
-  personas?: Database['public']['Tables']['personas']['Row'];
+  personas?: Pick<Database['public']['Tables']['personas']['Row'], 'name' | 'avatar_url'>;
 };
 
 const Index = () => {
@@ -156,7 +156,7 @@ const Index = () => {
         .from('activity_logs')
         .select(`
           *,
-          personas(name, avatar_url)
+          personas!inner(name, avatar_url)
         `)
         .eq('user_id', user.id)
         .gte('created_at', startDate.toISOString())
