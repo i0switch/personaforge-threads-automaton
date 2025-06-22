@@ -145,7 +145,7 @@ const CreatePosts = () => {
       setCustomPrompt("");
 
       // 投稿確認ページに遷移
-      navigate("/scheduled-posts");
+      navigate("/review-posts");
     } catch (error) {
       console.error('Error generating posts:', error);
       toast({
