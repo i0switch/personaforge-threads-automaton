@@ -265,23 +265,29 @@ const CreatePosts = () => {
     try {
       console.log('Starting image generation for post:', postIndex);
       
-      let imageToSend: File | string;
+      let imageBase64: string;
       
-      // Use the uploaded file if available
+      // Convert image to base64 string for reliable transmission
       if (faceImage) {
-        imageToSend = faceImage;
-        console.log('Using uploaded file:', faceImage.name, faceImage.type, faceImage.size);
+        // Convert File to base64
+        console.log('Converting File to base64:', faceImage.name, faceImage.type, faceImage.size);
+        const reader = new FileReader();
+        imageBase64 = await new Promise((resolve, reject) => {
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(faceImage);
+        });
       } else if (faceImagePreview) {
-        // If no file but preview exists (persona avatar), use the preview URL directly
-        imageToSend = faceImagePreview;
-        console.log('Using preview URL:', faceImagePreview.substring(0, 50) + '...');
+        // Use preview URL directly (should already be in correct format)
+        console.log('Using preview URL as base64');
+        imageBase64 = faceImagePreview;
       } else {
         throw new Error('No image available');
       }
 
       const requestBody = {
         space_url: "i0switch/my-image-generator",
-        face_image: imageToSend,
+        face_image: imageBase64, // Always send as base64 string
         subject: subject || "portrait",
         add_prompt: additionalPrompt || "",
         add_neg: additionalNegative || "blurry, low quality, distorted",
@@ -294,10 +300,7 @@ const CreatePosts = () => {
         up_factor: upFactor[0]
       };
 
-      console.log('Sending request to generate-image-gradio:', {
-        ...requestBody,
-        face_image: imageToSend instanceof File ? `[File: ${imageToSend.name}]` : `[URL: ${typeof imageToSend === 'string' ? imageToSend.substring(0, 50) + '...' : imageToSend}]`
-      });
+      console.log('Sending request to generate-image-gradio with base64 image');
 
       const { data, error } = await supabase.functions.invoke('generate-image-gradio', {
         body: requestBody
