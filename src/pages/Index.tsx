@@ -213,7 +213,7 @@ const Index = () => {
       description: "顔画像からAI画像生成",
       icon: Image,
       color: "bg-pink-500",
-      path: "/create-posts" // 修正: /create-posts に変更
+      path: "/image-generation"
     },
     {
       title: "新規ペルソナ作成",
