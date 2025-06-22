@@ -276,26 +276,54 @@ const CreatePosts = () => {
   const scheduleAllPosts = async () => {
     if (generatedPosts.length === 0) return;
 
-    // Update posts with uploaded images
-    const updatedPosts = generatedPosts.map(post => {
-      const uploadedImage = postImagePreviews[post.id];
-      if (uploadedImage) {
+    try {
+      // Update posts with uploaded or generated images
+      const updatedPosts = await Promise.all(generatedPosts.map(async (post) => {
+        let images: string[] = [];
+
+        // Check if there's an uploaded image
+        if (postImagePreviews[post.id]) {
+          images = [postImagePreviews[post.id]];
+        }
+        // Check if there's a generated image
+        else if (post.images && post.images.length > 0) {
+          images = post.images;
+        }
+
+        // Update the post in the database with the images
+        if (images.length > 0) {
+          const { error } = await supabase
+            .from('posts')
+            .update({ images })
+            .eq('id', post.id);
+          
+          if (error) {
+            console.error('Error updating post images:', error);
+          }
+        }
+
         return {
           ...post,
-          images: [uploadedImage]
+          images
         };
-      }
-      return post;
-    });
+      }));
 
-    const selectedPersonaData = personas.find(p => p.id === selectedPersona);
-    
-    navigate("/review-posts", {
-      state: {
-        posts: updatedPosts,
-        persona: selectedPersonaData
-      }
-    });
+      const selectedPersonaData = personas.find(p => p.id === selectedPersona);
+      
+      navigate("/review-posts", {
+        state: {
+          posts: updatedPosts,
+          persona: selectedPersonaData
+        }
+      });
+    } catch (error) {
+      console.error('Error saving posts:', error);
+      toast({
+        title: "エラー",
+        description: "投稿の保存に失敗しました。",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleFaceImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -452,6 +480,11 @@ const CreatePosts = () => {
 
   const selectedPersonaData = personas.find(p => p.id === selectedPersona);
 
+  // Filter posts that don't have uploaded images for step 3
+  const postsForImageGeneration = generatedPosts.filter((post, index) => {
+    return !postImagePreviews[post.id] && (!post.images || post.images.length === 0);
+  });
+
   return (
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-4xl mx-auto space-y-6">
@@ -534,7 +567,6 @@ const CreatePosts = () => {
               </CardContent>
             </Card>
 
-            {/* 日付選択 */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -570,7 +602,6 @@ const CreatePosts = () => {
               </CardContent>
             </Card>
 
-            {/* 時間選択 */}
             <Card>
               <CardHeader>
                 <CardTitle>投稿時間選択</CardTitle>
@@ -601,7 +632,6 @@ const CreatePosts = () => {
               </CardContent>
             </Card>
 
-            {/* 投稿内容入力 */}
             <Card>
               <CardHeader>
                 <CardTitle>投稿内容</CardTitle>
@@ -631,7 +661,6 @@ const CreatePosts = () => {
               </CardContent>
             </Card>
 
-            {/* Generate Button */}
             <Button 
               onClick={generatePosts} 
               disabled={isGenerating || !topics.trim() || !selectedPersona || selectedDates.length === 0 || selectedTimes.length === 0}
@@ -663,7 +692,6 @@ const CreatePosts = () => {
               </CardHeader>
             </Card>
 
-            {/* 投稿一覧 */}
             <div className="space-y-4">
               {generatedPosts.map((post, index) => (
                 <Card key={index}>
@@ -689,7 +717,6 @@ const CreatePosts = () => {
                       placeholder="投稿内容を編集..."
                     />
 
-                    {/* 画像アップロード機能 */}
                     <div className="space-y-2">
                       <Label>投稿画像（オプション）</Label>
                       {postImagePreviews[post.id] ? (
@@ -707,6 +734,14 @@ const CreatePosts = () => {
                           >
                             <X className="h-4 w-4" />
                           </Button>
+                        </div>
+                      ) : post.images && post.images.length > 0 ? (
+                        <div className="relative">
+                          <img
+                            src={post.images[0]}
+                            alt="Generated"
+                            className="w-full max-w-md mx-auto rounded-lg border"
+                          />
                         </div>
                       ) : (
                         <div className="border-2 border-dashed border-gray-300 rounded-lg p-4">
@@ -729,7 +764,7 @@ const CreatePosts = () => {
                               </Label>
                             </div>
                             <p className="mt-1 text-sm text-gray-500">
-                              JPG, PNG, GIF up to 10MB
+                              JPG, PNG, G  up to 10MB
                             </p>
                           </div>
                         </div>
@@ -740,7 +775,6 @@ const CreatePosts = () => {
               ))}
             </div>
 
-            {/* アクションボタン */}
             <div className="flex gap-4">
               <Button 
                 onClick={() => setCurrentStep(1)}
@@ -759,15 +793,17 @@ const CreatePosts = () => {
               >
                 投稿を保存
               </Button>
-              <Button 
-                onClick={proceedToImageGeneration}
-                className="flex-1"
-                size="lg"
-                disabled={generatedPosts.length === 0}
-              >
-                <ImageIcon className="h-4 w-4 mr-2" />
-                画像を生成
-              </Button>
+              {postsForImageGeneration.length > 0 && (
+                <Button 
+                  onClick={proceedToImageGeneration}
+                  className="flex-1"
+                  size="lg"
+                  disabled={generatedPosts.length === 0}
+                >
+                  <ImageIcon className="h-4 w-4 mr-2" />
+                  画像を生成
+                </Button>
+              )}
             </div>
           </div>
         )}
@@ -787,220 +823,234 @@ const CreatePosts = () => {
               </CardContent>
             </Card>
 
-            {/* リファレンス画像アップロード */}
-            <Card>
-              <CardHeader>
-                <CardTitle>リファレンス画像</CardTitle>
-                <CardDescription>
-                  画像生成に使用するリファレンス画像（デフォルト：ペルソナのアバター）
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <Input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleFaceImageChange}
-                  />
-                  {faceImagePreview && (
-                    <div>
-                      <img
-                        src={faceImagePreview}
-                        alt="Reference"
-                        className="w-32 h-32 object-cover rounded-lg border"
-                      />
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* 画像生成設定 */}
-            <Card>
-              <CardHeader>
-                <CardTitle>画像生成設定</CardTitle>
-                <CardDescription>
-                  画像生成のパラメータを調整できます
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>被写体説明</Label>
-                    <Input
-                      value={subject}
-                      onChange={(e) => setSubject(e.target.value)}
-                      placeholder="例: portrait, business person"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>追加プロンプト</Label>
-                    <Input
-                      value={additionalPrompt}
-                      onChange={(e) => setAdditionalPrompt(e.target.value)}
-                      placeholder="追加の説明を入力"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>追加ネガティブ</Label>
-                  <Textarea
-                    value={additionalNegative}
-                    onChange={(e) => setAdditionalNegative(e.target.value)}
-                    placeholder="避けたい要素を入力"
-                    rows={2}
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <Label>CFG: {cfg[0]}</Label>
-                    <Slider
-                      value={cfg}
-                      onValueChange={setCfg}
-                      min={1}
-                      max={20}
-                      step={0.5}
-                      className="w-full"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>IP-Adapter scale: {ipScale[0]}</Label>
-                    <Slider
-                      value={ipScale}
-                      onValueChange={setIpScale}
-                      min={0}
-                      max={1}
-                      step={0.05}
-                      className="w-full"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Steps: {steps[0]}</Label>
-                    <Slider
-                      value={steps}
-                      onValueChange={setSteps}
-                      min={1}
-                      max={50}
-                      step={1}
-                      className="w-full"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>幅: {width[0]}px</Label>
-                    <Slider
-                      value={width}
-                      onValueChange={setWidth}
-                      min={256}
-                      max={1024}
-                      step={64}
-                      className="w-full"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>高さ: {height[0]}px</Label>
-                    <Slider
-                      value={height}
-                      onValueChange={setHeight}
-                      min={256}
-                      max={1024}
-                      step={64}
-                      className="w-full"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>倍率: {upFactor[0]}x</Label>
-                    <Slider
-                      value={upFactor}
-                      onValueChange={setUpFactor}
-                      min={1}
-                      max={4}
-                      step={1}
-                      className="w-full"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="upscale"
-                    checked={upscale}
-                    onCheckedChange={(checked) => setUpscale(checked === true)}
-                  />
-                  <Label htmlFor="upscale">アップスケールを有効にする</Label>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* 投稿別画像生成プレビュー */}
-            <div className="space-y-4">
-              {generatedPosts.map((post, index) => (
-                <Card key={index}>
+            {postsForImageGeneration.length === 0 ? (
+              <Card>
+                <CardContent className="p-8 text-center">
+                  <ImageIcon className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+                  <p className="text-lg font-medium text-gray-600 mb-2">画像生成が必要な投稿がありません</p>
+                  <p className="text-sm text-gray-500 mb-4">すべての投稿に画像がアップロードされています。</p>
+                  <Button onClick={() => setCurrentStep(2)} variant="outline">
+                    編集に戻る
+                  </Button>
+                </CardContent>
+              </Card>
+            ) : (
+              <>
+                <Card>
                   <CardHeader>
-                    <CardTitle className="text-lg">
-                      投稿予定: {post.scheduled_for ? format(new Date(post.scheduled_for), 'M月d日 HH:mm', { locale: ja }) : `投稿 ${index + 1}`}
-                    </CardTitle>
+                    <CardTitle>リファレンス画像</CardTitle>
+                    <CardDescription>
+                      画像生成に使用するリファレンス画像（デフォルト：ペルソナのアバター）
+                    </CardDescription>
                   </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div>
-                      <p className="text-sm text-muted-foreground mb-2">投稿内容:</p>
-                      <p className="text-sm bg-muted p-3 rounded">{post.content}</p>
-                    </div>
-                    
-                    <div>
-                      <p className="text-sm font-medium mb-2">画像プロンプト</p>
-                      <div className="text-sm bg-primary/5 p-3 rounded border-l-4 border-primary">
-                        {imagePrompts[post.id] || "selfie photo, smiling woman, casual outfit, natural lighting, morning time, cozy atmosphere"}
-                      </div>
-                    </div>
-
-                    {post.images && post.images.length > 0 ? (
-                      <div className="border rounded-lg p-2">
-                        <img
-                          src={post.images[0]}
-                          alt="Generated"
-                          className="w-full max-w-md mx-auto rounded"
-                        />
-                      </div>
-                    ) : (
-                      <div className="flex items-center justify-center p-8 border-2 border-dashed border-gray-300 rounded-lg">
-                        <div className="text-center">
-                          <ImageIcon className="mx-auto h-12 w-12 text-gray-400" />
-                          <p className="mt-2 text-sm text-gray-500">画像を生成してください</p>
+                  <CardContent>
+                    <div className="space-y-4">
+                      <Input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleFaceImageChange}
+                      />
+                      {faceImagePreview && (
+                        <div>
+                          <img
+                            src={faceImagePreview}
+                            alt="Reference"
+                            className="w-32 h-32 object-cover rounded-lg border"
+                          />
                         </div>
-                      </div>
-                    )}
-
-                    <Button 
-                      onClick={() => generateImageForPost(index)}
-                      disabled={generatingImages[post.id] || (!faceImage && !faceImagePreview)}
-                      className="w-full" 
-                      size="lg"
-                    >
-                      {generatingImages[post.id] ? (
-                        <>
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          画像生成中...
-                        </>
-                      ) : (
-                        <>
-                          <ImageIcon className="h-4 w-4 mr-2" />
-                          画像生成
-                        </>
                       )}
-                    </Button>
+                    </div>
                   </CardContent>
                 </Card>
-              ))}
-            </div>
 
-            {/* 戻るボタン */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>画像生成設定</CardTitle>
+                    <CardDescription>
+                      画像生成のパラメータを調整できます
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>被写体説明</Label>
+                        <Input
+                          value={subject}
+                          onChange={(e) => setSubject(e.target.value)}
+                          placeholder="例: portrait, business person"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>追加プロンプト</Label>
+                        <Input
+                          value={additionalPrompt}
+                          onChange={(e) => setAdditionalPrompt(e.target.value)}
+                          placeholder="追加の説明を入力"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>追加ネガティブ</Label>
+                      <Textarea
+                        value={additionalNegative}
+                        onChange={(e) => setAdditionalNegative(e.target.value)}
+                        placeholder="避けたい要素を入力"
+                        rows={2}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="space-y-2">
+                        <Label>CFG: {cfg[0]}</Label>
+                        <Slider
+                          value={cfg}
+                          onValueChange={setCfg}
+                          min={1}
+                          max={20}
+                          step={0.5}
+                          className="w-full"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>IP-Adapter scale: {ipScale[0]}</Label>
+                        <Slider
+                          value={ipScale}
+                          onValueChange={setIpScale}
+                          min={0}
+                          max={1}
+                          step={0.05}
+                          className="w-full"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Steps: {steps[0]}</Label>
+                        <Slider
+                          value={steps}
+                          onValueChange={setSteps}
+                          min={1}
+                          max={50}
+                          step={1}
+                          className="w-full"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>幅: {width[0]}px</Label>
+                        <Slider
+                          value={width}
+                          onValueChange={setWidth}
+                          min={256}
+                          max={1024}
+                          step={64}
+                          className="w-full"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>高さ: {height[0]}px</Label>
+                        <Slider
+                          value={height}
+                          onValueChange={setHeight}
+                          min={256}
+                          max={1024}
+                          step={64}
+                          className="w-full"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>倍率: {upFactor[0]}x</Label>
+                        <Slider
+                          value={upFactor}
+                          onValueChange={setUpFactor}
+                          min={1}
+                          max={4}
+                          step={1}
+                          className="w-full"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id="upscale"
+                        checked={upscale}
+                        onCheckedChange={(checked) => setUpscale(checked === true)}
+                      />
+                      <Label htmlFor="upscale">アップスケールを有効にする</Label>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <div className="space-y-4">
+                  {postsForImageGeneration.map((post, originalIndex) => {
+                    const actualIndex = generatedPosts.findIndex(p => p.id === post.id);
+                    return (
+                      <Card key={post.id}>
+                        <CardHeader>
+                          <CardTitle className="text-lg">
+                            投稿予定: {post.scheduled_for ? format(new Date(post.scheduled_for), 'M月d日 HH:mm', { locale: ja }) : `投稿 ${actualIndex + 1}`}
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                          <div>
+                            <p className="text-sm text-muted-foreground mb-2">投稿内容:</p>
+                            <p className="text-sm bg-muted p-3 rounded">{post.content}</p>
+                          </div>
+                          
+                          <div>
+                            <p className="text-sm font-medium mb-2">画像プロンプト</p>
+                            <div className="text-sm bg-primary/5 p-3 rounded border-l-4 border-primary">
+                              {imagePrompts[post.id] || "selfie photo, smiling woman, casual outfit, natural lighting, morning time, cozy atmosphere"}
+                            </div>
+                          </div>
+
+                          {post.images && post.images.length > 0 ? (
+                            <div className="border rounded-lg p-2">
+                              <img
+                                src={post.images[0]}
+                                alt="Generated"
+                                className="w-full max-w-md mx-auto rounded"
+                              />
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-center p-8 border-2 border-dashed border-gray-300 rounded-lg">
+                              <div className="text-center">
+                                <ImageIcon className="mx-auto h-12 w-12 text-gray-400" />
+                                <p className="mt-2 text-sm text-gray-500">画像を生成してください</p>
+                              </div>
+                            </div>
+                          )}
+
+                          <Button 
+                            onClick={() => generateImageForPost(actualIndex)}
+                            disabled={generatingImages[post.id] || (!faceImage && !faceImagePreview)}
+                            className="w-full" 
+                            size="lg"
+                          >
+                            {generatingImages[post.id] ? (
+                              <>
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                画像生成中...
+                              </>
+                            ) : (
+                              <>
+                                <ImageIcon className="h-4 w-4 mr-2" />
+                                画像生成
+                              </>
+                            )}
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+
             <div className="flex gap-4">
               <Button 
                 onClick={() => setCurrentStep(2)}
