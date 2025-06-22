@@ -1,7 +1,5 @@
-
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { Client } from "https://esm.sh/@gradio/client@1.15.3";
+import { Client } from "npm:@gradio/client@1.15.3";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -220,4 +218,3 @@ serve(async (req) => {
     );
   }
 });
-
