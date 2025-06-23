@@ -6,6 +6,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { Toaster } from "@/components/ui/toaster"
 import ReplyMonitoring from "@/pages/ReplyMonitoring";
+import Index from "@/pages/Index";
+import Auth from "@/pages/Auth";
 
 const queryClient = new QueryClient();
 
@@ -18,14 +20,12 @@ function App() {
             <div className="flex h-screen">
               <main className="flex-1 overflow-auto">
                 <Routes>
+                  <Route path="/auth" element={<Auth />} />
                   <Route
                     path="/"
                     element={
                       <ProtectedRoute>
-                        <div className="p-6">
-                          <h1 className="text-3xl font-bold">ダッシュボード</h1>
-                          <p>アプリケーションへようこそ</p>
-                        </div>
+                        <Index />
                       </ProtectedRoute>
                     }
                   />
