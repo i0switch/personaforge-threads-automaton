@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -41,18 +42,20 @@ const AutoReply = () => {
     
     setLoading(true);
     try {
-      // Load profile settings - check for both columns
+      // Load profile settings with proper error handling
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('auto_reply_enabled, ai_auto_reply_enabled')
         .eq('user_id', user.id)
-        .single();
+        .maybeSingle();
 
-      if (profileError && profileError.code !== 'PGRST116') throw profileError;
+      if (profileError) {
+        console.error('Profile error:', profileError);
+        throw profileError;
+      }
       
       if (profile) {
         setAutoReplyEnabled(profile.auto_reply_enabled || false);
-        // Check if ai_auto_reply_enabled column exists, fallback to false if not
         setAiAutoReplyEnabled(profile.ai_auto_reply_enabled || false);
       }
 
