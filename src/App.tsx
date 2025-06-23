@@ -1,48 +1,79 @@
-
-import { Toaster } from "@/components/ui/toaster";
-import { Toaster as Sonner } from "@/components/ui/sonner";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { AuthProvider } from "@/contexts/AuthContext";
-import { ProtectedRoute } from "@/components/ProtectedRoute";
-import Index from "./pages/Index";
-import PersonaSetup from "./pages/PersonaSetup";
-import CreatePosts from "./pages/CreatePosts";
-import ReviewPosts from "./pages/ReviewPosts";
-import ScheduledPosts from "./pages/ScheduledPosts";
-import AutoReply from "./pages/AutoReply";
-import ImageGeneration from "./pages/ImageGeneration";
+import React from "react";
+import { BrowserRouter as Router, Route, Routes } from "react-router-dom";
+import { AuthProvider } from "./contexts/AuthContext";
+import { QueryClient } from "react-query";
+import Sidebar from "./components/Sidebar";
+import Dashboard from "./pages/Dashboard";
+import Posts from "./pages/Posts";
+import Personas from "./pages/Personas";
 import Settings from "./pages/Settings";
-import Auth from "./pages/Auth";
-import NotFound from "./pages/NotFound";
+import ProtectedRoute from "./components/ProtectedRoute";
+import { Toaster } from "@/components/ui/toaster"
 
-const queryClient = new QueryClient();
+import ReplyMonitoring from "@/pages/ReplyMonitoring";
 
-const App = () => (
-  <QueryClientProvider client={queryClient}>
+function App() {
+  return (
     <AuthProvider>
-      <TooltipProvider>
+      <QueryClient>
+        <div className="min-h-screen bg-gray-50">
+          <Router>
+            <div className="flex h-screen">
+              <Sidebar />
+              
+              <main className="flex-1 overflow-auto">
+                <Routes>
+                  <Route
+                    path="/"
+                    element={
+                      <ProtectedRoute>
+                        <Dashboard />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/posts"
+                    element={
+                      <ProtectedRoute>
+                        <Posts />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/personas"
+                    element={
+                      <ProtectedRoute>
+                        <Personas />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/settings"
+                    element={
+                      <ProtectedRoute>
+                        <Settings />
+                      </ProtectedRoute>
+                    }
+                  />
+                  
+                  <Route
+                    path="/reply-monitoring"
+                    element={
+                      <ProtectedRoute>
+                        <ReplyMonitoring />
+                      </ProtectedRoute>
+                    }
+                  />
+                  
+                </Routes>
+              </main>
+            </div>
+          </Router>
+        </div>
         <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <Routes>
-            <Route path="/auth" element={<Auth />} />
-            <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
-            <Route path="/persona-setup" element={<ProtectedRoute><PersonaSetup /></ProtectedRoute>} />
-            <Route path="/create-posts" element={<ProtectedRoute><CreatePosts /></ProtectedRoute>} />
-            <Route path="/review-posts" element={<ProtectedRoute><ReviewPosts /></ProtectedRoute>} />
-            <Route path="/scheduled-posts" element={<ProtectedRoute><ScheduledPosts /></ProtectedRoute>} />
-            <Route path="/auto-reply" element={<ProtectedRoute><AutoReply /></ProtectedRoute>} />
-            <Route path="/image-generation" element={<ProtectedRoute><ImageGeneration /></ProtectedRoute>} />
-            <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
-            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
-      </TooltipProvider>
+      </QueryClient>
     </AuthProvider>
-  </QueryClientProvider>
-);
+  );
+}
 
 export default App;

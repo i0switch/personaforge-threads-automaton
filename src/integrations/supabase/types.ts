@@ -328,6 +328,47 @@ export type Database = {
         }
         Relationships: []
       }
+      reply_check_settings: {
+        Row: {
+          check_interval_minutes: number | null
+          created_at: string
+          id: string
+          is_active: boolean | null
+          last_check_at: string | null
+          persona_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          check_interval_minutes?: number | null
+          created_at?: string
+          id?: string
+          is_active?: boolean | null
+          last_check_at?: string | null
+          persona_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          check_interval_minutes?: number | null
+          created_at?: string
+          id?: string
+          is_active?: boolean | null
+          last_check_at?: string | null
+          persona_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reply_check_settings_persona_id_fkey"
+            columns: ["persona_id"]
+            isOneToOne: false
+            referencedRelation: "personas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       scheduling_settings: {
         Row: {
           auto_schedule_enabled: boolean | null
@@ -367,6 +408,59 @@ export type Database = {
         }
         Relationships: []
       }
+      thread_replies: {
+        Row: {
+          auto_reply_sent: boolean | null
+          created_at: string
+          id: string
+          original_post_id: string
+          persona_id: string | null
+          reply_author_id: string
+          reply_author_username: string | null
+          reply_id: string
+          reply_text: string
+          reply_timestamp: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          auto_reply_sent?: boolean | null
+          created_at?: string
+          id?: string
+          original_post_id: string
+          persona_id?: string | null
+          reply_author_id: string
+          reply_author_username?: string | null
+          reply_id: string
+          reply_text: string
+          reply_timestamp: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          auto_reply_sent?: boolean | null
+          created_at?: string
+          id?: string
+          original_post_id?: string
+          persona_id?: string | null
+          reply_author_id?: string
+          reply_author_username?: string | null
+          reply_id?: string
+          reply_text?: string
+          reply_timestamp?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "thread_replies_persona_id_fkey"
+            columns: ["persona_id"]
+            isOneToOne: false
+            referencedRelation: "personas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_api_keys: {
         Row: {
           created_at: string
@@ -393,6 +487,47 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      webhook_settings: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean | null
+          persona_id: string | null
+          updated_at: string
+          user_id: string
+          verify_token: string | null
+          webhook_url: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean | null
+          persona_id?: string | null
+          updated_at?: string
+          user_id: string
+          verify_token?: string | null
+          webhook_url?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean | null
+          persona_id?: string | null
+          updated_at?: string
+          user_id?: string
+          verify_token?: string | null
+          webhook_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "webhook_settings_persona_id_fkey"
+            columns: ["persona_id"]
+            isOneToOne: false
+            referencedRelation: "personas"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
