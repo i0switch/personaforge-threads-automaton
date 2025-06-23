@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, Queue, Play, Pause, ArrowUp, ArrowDown, X } from "lucide-react";
+import { Loader2, List, Play, Pause, ArrowUp, ArrowDown, X } from "lucide-react";
 import { format } from "date-fns";
 import { ja } from "date-fns/locale";
 import type { Database } from "@/integrations/supabase/types";
@@ -179,7 +179,7 @@ export const PostQueue = () => {
         <div className="flex items-center justify-between">
           <div>
             <CardTitle className="flex items-center gap-2">
-              <Queue className="h-5 w-5" />
+              <List className="h-5 w-5" />
               投稿キュー
             </CardTitle>
             <CardDescription>
@@ -204,7 +204,7 @@ export const PostQueue = () => {
       <CardContent>
         {queueItems.length === 0 ? (
           <div className="text-center py-8">
-            <Queue className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+            <List className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
             <p className="text-muted-foreground">キューに投稿がありません。</p>
           </div>
         ) : (
