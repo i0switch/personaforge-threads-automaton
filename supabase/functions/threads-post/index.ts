@@ -1,3 +1,4 @@
+
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
@@ -51,36 +52,69 @@ serve(async (req) => {
     const threadsAccessToken = post.personas.threads_access_token;
     console.log(`Publishing post: ${post.content.substring(0, 100)}...`);
 
-    // First, create a media container (Step 1)
-    const createContainerResponse = await fetch('https://graph.threads.net/v1.0/me/threads', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        media_type: 'TEXT',
-        text: post.content,
-        access_token: threadsAccessToken
-      }),
-    });
+    let containerId: string;
 
-    if (!createContainerResponse.ok) {
-      const errorText = await createContainerResponse.text();
-      console.error('Threads create container error:', errorText);
-      throw new Error(`Failed to create Threads container: ${createContainerResponse.status} ${errorText}`);
+    // Check if post has images
+    if (post.images && post.images.length > 0) {
+      console.log(`Post has ${post.images.length} images`);
+      
+      // For image posts, create container with IMAGE media type
+      const createContainerResponse = await fetch('https://graph.threads.net/v1.0/me/threads', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          media_type: 'IMAGE',
+          image_url: post.images[0], // Use first image
+          text: post.content,
+          access_token: threadsAccessToken
+        }),
+      });
+
+      if (!createContainerResponse.ok) {
+        const errorText = await createContainerResponse.text();
+        console.error('Threads create image container error:', errorText);
+        throw new Error(`Failed to create Threads image container: ${createContainerResponse.status} ${errorText}`);
+      }
+
+      const containerData = await createContainerResponse.json();
+      console.log('Image container created:', containerData);
+      containerId = containerData.id;
+
+    } else {
+      // For text-only posts
+      const createContainerResponse = await fetch('https://graph.threads.net/v1.0/me/threads', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          media_type: 'TEXT',
+          text: post.content,
+          access_token: threadsAccessToken
+        }),
+      });
+
+      if (!createContainerResponse.ok) {
+        const errorText = await createContainerResponse.text();
+        console.error('Threads create text container error:', errorText);
+        throw new Error(`Failed to create Threads text container: ${createContainerResponse.status} ${errorText}`);
+      }
+
+      const containerData = await createContainerResponse.json();
+      console.log('Text container created:', containerData);
+      containerId = containerData.id;
     }
 
-    const containerData = await createContainerResponse.json();
-    console.log('Container created:', containerData);
-
-    if (!containerData.id) {
+    if (!containerId) {
       throw new Error('No container ID returned from Threads API');
     }
 
-    const containerId = containerData.id;
-
-    // Wait a moment for the container to be processed
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    // Wait longer for image processing
+    const waitTime = post.images && post.images.length > 0 ? 5000 : 2000;
+    console.log(`Waiting ${waitTime}ms for container processing...`);
+    await new Promise(resolve => setTimeout(resolve, waitTime));
 
     // Then publish the container (Step 2)
     const publishResponse = await fetch('https://graph.threads.net/v1.0/me/threads_publish', {
