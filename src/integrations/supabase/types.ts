@@ -186,44 +186,103 @@ export type Database = {
         }
         Relationships: []
       }
+      post_queue: {
+        Row: {
+          created_at: string
+          id: string
+          post_id: string
+          queue_position: number
+          scheduled_for: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          post_id: string
+          queue_position?: number
+          scheduled_for: string
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          post_id?: string
+          queue_position?: number
+          scheduled_for?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "post_queue_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "posts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       posts: {
         Row: {
+          auto_schedule: boolean | null
           content: string
           created_at: string
           hashtags: string[] | null
           id: string
           images: string[] | null
+          last_retry_at: string | null
+          max_retries: number | null
           persona_id: string | null
           platform: string | null
+          preferred_time_slots: string[] | null
+          priority: number | null
           published_at: string | null
+          retry_count: number | null
           scheduled_for: string | null
           status: string
           updated_at: string
           user_id: string
         }
         Insert: {
+          auto_schedule?: boolean | null
           content: string
           created_at?: string
           hashtags?: string[] | null
           id?: string
           images?: string[] | null
+          last_retry_at?: string | null
+          max_retries?: number | null
           persona_id?: string | null
           platform?: string | null
+          preferred_time_slots?: string[] | null
+          priority?: number | null
           published_at?: string | null
+          retry_count?: number | null
           scheduled_for?: string | null
           status?: string
           updated_at?: string
           user_id: string
         }
         Update: {
+          auto_schedule?: boolean | null
           content?: string
           created_at?: string
           hashtags?: string[] | null
           id?: string
           images?: string[] | null
+          last_retry_at?: string | null
+          max_retries?: number | null
           persona_id?: string | null
           platform?: string | null
+          preferred_time_slots?: string[] | null
+          priority?: number | null
           published_at?: string | null
+          retry_count?: number | null
           scheduled_for?: string | null
           status?: string
           updated_at?: string
@@ -264,6 +323,45 @@ export type Database = {
           created_at?: string
           display_name?: string | null
           id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      scheduling_settings: {
+        Row: {
+          auto_schedule_enabled: boolean | null
+          created_at: string
+          id: string
+          optimal_hours: number[] | null
+          persona_id: string | null
+          queue_limit: number | null
+          retry_enabled: boolean | null
+          timezone: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          auto_schedule_enabled?: boolean | null
+          created_at?: string
+          id?: string
+          optimal_hours?: number[] | null
+          persona_id?: string | null
+          queue_limit?: number | null
+          retry_enabled?: boolean | null
+          timezone?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          auto_schedule_enabled?: boolean | null
+          created_at?: string
+          id?: string
+          optimal_hours?: number[] | null
+          persona_id?: string | null
+          queue_limit?: number | null
+          retry_enabled?: boolean | null
+          timezone?: string | null
           updated_at?: string
           user_id?: string
         }
