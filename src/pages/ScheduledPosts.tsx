@@ -1,11 +1,12 @@
 
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Checkbox } from "@/components/ui/checkbox";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { ArrowLeft, Calendar, Clock, Send, Trash2, Edit, Loader2, Play, Image as ImageIcon } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -32,6 +33,8 @@ const ScheduledPosts = () => {
   const [loading, setLoading] = useState(true);
   const [publishingPost, setPublishingPost] = useState<string | null>(null);
   const [deletingPost, setDeletingPost] = useState<string | null>(null);
+  const [selectedPosts, setSelectedPosts] = useState<string[]>([]);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   useEffect(() => {
     loadScheduledPosts();
@@ -54,6 +57,7 @@ const ScheduledPosts = () => {
 
       if (error) throw error;
       setPosts(data || []);
+      setSelectedPosts([]);
     } catch (error) {
       console.error('Error loading scheduled posts:', error);
       toast({
@@ -134,6 +138,54 @@ const ScheduledPosts = () => {
     }
   };
 
+  const bulkDeletePosts = async () => {
+    if (selectedPosts.length === 0) return;
+    
+    setBulkDeleting(true);
+    try {
+      const { error } = await supabase
+        .from('posts')
+        .delete()
+        .eq('user_id', user!.id)
+        .in('id', selectedPosts);
+
+      if (error) throw error;
+
+      setPosts(prev => prev.filter(p => !selectedPosts.includes(p.id)));
+      setSelectedPosts([]);
+      
+      toast({
+        title: "成功",
+        description: `${selectedPosts.length}件の投稿を削除しました。`,
+      });
+    } catch (error) {
+      console.error('Error bulk deleting posts:', error);
+      toast({
+        title: "エラー",
+        description: "一括削除に失敗しました。",
+        variant: "destructive",
+      });
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedPosts(posts.map(post => post.id));
+    } else {
+      setSelectedPosts([]);
+    }
+  };
+
+  const handleSelectPost = (postId: string, checked: boolean) => {
+    if (checked) {
+      setSelectedPosts(prev => [...prev, postId]);
+    } else {
+      setSelectedPosts(prev => prev.filter(id => id !== postId));
+    }
+  };
+
   const getStatusBadge = (post: Post) => {
     if (post.status === 'published') {
       return <Badge variant="default">公開済み</Badge>;
@@ -182,16 +234,53 @@ const ScheduledPosts = () => {
 
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Calendar className="h-5 w-5" />
-              投稿一覧
-            </CardTitle>
-            <CardDescription>
-              {posts.length > 0 
-                ? `${posts.length}件の投稿があります`
-                : "投稿がありません"
-              }
-            </CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Calendar className="h-5 w-5" />
+                  投稿一覧
+                </CardTitle>
+                <CardDescription>
+                  {posts.length > 0 
+                    ? `${posts.length}件の投稿があります`
+                    : "投稿がありません"
+                  }
+                </CardDescription>
+              </div>
+              {selectedPosts.length > 0 && (
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="destructive" disabled={bulkDeleting}>
+                      {bulkDeleting ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          削除中...
+                        </>
+                      ) : (
+                        <>
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          選択した{selectedPosts.length}件を削除
+                        </>
+                      )}
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>投稿の一括削除</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        選択した{selectedPosts.length}件の投稿を削除しますか？この操作は取り消せません。
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>キャンセル</AlertDialogCancel>
+                      <AlertDialogAction onClick={bulkDeletePosts} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                        削除する
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
             {posts.length === 0 ? (
@@ -206,6 +295,13 @@ const ScheduledPosts = () => {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-12">
+                      <Checkbox
+                        checked={selectedPosts.length === posts.length}
+                        onCheckedChange={handleSelectAll}
+                        aria-label="全選択"
+                      />
+                    </TableHead>
                     <TableHead>ペルソナ</TableHead>
                     <TableHead>内容</TableHead>
                     <TableHead>画像</TableHead>
@@ -218,6 +314,13 @@ const ScheduledPosts = () => {
                 <TableBody>
                   {posts.map((post) => (
                     <TableRow key={post.id}>
+                      <TableCell>
+                        <Checkbox
+                          checked={selectedPosts.includes(post.id)}
+                          onCheckedChange={(checked) => handleSelectPost(post.id, checked as boolean)}
+                          aria-label={`投稿を選択`}
+                        />
+                      </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
                           <Avatar className="h-8 w-8">
@@ -334,4 +437,3 @@ const ScheduledPosts = () => {
 };
 
 export default ScheduledPosts;
-
