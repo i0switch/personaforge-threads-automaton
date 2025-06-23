@@ -14,6 +14,7 @@ interface Reply {
   reply_author_username: string;
   reply_timestamp: string;
   auto_reply_sent: boolean;
+  persona_id: string;
   personas: {
     name: string;
   };
