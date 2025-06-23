@@ -285,6 +285,10 @@ const CreatePosts = () => {
   };
 
   const proceedToImageGeneration = () => {
+    console.log('Proceeding to image generation step');
+    console.log('Posts needing image generation:', postsForImageGeneration.length);
+    console.log('Posts with uploaded images:', generatedPosts.filter(post => postImagePreviews[post.id]).length);
+    console.log('Posts with generated images:', generatedPosts.filter(post => post.images && post.images.length > 0).length);
     setCurrentStep(3);
   };
 
@@ -381,6 +385,12 @@ const CreatePosts = () => {
   const generateImageForPost = async (postIndex: number) => {
     const post = generatedPosts[postIndex];
     
+    console.log('=== Starting image generation ===');
+    console.log('Post:', post);
+    console.log('Post ID:', post.id);
+    console.log('Current posts needing review:', Array.from(postsNeedingReview));
+    console.log('Current reviewed posts:', Array.from(reviewedPosts));
+    
     if (!faceImage && !faceImagePreview) {
       toast({
         title: "エラー",
@@ -474,11 +484,17 @@ const CreatePosts = () => {
         setGeneratedPosts(updatedPosts);
 
         // Mark this post as needing review
-        setPostsNeedingReview(prev => new Set(prev).add(post.id));
+        console.log('Marking post as needing review:', post.id);
+        setPostsNeedingReview(prev => {
+          const newSet = new Set(prev);
+          newSet.add(post.id);
+          console.log('Updated posts needing review:', Array.from(newSet));
+          return newSet;
+        });
 
         toast({
           title: "成功",
-          description: "画像を生成しました。",
+          description: "画像を生成しました。確認してください。",
         });
       } else {
         throw new Error('画像の生成に失敗しました');
@@ -498,10 +514,22 @@ const CreatePosts = () => {
 
   // Handle image approval (keep the generated image)
   const approveGeneratedImage = (postId: string) => {
-    setReviewedPosts(prev => new Set(prev).add(postId));
+    console.log('=== Approving generated image ===');
+    console.log('Post ID:', postId);
+    console.log('Before - Posts needing review:', Array.from(postsNeedingReview));
+    console.log('Before - Reviewed posts:', Array.from(reviewedPosts));
+    
+    setReviewedPosts(prev => {
+      const newSet = new Set(prev);
+      newSet.add(postId);
+      console.log('After approval - Reviewed posts:', Array.from(newSet));
+      return newSet;
+    });
+    
     setPostsNeedingReview(prev => {
       const newSet = new Set(prev);
       newSet.delete(postId);
+      console.log('After approval - Posts needing review:', Array.from(newSet));
       return newSet;
     });
     
@@ -515,15 +543,20 @@ const CreatePosts = () => {
   const regenerateImage = (postIndex: number) => {
     const post = generatedPosts[postIndex];
     
+    console.log('=== Regenerating image ===');
+    console.log('Post ID:', post.id);
+    
     // Remove from review tracking
     setPostsNeedingReview(prev => {
       const newSet = new Set(prev);
       newSet.delete(post.id);
+      console.log('After regeneration - Posts needing review:', Array.from(newSet));
       return newSet;
     });
     setReviewedPosts(prev => {
       const newSet = new Set(prev);
       newSet.delete(post.id);
+      console.log('After regeneration - Reviewed posts:', Array.from(newSet));
       return newSet;
     });
     
@@ -535,13 +568,35 @@ const CreatePosts = () => {
 
   // Filter posts that don't have uploaded images for step 3
   const postsForImageGeneration = generatedPosts.filter((post, index) => {
-    return !postImagePreviews[post.id] && (!post.images || post.images.length === 0);
+    const hasUploadedImage = postImagePreviews[post.id];
+    const hasGeneratedImage = post.images && post.images.length > 0;
+    console.log(`Post ${post.id}: hasUploaded=${!!hasUploadedImage}, hasGenerated=${!!hasGeneratedImage}`);
+    return !hasUploadedImage && !hasGeneratedImage;
   });
 
   // Check if all generated images have been reviewed
-  const allImagesReviewed = postsForImageGeneration.every(post => 
-    reviewedPosts.has(post.id) || !post.images || post.images.length === 0
-  );
+  const allImagesReviewed = generatedPosts.every(post => {
+    const hasUploadedImage = postImagePreviews[post.id];
+    const hasGeneratedImage = post.images && post.images.length > 0;
+    const isReviewed = reviewedPosts.has(post.id);
+    
+    console.log(`Post ${post.id}: hasUploaded=${!!hasUploadedImage}, hasGenerated=${!!hasGeneratedImage}, isReviewed=${isReviewed}`);
+    
+    // If post has uploaded image, it's considered "reviewed"
+    if (hasUploadedImage) return true;
+    
+    // If post has no generated image, it doesn't need review
+    if (!hasGeneratedImage) return true;
+    
+    // If post has generated image, it must be reviewed
+    return isReviewed;
+  });
+
+  console.log('=== Current State Debug ===');
+  console.log('Posts needing review:', Array.from(postsNeedingReview));
+  console.log('Reviewed posts:', Array.from(reviewedPosts));
+  console.log('Posts for image generation:', postsForImageGeneration.length);
+  console.log('All images reviewed:', allImagesReviewed);
 
   return (
     <div className="min-h-screen bg-background p-6">
@@ -886,10 +941,18 @@ const CreatePosts = () => {
                 <CardContent className="p-8 text-center">
                   <ImageIcon className="mx-auto h-12 w-12 text-gray-400 mb-4" />
                   <p className="text-lg font-medium text-gray-600 mb-2">画像生成が必要な投稿がありません</p>
-                  <p className="text-sm text-gray-500 mb-4">すべての投稿に画像がアップロードされています。</p>
-                  <Button onClick={() => setCurrentStep(2)} variant="outline">
-                    編集に戻る
-                  </Button>
+                  <p className="text-sm text-gray-500 mb-4">すべての投稿に画像がアップロードされているか、生成済みです。</p>
+                  <div className="flex gap-4 justify-center">
+                    <Button onClick={() => setCurrentStep(2)} variant="outline">
+                      編集に戻る
+                    </Button>
+                    <Button 
+                      onClick={scheduleAllPosts}
+                      disabled={!allImagesReviewed}
+                    >
+                      {!allImagesReviewed ? '画像確認が未完了' : '投稿を保存'}
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             ) : (
@@ -1048,6 +1111,8 @@ const CreatePosts = () => {
                     const actualIndex = generatedPosts.findIndex(p => p.id === post.id);
                     const needsReview = postsNeedingReview.has(post.id);
                     const isReviewed = reviewedPosts.has(post.id);
+                    
+                    console.log(`Rendering post ${post.id}: needsReview=${needsReview}, isReviewed=${isReviewed}`);
                     
                     return (
                       <Card key={post.id}>
