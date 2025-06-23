@@ -488,12 +488,20 @@ const CreatePosts = () => {
         };
         setGeneratedPosts(updatedPosts);
 
-        // Mark this post as needing review
+        // ALWAYS mark this post as needing review after generation
         console.log('Marking post as needing review:', post.id);
         setPostsNeedingReview(prev => {
           const newSet = new Set(prev);
           newSet.add(post.id);
           console.log('Updated posts needing review:', Array.from(newSet));
+          return newSet;
+        });
+
+        // Remove from reviewed posts if it was previously reviewed
+        setReviewedPosts(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(post.id);
+          console.log('Removed from reviewed posts:', Array.from(newSet));
           return newSet;
         });
 
@@ -582,8 +590,9 @@ const CreatePosts = () => {
     const hasUploadedImage = postImagePreviews[post.id];
     const hasGeneratedImage = post.images && post.images.length > 0;
     const isReviewed = reviewedPosts.has(post.id);
+    const needsReview = postsNeedingReview.has(post.id);
     
-    console.log(`Post ${post.id}: hasUploaded=${!!hasUploadedImage}, hasGenerated=${!!hasGeneratedImage}, isReviewed=${isReviewed}`);
+    console.log(`Post ${post.id}: hasUploaded=${!!hasUploadedImage}, hasGenerated=${!!hasGeneratedImage}, isReviewed=${isReviewed}, needsReview=${needsReview}`);
     
     // If post has uploaded image, it's considered "reviewed"
     if (hasUploadedImage) return true;
@@ -591,7 +600,10 @@ const CreatePosts = () => {
     // If post has no generated image, it doesn't need review
     if (!hasGeneratedImage) return true;
     
-    // If post has generated image, it must be reviewed
+    // If post has generated image and needs review, it must be explicitly approved
+    if (hasGeneratedImage && needsReview) return false;
+    
+    // If post has generated image and was reviewed, it's approved
     return isReviewed;
   });
 
@@ -939,7 +951,7 @@ const CreatePosts = () => {
               </CardContent>
             </Card>
 
-            {postsForImageGeneration.length === 0 ? (
+            {postsForImageGeneration.length === 0 && postsNeedingReview.size === 0 ? (
               <Card>
                 <CardContent className="p-8 text-center">
                   <ImageIcon className="mx-auto h-12 w-12 text-gray-400 mb-4" />
@@ -960,6 +972,7 @@ const CreatePosts = () => {
               </Card>
             ) : (
               <>
+                {/* リファレンス画像アップロード */}
                 <Card>
                   <CardHeader>
                     <CardTitle>リファレンス画像</CardTitle>
@@ -987,6 +1000,7 @@ const CreatePosts = () => {
                   </CardContent>
                 </Card>
 
+                {/* 画像生成設定 */}
                 <Card>
                   <CardHeader>
                     <CardTitle>画像生成設定</CardTitle>
@@ -1109,47 +1123,95 @@ const CreatePosts = () => {
                   </CardContent>
                 </Card>
 
-                <div className="space-y-4">
-                  {postsForImageGeneration.map((post, originalIndex) => {
-                    const actualIndex = generatedPosts.findIndex(p => p.id === post.id);
-                    const needsReview = postsNeedingReview.has(post.id);
-                    const isReviewed = reviewedPosts.has(post.id);
-                    
-                    return (
-                      <Card key={post.id}>
-                        <CardHeader>
-                          <CardTitle className="text-lg">
-                            投稿予定: {post.scheduled_for ? format(new Date(post.scheduled_for), 'M月d日 HH:mm', { locale: ja }) : `投稿 ${actualIndex + 1}`}
-                          </CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                          <div>
-                            <p className="text-sm text-muted-foreground mb-2">投稿内容:</p>
-                            <p className="text-sm bg-muted p-3 rounded">{post.content}</p>
-                          </div>
-                          
-                          <div>
-                            <p className="text-sm font-medium mb-2">画像プロンプト（編集可能）</p>
-                            <Textarea
-                              value={imagePrompts[post.id] || "selfie photo, smiling woman, casual outfit, natural lighting, morning time, cozy atmosphere"}
-                              onChange={(e) => updateImagePrompt(post.id, e.target.value)}
-                              rows={3}
-                              className="text-sm"
-                              placeholder="画像生成に使用するプロンプトを編集してください"
-                            />
-                          </div>
+                {/* 画像生成が必要な投稿 */}
+                {postsForImageGeneration.length > 0 && (
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-semibold">画像生成が必要な投稿</h3>
+                    {postsForImageGeneration.map((post, originalIndex) => {
+                      const actualIndex = generatedPosts.findIndex(p => p.id === post.id);
+                      
+                      return (
+                        <Card key={post.id}>
+                          <CardHeader>
+                            <CardTitle className="text-lg">
+                              投稿予定: {post.scheduled_for ? format(new Date(post.scheduled_for), 'M月d日 HH:mm', { locale: ja }) : `投稿 ${actualIndex + 1}`}
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent className="space-y-4">
+                            <div>
+                              <p className="text-sm text-muted-foreground mb-2">投稿内容:</p>
+                              <p className="text-sm bg-muted p-3 rounded">{post.content}</p>
+                            </div>
+                            
+                            <div>
+                              <p className="text-sm font-medium mb-2">画像プロンプト（編集可能）</p>
+                              <Textarea
+                                value={imagePrompts[post.id] || "selfie photo, smiling woman, casual outfit, natural lighting, morning time, cozy atmosphere"}
+                                onChange={(e) => updateImagePrompt(post.id, e.target.value)}
+                                rows={3}
+                                className="text-sm"
+                                placeholder="画像生成に使用するプロンプトを編集してください"
+                              />
+                            </div>
 
-                          {post.images && post.images.length > 0 ? (
-                            <div className="space-y-4">
-                              <div className="border rounded-lg p-2">
-                                <img
-                                  src={post.images[0]}
-                                  alt="Generated"
-                                  className="w-full max-w-md mx-auto rounded"
-                                />
-                              </div>
-                              
-                              {needsReview && (
+                            <Button 
+                              onClick={() => generateImageForPost(actualIndex)}
+                              disabled={generatingImages[post.id] || (!faceImage && !faceImagePreview)}
+                              className="w-full" 
+                              size="lg"
+                            >
+                              {generatingImages[post.id] ? (
+                                <>
+                                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                  画像生成中...
+                                </>
+                              ) : (
+                                <>
+                                  <ImageIcon className="h-4 w-4 mr-2" />
+                                  画像生成
+                                </>
+                              )}
+                            </Button>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* 確認が必要な生成済み画像 */}
+                {Array.from(postsNeedingReview).length > 0 && (
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-semibold">生成画像の確認</h3>
+                    {Array.from(postsNeedingReview).map(postId => {
+                      const post = generatedPosts.find(p => p.id === postId);
+                      const actualIndex = generatedPosts.findIndex(p => p.id === postId);
+                      
+                      if (!post) return null;
+                      
+                      return (
+                        <Card key={postId}>
+                          <CardHeader>
+                            <CardTitle className="text-lg">
+                              投稿予定: {post.scheduled_for ? format(new Date(post.scheduled_for), 'M月d日 HH:mm', { locale: ja }) : `投稿 ${actualIndex + 1}`}
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent className="space-y-4">
+                            <div>
+                              <p className="text-sm text-muted-foreground mb-2">投稿内容:</p>
+                              <p className="text-sm bg-muted p-3 rounded">{post.content}</p>
+                            </div>
+                            
+                            {post.images && post.images.length > 0 && (
+                              <div className="space-y-4">
+                                <div className="border rounded-lg p-2">
+                                  <img
+                                    src={post.images[0]}
+                                    alt="Generated"
+                                    className="w-full max-w-md mx-auto rounded"
+                                  />
+                                </div>
+                                
                                 <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
                                   <p className="text-sm font-medium text-yellow-800 mb-3">
                                     生成された画像を確認してください
@@ -1184,49 +1246,60 @@ const CreatePosts = () => {
                                     </Button>
                                   </div>
                                 </div>
-                              )}
-                              
-                              {isReviewed && (
-                                <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-                                  <div className="flex items-center text-sm text-green-800">
-                                    <Check className="h-4 w-4 mr-2" />
-                                    この画像の使用が承認されました
-                                  </div>
-                                </div>
-                              )}
+                              </div>
+                            )}
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* 承認済み画像の表示 */}
+                {Array.from(reviewedPosts).length > 0 && (
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-semibold">承認済み画像</h3>
+                    {Array.from(reviewedPosts).map(postId => {
+                      const post = generatedPosts.find(p => p.id === postId);
+                      const actualIndex = generatedPosts.findIndex(p => p.id === postId);
+                      
+                      if (!post || !post.images || post.images.length === 0) return null;
+                      
+                      return (
+                        <Card key={postId}>
+                          <CardHeader>
+                            <CardTitle className="text-lg">
+                              投稿予定: {post.scheduled_for ? format(new Date(post.scheduled_for), 'M月d日 HH:mm', { locale: ja }) : `投稿 ${actualIndex + 1}`}
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent className="space-y-4">
+                            <div>
+                              <p className="text-sm text-muted-foreground mb-2">投稿内容:</p>
+                              <p className="text-sm bg-muted p-3 rounded">{post.content}</p>
                             </div>
-                          ) : (
-                            <div className="flex items-center justify-center p-8 border-2 border-dashed border-gray-300 rounded-lg">
-                              <div className="text-center">
-                                <ImageIcon className="mx-auto h-12 w-12 text-gray-400" />
-                                <p className="mt-2 text-sm text-gray-500">画像を生成してください</p>
+                            
+                            <div className="space-y-4">
+                              <div className="border rounded-lg p-2">
+                                <img
+                                  src={post.images[0]}
+                                  alt="Generated"
+                                  className="w-full max-w-md mx-auto rounded"
+                                />
+                              </div>
+                              
+                              <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                                <div className="flex items-center text-sm text-green-800">
+                                  <Check className="h-4 w-4 mr-2" />
+                                  この画像の使用が承認されました
+                                </div>
                               </div>
                             </div>
-                          )}
-
-                          <Button 
-                            onClick={() => generateImageForPost(actualIndex)}
-                            disabled={generatingImages[post.id] || (!faceImage && !faceImagePreview)}
-                            className="w-full" 
-                            size="lg"
-                          >
-                            {generatingImages[post.id] ? (
-                              <>
-                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                画像生成中...
-                              </>
-                            ) : (
-                              <>
-                                <ImageIcon className="h-4 w-4 mr-2" />
-                                画像生成
-                              </>
-                            )}
-                          </Button>
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
-                </div>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                )}
               </>
             )}
 
@@ -1243,9 +1316,9 @@ const CreatePosts = () => {
                 onClick={scheduleAllPosts}
                 className="flex-1"
                 size="lg"
-                disabled={generatedPosts.length === 0 || (!allImagesReviewed && postsForImageGeneration.length > 0)}
+                disabled={generatedPosts.length === 0 || !allImagesReviewed}
               >
-                {!allImagesReviewed && postsForImageGeneration.length > 0 ? (
+                {!allImagesReviewed ? (
                   <>
                     <ImageIcon className="h-4 w-4 mr-2" />
                     画像確認が未完了

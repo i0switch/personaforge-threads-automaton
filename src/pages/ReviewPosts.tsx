@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -101,15 +100,6 @@ const ReviewPosts = () => {
     } finally {
       setIsScheduling(false);
     }
-  };
-
-  const generateImages = () => {
-    navigate("/image-generation", {
-      state: {
-        posts,
-        persona
-      }
-    });
   };
 
   if (!persona) {
@@ -217,7 +207,7 @@ const ReviewPosts = () => {
           ))}
         </div>
 
-        {/* アクションボタン */}
+        {/* アクションボタン - 画像生成ボタンを削除 */}
         <div className="flex gap-4">
           <Button 
             onClick={scheduleAllPosts} 
@@ -236,16 +226,6 @@ const ReviewPosts = () => {
                 投稿を予約する
               </>
             )}
-          </Button>
-          <Button 
-            onClick={generateImages}
-            variant="outline"
-            className="flex-1"
-            size="lg"
-            disabled={posts.length === 0}
-          >
-            <ImageIcon className="h-4 w-4 mr-2" />
-            画像を生成
           </Button>
         </div>
       </div>
