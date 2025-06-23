@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -7,9 +6,10 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format } from "date-fns";
 import { ja } from "date-fns/locale";
-import { CalendarIcon, Edit, Loader2, Upload, X, Image as ImageIcon } from "lucide-react";
+import { CalendarIcon, Edit, Loader2, Upload, X, Image as ImageIcon, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -38,6 +38,18 @@ export const EditPostDialog = ({ post, onSave, saving }: EditPostDialogProps) =>
   const [scheduledDate, setScheduledDate] = useState<Date | undefined>(
     post.scheduled_for ? new Date(post.scheduled_for) : undefined
   );
+  const [scheduledHour, setScheduledHour] = useState<string>(() => {
+    if (post.scheduled_for) {
+      return new Date(post.scheduled_for).getHours().toString().padStart(2, '0');
+    }
+    return '09';
+  });
+  const [scheduledMinute, setScheduledMinute] = useState<string>(() => {
+    if (post.scheduled_for) {
+      return new Date(post.scheduled_for).getMinutes().toString().padStart(2, '0');
+    }
+    return '00';
+  });
   const [hashtags, setHashtags] = useState(post.hashtags?.join(', ') || '');
   const [images, setImages] = useState<string[]>(post.images || []);
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -46,6 +58,14 @@ export const EditPostDialog = ({ post, onSave, saving }: EditPostDialogProps) =>
     if (open) {
       setContent(post.content);
       setScheduledDate(post.scheduled_for ? new Date(post.scheduled_for) : undefined);
+      if (post.scheduled_for) {
+        const date = new Date(post.scheduled_for);
+        setScheduledHour(date.getHours().toString().padStart(2, '0'));
+        setScheduledMinute(date.getMinutes().toString().padStart(2, '0'));
+      } else {
+        setScheduledHour('09');
+        setScheduledMinute('00');
+      }
       setHashtags(post.hashtags?.join(', ') || '');
       setImages(post.images || []);
     }
@@ -98,9 +118,17 @@ export const EditPostDialog = ({ post, onSave, saving }: EditPostDialogProps) =>
   };
 
   const handleSave = async () => {
+    let scheduledFor: string | undefined;
+    
+    if (scheduledDate) {
+      const combinedDateTime = new Date(scheduledDate);
+      combinedDateTime.setHours(parseInt(scheduledHour), parseInt(scheduledMinute), 0, 0);
+      scheduledFor = combinedDateTime.toISOString();
+    }
+
     const updates: Partial<Post> = {
       content,
-      scheduled_for: scheduledDate?.toISOString(),
+      scheduled_for: scheduledFor,
       hashtags: hashtags ? hashtags.split(',').map(tag => tag.trim()).filter(Boolean) : null,
       images: images.length > 0 ? images : null
     };
@@ -108,6 +136,14 @@ export const EditPostDialog = ({ post, onSave, saving }: EditPostDialogProps) =>
     await onSave(post.id, updates);
     setOpen(false);
   };
+
+  // Generate hour options (00-23)
+  const hourOptions = Array.from({ length: 24 }, (_, i) => 
+    i.toString().padStart(2, '0')
+  );
+
+  // Generate minute options (00, 15, 30, 45)
+  const minuteOptions = ['00', '15', '30', '45'];
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -204,34 +240,92 @@ export const EditPostDialog = ({ post, onSave, saving }: EditPostDialogProps) =>
             </div>
           </div>
           
-          <div>
+          <div className="space-y-3">
             <Label>予約日時</Label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  className={cn(
-                    "w-full justify-start text-left font-normal",
-                    !scheduledDate && "text-muted-foreground"
-                  )}
-                >
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {scheduledDate ? (
-                    format(scheduledDate, "PPP HH:mm", { locale: ja })
-                  ) : (
-                    <span>日時を選択</span>
-                  )}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar
-                  mode="single"
-                  selected={scheduledDate}
-                  onSelect={setScheduledDate}
-                  initialFocus
-                />
-              </PopoverContent>
-            </Popover>
+            
+            {/* Date Selection */}
+            <div>
+              <Label className="text-sm text-muted-foreground">日付</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start text-left font-normal",
+                      !scheduledDate && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {scheduledDate ? (
+                      format(scheduledDate, "yyyy年MM月dd日", { locale: ja })
+                    ) : (
+                      <span>日付を選択</span>
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={scheduledDate}
+                    onSelect={setScheduledDate}
+                    initialFocus
+                    className="p-3 pointer-events-auto"
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            {/* Time Selection */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-sm text-muted-foreground">時</Label>
+                <Select value={scheduledHour} onValueChange={setScheduledHour}>
+                  <SelectTrigger>
+                    <SelectValue>
+                      <div className="flex items-center gap-1">
+                        <Clock className="h-4 w-4" />
+                        {scheduledHour}時
+                      </div>
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {hourOptions.map((hour) => (
+                      <SelectItem key={hour} value={hour}>
+                        {hour}時
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div>
+                <Label className="text-sm text-muted-foreground">分</Label>
+                <Select value={scheduledMinute} onValueChange={setScheduledMinute}>
+                  <SelectTrigger>
+                    <SelectValue>
+                      {scheduledMinute}分
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {minuteOptions.map((minute) => (
+                      <SelectItem key={minute} value={minute}>
+                        {minute}分
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Combined Date/Time Preview */}
+            {scheduledDate && (
+              <div className="p-3 bg-muted rounded-md">
+                <p className="text-sm text-muted-foreground">予約日時プレビュー</p>
+                <p className="font-medium">
+                  {format(scheduledDate, "yyyy年MM月dd日", { locale: ja })} {scheduledHour}:{scheduledMinute}
+                </p>
+              </div>
+            )}
           </div>
           
           <div className="flex justify-end gap-2">
