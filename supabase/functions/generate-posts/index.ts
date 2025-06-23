@@ -1,3 +1,4 @@
+
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
@@ -137,8 +138,8 @@ serve(async (req) => {
     for (let i = 0; i < timeSlots.length; i++) {
       console.log(`Generating post ${i + 1}/${timeSlots.length}`);
 
-      // Create prompt for Gemini
-      const prompt = createPostPrompt(persona, topics, i + 1, timeSlots.length, customPrompt);
+      // Create prompt for Gemini with variety
+      const prompt = createPostPrompt(persona, topics, i + 1, timeSlots.length, customPrompt, timeSlots[i]);
 
       try {
         // Call Gemini API
@@ -281,8 +282,12 @@ function generateTimeSlots(selectedDates: string[], selectedTimes: string[]): st
   return slots;
 }
 
-function createPostPrompt(persona: any, topics: string[], postNumber: number, totalPosts: number, customPrompt?: string): string {
+function createPostPrompt(persona: any, topics: string[], postNumber: number, totalPosts: number, customPrompt?: string, scheduledTime?: string): string {
   const topicsText = topics.join('、');
+  
+  // 投稿日時から時間帯を判定
+  const timeOfDay = getTimeOfDay(scheduledTime);
+  const randomTopic = topics[Math.floor(Math.random() * topics.length)];
   
   // カスタムプロンプトが提供されている場合はそれを使用
   if (customPrompt && customPrompt.trim()) {
@@ -295,17 +300,36 @@ function createPostPrompt(persona: any, topics: string[], postNumber: number, to
 - 専門分野: ${persona.expertise?.join(', ') || ''}
 - 口調: ${persona.tone_of_voice || ''}
 
+投稿番号: ${postNumber}/${totalPosts}
+投稿時間帯: ${timeOfDay}
+メインテーマ: ${randomTopic}
+
 カスタム指示: ${customPrompt}
 
 注意事項:
 - 投稿内容に番号（1/2、2/2など）を含めないでください
 - 投稿内容のみを返してください
 - １００文字程度の長さにしてください
+- 他の投稿とは異なる視点やアプローチで書いてください
+- 時間帯に適した内容にしてください
 
 ${persona.name}のキャラクターに沿って、上記の指示に従って投稿内容のみを返してください:`;
   }
   
-  // デフォルトプロンプト（番号表示を削除し、明確な指示を追加）
+  // バリエーション豊かなプロンプト
+  const variations = [
+    `個人的な体験や気づきを交えて`,
+    `質問やアドバイスの形で`,
+    `具体的な例やエピソードを使って`,
+    `読者に行動を促すような内容で`,
+    `トレンドや最新情報を含めて`,
+    `感情や気持ちを込めて`,
+    `実用的なヒントやコツとして`,
+    `失敗談や学びを含めて`
+  ];
+  
+  const selectedVariation = variations[postNumber % variations.length];
+  
   return `あなたは${persona.name}として投稿を作成してください。
 
 ペルソナ情報:
@@ -315,21 +339,41 @@ ${persona.name}のキャラクターに沿って、上記の指示に従って�
 - 専門分野: ${persona.expertise?.join(', ') || ''}
 - 口調: ${persona.tone_of_voice || ''}
 
-投稿テーマ: ${topicsText}
+投稿設定:
+- 投稿番号: ${postNumber}/${totalPosts}
+- 投稿時間帯: ${timeOfDay}
+- メインテーマ: ${randomTopic}
+- 投稿スタイル: ${selectedVariation}
 
 要件:
 1. ${persona.name}のキャラクターに沿った内容
 2. １００文字程度の長さにする
 3. 自然で魅力的な文章
 4. エンゲージメントを促す内容
-5. ${topicsText}のいずれかに関連した内容
+5. 「${randomTopic}」をメインテーマにする
+6. ${selectedVariation}書く
+7. ${timeOfDay}に適した内容にする
+8. 他の投稿とは異なる独自の視点を持つ
 
 注意事項:
 - 投稿内容に番号（1/2、2/2など）を含めないでください
 - 投稿内容のみを返してください
 - １００文字程度の長さにしてください
+- 同じような表現や構成を避け、バリエーション豊かにしてください
 
 投稿内容のみを返してください:`;
+}
+
+function getTimeOfDay(scheduledTime?: string): string {
+  if (!scheduledTime) return '一日中';
+  
+  const date = new Date(scheduledTime);
+  const hour = date.getHours();
+  
+  if (hour >= 5 && hour < 12) return '朝';
+  if (hour >= 12 && hour < 17) return '昼';
+  if (hour >= 17 && hour < 21) return '夕方';
+  return '夜';
 }
 
 function extractHashtags(text: string): string[] {
