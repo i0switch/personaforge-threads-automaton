@@ -382,14 +382,19 @@ const CreatePosts = () => {
     });
   };
 
+  const updateImagePrompt = (postId: string, newPrompt: string) => {
+    setImagePrompts(prev => ({
+      ...prev,
+      [postId]: newPrompt
+    }));
+  };
+
   const generateImageForPost = async (postIndex: number) => {
     const post = generatedPosts[postIndex];
     
     console.log('=== Starting image generation ===');
     console.log('Post:', post);
     console.log('Post ID:', post.id);
-    console.log('Current posts needing review:', Array.from(postsNeedingReview));
-    console.log('Current reviewed posts:', Array.from(reviewedPosts));
     
     if (!faceImage && !faceImagePreview) {
       toast({
@@ -516,8 +521,6 @@ const CreatePosts = () => {
   const approveGeneratedImage = (postId: string) => {
     console.log('=== Approving generated image ===');
     console.log('Post ID:', postId);
-    console.log('Before - Posts needing review:', Array.from(postsNeedingReview));
-    console.log('Before - Reviewed posts:', Array.from(reviewedPosts));
     
     setReviewedPosts(prev => {
       const newSet = new Set(prev);
@@ -1112,8 +1115,6 @@ const CreatePosts = () => {
                     const needsReview = postsNeedingReview.has(post.id);
                     const isReviewed = reviewedPosts.has(post.id);
                     
-                    console.log(`Rendering post ${post.id}: needsReview=${needsReview}, isReviewed=${isReviewed}`);
-                    
                     return (
                       <Card key={post.id}>
                         <CardHeader>
@@ -1128,10 +1129,14 @@ const CreatePosts = () => {
                           </div>
                           
                           <div>
-                            <p className="text-sm font-medium mb-2">画像プロンプト</p>
-                            <div className="text-sm bg-primary/5 p-3 rounded border-l-4 border-primary">
-                              {imagePrompts[post.id] || "selfie photo, smiling woman, casual outfit, natural lighting, morning time, cozy atmosphere"}
-                            </div>
+                            <p className="text-sm font-medium mb-2">画像プロンプト（編集可能）</p>
+                            <Textarea
+                              value={imagePrompts[post.id] || "selfie photo, smiling woman, casual outfit, natural lighting, morning time, cozy atmosphere"}
+                              onChange={(e) => updateImagePrompt(post.id, e.target.value)}
+                              rows={3}
+                              className="text-sm"
+                              placeholder="画像生成に使用するプロンプトを編集してください"
+                            />
                           </div>
 
                           {post.images && post.images.length > 0 ? (
@@ -1199,26 +1204,24 @@ const CreatePosts = () => {
                             </div>
                           )}
 
-                          {!post.images || post.images.length === 0 ? (
-                            <Button 
-                              onClick={() => generateImageForPost(actualIndex)}
-                              disabled={generatingImages[post.id] || (!faceImage && !faceImagePreview)}
-                              className="w-full" 
-                              size="lg"
-                            >
-                              {generatingImages[post.id] ? (
-                                <>
-                                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                  画像生成中...
-                                </>
-                              ) : (
-                                <>
-                                  <ImageIcon className="h-4 w-4 mr-2" />
-                                  画像生成
-                                </>
-                              )}
-                            </Button>
-                          ) : null}
+                          <Button 
+                            onClick={() => generateImageForPost(actualIndex)}
+                            disabled={generatingImages[post.id] || (!faceImage && !faceImagePreview)}
+                            className="w-full" 
+                            size="lg"
+                          >
+                            {generatingImages[post.id] ? (
+                              <>
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                画像生成中...
+                              </>
+                            ) : (
+                              <>
+                                <ImageIcon className="h-4 w-4 mr-2" />
+                                画像生成
+                              </>
+                            )}
+                          </Button>
                         </CardContent>
                       </Card>
                     );
