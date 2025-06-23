@@ -8,6 +8,7 @@ import { Clock, Play, Trash2, Loader2, Image as ImageIcon } from "lucide-react";
 import { format } from "date-fns";
 import { ja } from "date-fns/locale";
 import { PostStatusBadge } from "./PostStatusBadge";
+import { EditPostDialog } from "./EditPostDialog";
 import type { Database } from "@/integrations/supabase/types";
 
 type Post = Database['public']['Tables']['posts']['Row'] & {
@@ -23,9 +24,11 @@ interface PostsTableRowProps {
   isSelected: boolean;
   publishingPost: string | null;
   deletingPost: string | null;
+  savingPost: string | null;
   onSelect: (postId: string, checked: boolean) => void;
   onPublish: (postId: string) => void;
   onDelete: (postId: string) => void;
+  onEdit: (postId: string, updates: Partial<Post>) => Promise<void>;
 }
 
 export const PostsTableRow = ({
@@ -33,9 +36,11 @@ export const PostsTableRow = ({
   isSelected,
   publishingPost,
   deletingPost,
+  savingPost,
   onSelect,
   onPublish,
-  onDelete
+  onDelete,
+  onEdit
 }: PostsTableRowProps) => {
   const canPublish = post.personas?.threads_access_token && post.status !== 'published';
 
@@ -123,6 +128,11 @@ export const PostsTableRow = ({
       </TableCell>
       <TableCell>
         <div className="flex gap-1">
+          <EditPostDialog 
+            post={post} 
+            onSave={onEdit}
+            saving={savingPost === post.id}
+          />
           {canPublish && (
             <Button
               size="sm"

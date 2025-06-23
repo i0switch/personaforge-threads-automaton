@@ -17,10 +17,12 @@ interface PostsTableProps {
   selectedPosts: string[];
   publishingPost: string | null;
   deletingPost: string | null;
+  savingPost: string | null;
   onSelectAll: (checked: boolean) => void;
   onSelectPost: (postId: string, checked: boolean) => void;
   onPublishPost: (postId: string) => void;
   onDeletePost: (postId: string) => void;
+  onEditPost: (postId: string, updates: Partial<Post>) => Promise<void>;
 }
 
 export const PostsTable = ({
@@ -28,10 +30,12 @@ export const PostsTable = ({
   selectedPosts,
   publishingPost,
   deletingPost,
+  savingPost,
   onSelectAll,
   onSelectPost,
   onPublishPost,
-  onDeletePost
+  onDeletePost,
+  onEditPost
 }: PostsTableProps) => {
   return (
     <Table>
@@ -61,9 +65,11 @@ export const PostsTable = ({
             isSelected={selectedPosts.includes(post.id)}
             publishingPost={publishingPost}
             deletingPost={deletingPost}
+            savingPost={savingPost}
             onSelect={onSelectPost}
             onPublish={onPublishPost}
             onDelete={onDeletePost}
+            onEdit={onEditPost}
           />
         ))}
       </TableBody>

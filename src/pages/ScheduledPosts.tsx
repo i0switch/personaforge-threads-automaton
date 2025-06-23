@@ -1,5 +1,4 @@
-
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Calendar, Loader2 } from "lucide-react";
@@ -9,6 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { PostsTable } from "@/components/ScheduledPosts/PostsTable";
 import { BulkActions } from "@/components/ScheduledPosts/BulkActions";
+import { PostsToolbar, type PostFilters, type PostSort } from "@/components/ScheduledPosts/PostsToolbar";
 import type { Database } from "@/integrations/supabase/types";
 
 type Post = Database['public']['Tables']['posts']['Row'] & {
@@ -28,8 +28,21 @@ const ScheduledPosts = () => {
   const [loading, setLoading] = useState(true);
   const [publishingPost, setPublishingPost] = useState<string | null>(null);
   const [deletingPost, setDeletingPost] = useState<string | null>(null);
+  const [savingPost, setSavingPost] = useState<string | null>(null);
   const [selectedPosts, setSelectedPosts] = useState<string[]>([]);
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  
+  // フィルタリングとソートの状態
+  const [filters, setFilters] = useState<PostFilters>({
+    search: '',
+    status: [],
+    personas: [],
+    dateRange: {}
+  });
+  const [sort, setSort] = useState<PostSort>({
+    field: 'created_at',
+    direction: 'desc'
+  });
 
   useEffect(() => {
     loadScheduledPosts();
@@ -62,6 +75,97 @@ const ScheduledPosts = () => {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  // フィルタリングとソートを適用した投稿リスト
+  const filteredAndSortedPosts = useMemo(() => {
+    let filtered = posts;
+
+    // 検索フィルター
+    if (filters.search) {
+      const searchLower = filters.search.toLowerCase();
+      filtered = filtered.filter(post => 
+        post.content.toLowerCase().includes(searchLower) ||
+        post.hashtags?.some(tag => tag.toLowerCase().includes(searchLower))
+      );
+    }
+
+    // ステータスフィルター
+    if (filters.status.length > 0) {
+      filtered = filtered.filter(post => filters.status.includes(post.status));
+    }
+
+    // ペルソナフィルター
+    if (filters.personas.length > 0) {
+      filtered = filtered.filter(post => 
+        post.personas?.name && filters.personas.includes(post.personas.name)
+      );
+    }
+
+    // ソート
+    filtered.sort((a, b) => {
+      let aValue: any;
+      let bValue: any;
+
+      switch (sort.field) {
+        case 'created_at':
+          aValue = new Date(a.created_at);
+          bValue = new Date(b.created_at);
+          break;
+        case 'scheduled_for':
+          aValue = a.scheduled_for ? new Date(a.scheduled_for) : new Date(0);
+          bValue = b.scheduled_for ? new Date(b.scheduled_for) : new Date(0);
+          break;
+        case 'content':
+          aValue = a.content.toLowerCase();
+          bValue = b.content.toLowerCase();
+          break;
+        case 'status':
+          aValue = a.status;
+          bValue = b.status;
+          break;
+        default:
+          return 0;
+      }
+
+      if (aValue < bValue) return sort.direction === 'asc' ? -1 : 1;
+      if (aValue > bValue) return sort.direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+
+    return filtered;
+  }, [posts, filters, sort]);
+
+  const editPost = async (postId: string, updates: Partial<Post>) => {
+    setSavingPost(postId);
+    try {
+      const { error } = await supabase
+        .from('posts')
+        .update(updates)
+        .eq('id', postId)
+        .eq('user_id', user!.id);
+
+      if (error) throw error;
+
+      // ローカル状態を更新
+      setPosts(prev => prev.map(post => 
+        post.id === postId ? { ...post, ...updates } : post
+      ));
+
+      toast({
+        title: "成功",
+        description: "投稿を更新しました。",
+      });
+    } catch (error) {
+      console.error('Error updating post:', error);
+      toast({
+        title: "エラー",
+        description: "投稿の更新に失敗しました。",
+        variant: "destructive",
+      });
+    } finally {
+      setSavingPost(null);
     }
   };
 
@@ -167,7 +271,7 @@ const ScheduledPosts = () => {
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      setSelectedPosts(posts.map(post => post.id));
+      setSelectedPosts(filteredAndSortedPosts.map(post => post.id));
     } else {
       setSelectedPosts([]);
     }
@@ -220,7 +324,7 @@ const ScheduledPosts = () => {
                 </CardTitle>
                 <CardDescription>
                   {posts.length > 0 
-                    ? `${posts.length}件の投稿があります`
+                    ? `${posts.length}件中${filteredAndSortedPosts.length}件を表示`
                     : "投稿がありません"
                   }
                 </CardDescription>
@@ -242,16 +346,27 @@ const ScheduledPosts = () => {
                 </Button>
               </div>
             ) : (
-              <PostsTable
-                posts={posts}
-                selectedPosts={selectedPosts}
-                publishingPost={publishingPost}
-                deletingPost={deletingPost}
-                onSelectAll={handleSelectAll}
-                onSelectPost={handleSelectPost}
-                onPublishPost={publishPost}
-                onDeletePost={deletePost}
-              />
+              <div className="space-y-4">
+                <PostsToolbar
+                  posts={posts}
+                  filters={filters}
+                  sort={sort}
+                  onFiltersChange={setFilters}
+                  onSortChange={setSort}
+                />
+                <PostsTable
+                  posts={filteredAndSortedPosts}
+                  selectedPosts={selectedPosts}
+                  publishingPost={publishingPost}
+                  deletingPost={deletingPost}
+                  savingPost={savingPost}
+                  onSelectAll={handleSelectAll}
+                  onSelectPost={handleSelectPost}
+                  onPublishPost={publishPost}
+                  onDeletePost={deletePost}
+                  onEditPost={editPost}
+                />
+              </div>
             )}
           </CardContent>
         </Card>
