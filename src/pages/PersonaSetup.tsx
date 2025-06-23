@@ -21,6 +21,9 @@ type PersonaData = {
   toneOfVoice: string;
   avatar: string;
   threadsAccessToken: string;
+  threadsAppId: string;
+  threadsAppSecret: string;
+  webhookVerifyToken: string;
 };
 
 const PersonaSetup = () => {
@@ -37,7 +40,10 @@ const PersonaSetup = () => {
     expertise: [],
     toneOfVoice: "",
     avatar: "https://images.unsplash.com/photo-1649972904349-6e44c42644a7?w=150",
-    threadsAccessToken: ""
+    threadsAccessToken: "",
+    threadsAppId: "",
+    threadsAppSecret: "",
+    webhookVerifyToken: ""
   });
 
   const [newExpertise, setNewExpertise] = useState("");
@@ -72,7 +78,10 @@ const PersonaSetup = () => {
           expertise: data.expertise || [],
           toneOfVoice: data.tone_of_voice || "",
           avatar: data.avatar_url || "https://images.unsplash.com/photo-1649972904349-6e44c42644a7?w=150",
-          threadsAccessToken: (data as any).threads_access_token || ""
+          threadsAccessToken: data.threads_access_token || "",
+          threadsAppId: data.threads_app_id || "",
+          threadsAppSecret: data.threads_app_secret || "",
+          webhookVerifyToken: data.webhook_verify_token || ""
         });
       }
     } catch (error) {
@@ -108,6 +117,9 @@ const PersonaSetup = () => {
         tone_of_voice: persona.toneOfVoice,
         avatar_url: persona.avatar,
         threads_access_token: persona.threadsAccessToken,
+        threads_app_id: persona.threadsAppId,
+        threads_app_secret: persona.threadsAppSecret,
+        webhook_verify_token: persona.webhookVerifyToken,
         user_id: user.id,
         is_active: true
       };
@@ -236,7 +248,7 @@ const PersonaSetup = () => {
           </Button>
           <div>
             <h1 className="text-3xl font-bold text-foreground">ペルソナ設定</h1>
-            <p className="text-muted-foreground">AIの人格とキャラクターを設定します</p>
+            <p className="text-muted-foreground">AIの人格とキャラクター、Threads設定を設定します</p>
           </div>
         </div>
 
@@ -323,7 +335,7 @@ const PersonaSetup = () => {
             <CardHeader>
               <CardTitle>{personaId ? "ペルソナ編集" : "新規ペルソナ作成"}</CardTitle>
               <CardDescription>
-                ペルソナの基本的な特性を設定します
+                ペルソナの基本的な特性とThreads連携設定
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -382,21 +394,6 @@ const PersonaSetup = () => {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="threadsToken">Threadsアクセストークン</Label>
-                    <Input
-                      id="threadsToken"
-                      type="password"
-                      value={persona.threadsAccessToken}
-                      onChange={(e) => setPersona(prev => ({ ...prev, threadsAccessToken: e.target.value }))}
-                      placeholder="このペルソナ用のThreadsアクセストークンを入力"
-                      disabled={saving}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      このペルソナでThreadsに投稿する際に使用されるアクセストークンです
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
                     <Label>専門分野・興味関心</Label>
                     <div className="flex gap-2 mb-2">
                       <Input
@@ -425,6 +422,75 @@ const PersonaSetup = () => {
                     <p className="text-xs text-muted-foreground">
                       クリックして削除
                     </p>
+                  </div>
+
+                  {/* Threads設定セクション */}
+                  <div className="border-t pt-6">
+                    <h3 className="text-lg font-semibold mb-4">Threads連携設定</h3>
+                    
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="threadsToken">Threadsアクセストークン</Label>
+                        <Input
+                          id="threadsToken"
+                          type="password"
+                          value={persona.threadsAccessToken}
+                          onChange={(e) => setPersona(prev => ({ ...prev, threadsAccessToken: e.target.value }))}
+                          placeholder="このペルソナ用のThreadsアクセストークンを入力"
+                          disabled={saving}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          このペルソナでThreadsに投稿する際に使用されるアクセストークンです
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="threadsAppId">Threads App ID</Label>
+                          <Input
+                            id="threadsAppId"
+                            value={persona.threadsAppId}
+                            onChange={(e) => setPersona(prev => ({ ...prev, threadsAppId: e.target.value }))}
+                            placeholder="Meta for DevelopersのApp ID"
+                            disabled={saving}
+                          />
+                        </div>
+                        
+                        <div className="space-y-2">
+                          <Label htmlFor="threadsAppSecret">App Secret</Label>
+                          <Input
+                            id="threadsAppSecret"
+                            type="password"
+                            value={persona.threadsAppSecret}
+                            onChange={(e) => setPersona(prev => ({ ...prev, threadsAppSecret: e.target.value }))}
+                            placeholder="Webhook署名検証用のApp Secret"
+                            disabled={saving}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="webhookVerifyToken">Webhook Verify Token</Label>
+                        <Input
+                          id="webhookVerifyToken"
+                          value={persona.webhookVerifyToken}
+                          onChange={(e) => setPersona(prev => ({ ...prev, webhookVerifyToken: e.target.value }))}
+                          placeholder="Webhook検証用のトークン（任意の文字列）"
+                          disabled={saving}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Meta for DevelopersのWebhook設定で同じ値を設定してください
+                        </p>
+                      </div>
+
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                        <div className="text-sm text-blue-700">
+                          <strong>Webhook URL:</strong><br/>
+                          <code>https://tqcgbsnoiarnawnppwia.supabase.co/functions/v1/threads-webhook</code><br/>
+                          <small className="text-blue-600">↑ Meta for DevelopersでこのURLを設定してください</small>
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
                   <div className="flex justify-end gap-2">

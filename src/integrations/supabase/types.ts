@@ -152,9 +152,12 @@ export type Database = {
           name: string
           personality: string | null
           threads_access_token: string | null
+          threads_app_id: string | null
+          threads_app_secret: string | null
           tone_of_voice: string | null
           updated_at: string
           user_id: string
+          webhook_verify_token: string | null
         }
         Insert: {
           age?: string | null
@@ -166,9 +169,12 @@ export type Database = {
           name: string
           personality?: string | null
           threads_access_token?: string | null
+          threads_app_id?: string | null
+          threads_app_secret?: string | null
           tone_of_voice?: string | null
           updated_at?: string
           user_id: string
+          webhook_verify_token?: string | null
         }
         Update: {
           age?: string | null
@@ -180,9 +186,12 @@ export type Database = {
           name?: string
           personality?: string | null
           threads_access_token?: string | null
+          threads_app_id?: string | null
+          threads_app_secret?: string | null
           tone_of_voice?: string | null
           updated_at?: string
           user_id?: string
+          webhook_verify_token?: string | null
         }
         Relationships: []
       }
