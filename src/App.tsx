@@ -8,6 +8,11 @@ import { Toaster } from "@/components/ui/toaster"
 import ReplyMonitoring from "@/pages/ReplyMonitoring";
 import Index from "@/pages/Index";
 import Auth from "@/pages/Auth";
+import PersonaSetup from "@/pages/PersonaSetup";
+import CreatePosts from "@/pages/CreatePosts";
+import ScheduledPosts from "@/pages/ScheduledPosts";
+import AutoReply from "@/pages/AutoReply";
+import Settings from "@/pages/Settings";
 
 const queryClient = new QueryClient();
 
@@ -26,6 +31,46 @@ function App() {
                     element={
                       <ProtectedRoute>
                         <Index />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/persona-setup"
+                    element={
+                      <ProtectedRoute>
+                        <PersonaSetup />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/create-posts"
+                    element={
+                      <ProtectedRoute>
+                        <CreatePosts />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/scheduled-posts"
+                    element={
+                      <ProtectedRoute>
+                        <ScheduledPosts />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/auto-reply"
+                    element={
+                      <ProtectedRoute>
+                        <AutoReply />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/settings"
+                    element={
+                      <ProtectedRoute>
+                        <Settings />
                       </ProtectedRoute>
                     }
                   />
