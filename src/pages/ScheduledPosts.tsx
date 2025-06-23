@@ -2,18 +2,13 @@
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Checkbox } from "@/components/ui/checkbox";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { ArrowLeft, Calendar, Clock, Send, Trash2, Edit, Loader2, Play, Image as ImageIcon } from "lucide-react";
+import { ArrowLeft, Calendar, Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { format, isPast } from "date-fns";
-import { ja } from "date-fns/locale";
+import { PostsTable } from "@/components/ScheduledPosts/PostsTable";
+import { BulkActions } from "@/components/ScheduledPosts/BulkActions";
 import type { Database } from "@/integrations/supabase/types";
 
 type Post = Database['public']['Tables']['posts']['Row'] & {
@@ -186,23 +181,6 @@ const ScheduledPosts = () => {
     }
   };
 
-  const getStatusBadge = (post: Post) => {
-    if (post.status === 'published') {
-      return <Badge variant="default">公開済み</Badge>;
-    }
-    if (post.status === 'scheduled') {
-      if (post.scheduled_for && isPast(new Date(post.scheduled_for))) {
-        return <Badge variant="destructive">期限切れ</Badge>;
-      }
-      return <Badge variant="secondary">予約済み</Badge>;
-    }
-    return <Badge variant="outline">下書き</Badge>;
-  };
-
-  const canPublish = (post: Post) => {
-    return post.personas?.threads_access_token && post.status !== 'published';
-  };
-
   if (loading) {
     return (
       <div className="min-h-screen bg-background p-6">
@@ -247,39 +225,11 @@ const ScheduledPosts = () => {
                   }
                 </CardDescription>
               </div>
-              {selectedPosts.length > 0 && (
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button variant="destructive" disabled={bulkDeleting}>
-                      {bulkDeleting ? (
-                        <>
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          削除中...
-                        </>
-                      ) : (
-                        <>
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          選択した{selectedPosts.length}件を削除
-                        </>
-                      )}
-                    </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>投稿の一括削除</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        選択した{selectedPosts.length}件の投稿を削除しますか？この操作は取り消せません。
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>キャンセル</AlertDialogCancel>
-                      <AlertDialogAction onClick={bulkDeletePosts} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                        削除する
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
-              )}
+              <BulkActions
+                selectedPosts={selectedPosts}
+                bulkDeleting={bulkDeleting}
+                onBulkDelete={bulkDeletePosts}
+              />
             </div>
           </CardHeader>
           <CardContent>
@@ -292,142 +242,16 @@ const ScheduledPosts = () => {
                 </Button>
               </div>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-12">
-                      <Checkbox
-                        checked={selectedPosts.length === posts.length}
-                        onCheckedChange={handleSelectAll}
-                        aria-label="全選択"
-                      />
-                    </TableHead>
-                    <TableHead>ペルソナ</TableHead>
-                    <TableHead>内容</TableHead>
-                    <TableHead>画像</TableHead>
-                    <TableHead>ステータス</TableHead>
-                    <TableHead>予約日時</TableHead>
-                    <TableHead>作成日</TableHead>
-                    <TableHead>アクション</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {posts.map((post) => (
-                    <TableRow key={post.id}>
-                      <TableCell>
-                        <Checkbox
-                          checked={selectedPosts.includes(post.id)}
-                          onCheckedChange={(checked) => handleSelectPost(post.id, checked as boolean)}
-                          aria-label={`投稿を選択`}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Avatar className="h-8 w-8">
-                            <AvatarImage src={post.personas?.avatar_url || ""} />
-                            <AvatarFallback>
-                              {post.personas?.name?.[0] || "P"}
-                            </AvatarFallback>
-                          </Avatar>
-                          <span className="font-medium">
-                            {post.personas?.name || "不明"}
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="max-w-xs">
-                          <p className="text-sm line-clamp-2">
-                            {post.content.substring(0, 100)}
-                            {post.content.length > 100 && "..."}
-                          </p>
-                          {post.hashtags && post.hashtags.length > 0 && (
-                            <div className="flex flex-wrap gap-1 mt-1">
-                              {post.hashtags.slice(0, 3).map((hashtag, index) => (
-                                <Badge key={index} variant="outline" className="text-xs">
-                                  #{hashtag}
-                                </Badge>
-                              ))}
-                              {post.hashtags.length > 3 && (
-                                <Badge variant="outline" className="text-xs">
-                                  +{post.hashtags.length - 3}
-                                </Badge>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {post.images && post.images.length > 0 ? (
-                          <div className="flex items-center gap-2">
-                            <img
-                              src={post.images[0]}
-                              alt="Post image"
-                              className="w-12 h-12 object-cover rounded border"
-                            />
-                            {post.images.length > 1 && (
-                              <Badge variant="outline" className="text-xs">
-                                +{post.images.length - 1}
-                              </Badge>
-                            )}
-                          </div>
-                        ) : (
-                          <div className="flex items-center justify-center w-12 h-12 bg-gray-100 rounded border">
-                            <ImageIcon className="h-4 w-4 text-gray-400" />
-                          </div>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {getStatusBadge(post)}
-                      </TableCell>
-                      <TableCell>
-                        {post.scheduled_for ? (
-                          <div className="flex items-center gap-1 text-sm">
-                            <Clock className="h-4 w-4" />
-                            {format(new Date(post.scheduled_for), 'MM/dd HH:mm', { locale: ja })}
-                          </div>
-                        ) : (
-                          <span className="text-muted-foreground text-sm">未設定</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <span className="text-sm text-muted-foreground">
-                          {format(new Date(post.created_at), 'MM/dd', { locale: ja })}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex gap-1">
-                          {canPublish(post) && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => publishPost(post.id)}
-                              disabled={publishingPost === post.id}
-                            >
-                              {publishingPost === post.id ? (
-                                <Loader2 className="h-3 w-3 animate-spin" />
-                              ) : (
-                                <Play className="h-3 w-3" />
-                              )}
-                            </Button>
-                          )}
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => deletePost(post.id)}
-                            disabled={deletingPost === post.id}
-                          >
-                            {deletingPost === post.id ? (
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                            ) : (
-                              <Trash2 className="h-3 w-3" />
-                            )}
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+              <PostsTable
+                posts={posts}
+                selectedPosts={selectedPosts}
+                publishingPost={publishingPost}
+                deletingPost={deletingPost}
+                onSelectAll={handleSelectAll}
+                onSelectPost={handleSelectPost}
+                onPublishPost={publishPost}
+                onDeletePost={deletePost}
+              />
             )}
           </CardContent>
         </Card>
