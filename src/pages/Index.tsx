@@ -12,7 +12,8 @@ import {
   Bot, 
   Image,
   BarChart3,
-  Shield
+  Shield,
+  Edit
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAccountStatus } from "@/hooks/useAccountStatus";
@@ -43,7 +44,7 @@ const Index = () => {
   const features = [
     {
       title: "ペルソナ設定",
-      description: "AIアシスタントの性格や専門分野を設定",
+      description: "AIアシスタントの性格や専門分野を設定・編集",
       icon: Users,
       path: "/persona-setup",
       color: "text-blue-600",
@@ -161,7 +162,14 @@ const Index = () => {
                       if (!feature.disabled) navigate(feature.path);
                     }}
                   >
-                    {feature.disabled ? 'アクセス不可' : '開始する'}
+                    {feature.disabled ? 'アクセス不可' : (
+                      feature.title === "ペルソナ設定" ? (
+                        <span className="flex items-center gap-2">
+                          <Edit className="h-4 w-4" />
+                          設定・編集
+                        </span>
+                      ) : '開始する'
+                    )}
                   </Button>
                 </CardContent>
               </Card>
@@ -181,7 +189,7 @@ const Index = () => {
               <div className="space-y-2">
                 <h3 className="font-semibold">1. ペルソナを設定</h3>
                 <p className="text-sm text-muted-foreground">
-                  まずはAIアシスタントの性格や専門分野を設定しましょう
+                  まずはAIアシスタントの性格や専門分野を設定しましょう。既存のペルソナがある場合は編集も可能です。
                 </p>
               </div>
               <div className="space-y-2">

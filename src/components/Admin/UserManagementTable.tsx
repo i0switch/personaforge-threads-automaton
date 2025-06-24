@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -18,6 +17,13 @@ interface UserAccount {
   is_active: boolean;
   subscription_status: string;
   created_at: string;
+  approved_at: string | null;
+}
+
+interface AccountStatus {
+  is_approved: boolean;
+  is_active: boolean;
+  subscription_status: string;
   approved_at: string | null;
 }
 
@@ -63,7 +69,9 @@ export const UserManagementTable = () => {
 
       const combinedData = profilesData?.map(profile => {
         const authUser = authUsers?.find(u => u.id === profile.user_id);
-        const accountStatus = profile.user_account_status?.[0];
+        const accountStatus = Array.isArray(profile.user_account_status) 
+          ? profile.user_account_status[0] as AccountStatus
+          : profile.user_account_status as AccountStatus;
         
         return {
           user_id: profile.user_id,
@@ -73,7 +81,7 @@ export const UserManagementTable = () => {
           is_active: accountStatus?.is_active || false,
           subscription_status: accountStatus?.subscription_status || 'free',
           created_at: profile.created_at,
-          approved_at: accountStatus?.approved_at
+          approved_at: accountStatus?.approved_at || null
         };
       }) || [];
 
@@ -104,7 +112,7 @@ export const UserManagementTable = () => {
             is_active: status?.is_active || false,
             subscription_status: status?.subscription_status || 'free',
             created_at: profile.created_at,
-            approved_at: status?.approved_at
+            approved_at: status?.approved_at || null
           };
         }) || [];
 
