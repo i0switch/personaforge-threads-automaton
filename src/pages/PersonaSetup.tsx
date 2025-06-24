@@ -237,6 +237,14 @@ const PersonaSetup = () => {
     }
   };
 
+  const getWebhookUrl = () => {
+    const baseUrl = 'https://tqcgbsnoiarnawnppwia.supabase.co/functions/v1/threads-webhook';
+    if (personaId) {
+      return `${baseUrl}?persona_id=${personaId}`;
+    }
+    return `${baseUrl}?persona_id={ペルソナID}`;
+  };
+
   return (
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-4xl mx-auto space-y-6">
@@ -486,7 +494,7 @@ const PersonaSetup = () => {
                       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                         <div className="text-sm text-blue-700">
                           <strong>Webhook URL:</strong><br/>
-                          <code>https://tqcgbsnoiarnawnppwia.supabase.co/functions/v1/threads-webhook</code><br/>
+                          <code>{getWebhookUrl()}</code><br/>
                           <small className="text-blue-600">↑ Meta for DevelopersでこのURLを設定してください</small>
                         </div>
                       </div>
