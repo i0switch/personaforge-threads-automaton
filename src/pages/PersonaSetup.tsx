@@ -12,6 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import type { Database } from "@/integrations/supabase/types";
+import { PersonaList } from "@/components/PersonaList";
 
 type PersonaData = {
   name: string;
@@ -259,6 +260,13 @@ const PersonaSetup = () => {
             <p className="text-muted-foreground">AIの人格とキャラクター、Threads設定を設定します</p>
           </div>
         </div>
+
+        {/* Show existing personas if not editing */}
+        {!personaId && !loading && (
+          <div className="mb-6">
+            <PersonaList />
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Preview */}

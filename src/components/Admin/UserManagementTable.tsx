@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -20,13 +21,6 @@ interface UserAccount {
   approved_at: string | null;
 }
 
-interface AccountStatus {
-  is_approved: boolean;
-  is_active: boolean;
-  subscription_status: string;
-  approved_at: string | null;
-}
-
 export const UserManagementTable = () => {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -42,40 +36,41 @@ export const UserManagementTable = () => {
 
   const loadUsers = async () => {
     try {
-      // プロフィールとアカウント状態を結合してユーザー情報を取得
+      // まずプロフィール情報を取得
       const { data: profilesData, error: profilesError } = await supabase
         .from('profiles')
-        .select(`
-          user_id,
-          display_name,
-          created_at,
-          user_account_status (
-            is_approved,
-            is_active,
-            subscription_status,
-            approved_at
-          )
-        `);
+        .select('user_id, display_name, created_at');
 
       if (profilesError) throw profilesError;
 
-      // 認証ユーザーの情報を管理者として取得
-      const { data: { users: authUsers }, error: authError } = await supabase.auth.admin.listUsers();
-      
-      if (authError) {
-        console.error('Auth users fetch error:', authError);
-        // 認証ユーザー情報が取得できない場合は、プロフィール情報のみで進める
+      // 次にアカウント状態を別々に取得
+      const { data: accountStatusData, error: statusError } = await supabase
+        .from('user_account_status')
+        .select('user_id, is_approved, is_active, subscription_status, approved_at');
+
+      if (statusError) throw statusError;
+
+      // 認証ユーザー情報を取得（管理者権限が必要）
+      let authUsers: any[] = [];
+      try {
+        const { data: { users: fetchedUsers }, error: authError } = await supabase.auth.admin.listUsers();
+        if (authError) {
+          console.warn('Could not fetch auth users:', authError);
+        } else {
+          authUsers = fetchedUsers || [];
+        }
+      } catch (error) {
+        console.warn('Auth admin access not available:', error);
       }
 
+      // データを結合
       const combinedData = profilesData?.map(profile => {
-        const authUser = authUsers?.find(u => u.id === profile.user_id);
-        const accountStatus = Array.isArray(profile.user_account_status) 
-          ? profile.user_account_status[0] as AccountStatus
-          : profile.user_account_status as AccountStatus;
+        const authUser = authUsers.find(u => u.id === profile.user_id);
+        const accountStatus = accountStatusData?.find(s => s.user_id === profile.user_id);
         
         return {
           user_id: profile.user_id,
-          email: authUser?.email || `user-${profile.user_id.slice(0, 8)}@example.com`,
+          email: authUser?.email || `user-${profile.user_id.slice(0, 8)}@hidden.com`,
           display_name: profile.display_name || 'Unknown',
           is_approved: accountStatus?.is_approved || false,
           is_active: accountStatus?.is_active || false,
@@ -88,43 +83,11 @@ export const UserManagementTable = () => {
       setUsers(combinedData);
     } catch (error) {
       console.error('Error loading users:', error);
-      // フォールバック: プロフィールとアカウント状態のみで表示
-      try {
-        const { data: profiles, error: profilesError } = await supabase
-          .from('profiles')
-          .select('*');
-
-        if (profilesError) throw profilesError;
-
-        const { data: accountStatuses, error: statusError } = await supabase
-          .from('user_account_status')
-          .select('*');
-
-        if (statusError) throw statusError;
-
-        const fallbackData = profiles?.map(profile => {
-          const status = accountStatuses?.find(s => s.user_id === profile.user_id);
-          return {
-            user_id: profile.user_id,
-            email: `user-${profile.user_id.slice(0, 8)}@hidden.com`,
-            display_name: profile.display_name || 'Unknown',
-            is_approved: status?.is_approved || false,
-            is_active: status?.is_active || false,
-            subscription_status: status?.subscription_status || 'free',
-            created_at: profile.created_at,
-            approved_at: status?.approved_at || null
-          };
-        }) || [];
-
-        setUsers(fallbackData);
-      } catch (fallbackError) {
-        console.error('Fallback error:', fallbackError);
-        toast({
-          title: "エラー",
-          description: "ユーザー情報の読み込みに失敗しました。",
-          variant: "destructive",
-        });
-      }
+      toast({
+        title: "エラー",
+        description: "ユーザー情報の読み込みに失敗しました。",
+        variant: "destructive",
+      });
     } finally {
       setLoading(false);
     }
@@ -143,7 +106,7 @@ export const UserManagementTable = () => {
         updateData.is_active = true;
       }
 
-      // user_account_statusレコードが存在しない場合は作成
+      // user_account_statusレコードが存在するかチェック
       const { data: existingStatus } = await supabase
         .from('user_account_status')
         .select('id')
@@ -191,7 +154,7 @@ export const UserManagementTable = () => {
   const updateSubscriptionStatus = async (userId: string, subscriptionStatus: string) => {
     setUpdating(userId);
     try {
-      // user_account_statusレコードが存在しない場合は作成
+      // user_account_statusレコードが存在するかチェック
       const { data: existingStatus } = await supabase
         .from('user_account_status')
         .select('id')

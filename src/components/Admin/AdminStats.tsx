@@ -42,12 +42,13 @@ export const AdminStats = () => {
 
       const totalUsers = profiles?.length || 0;
       
-      // アカウント状態が存在するユーザーの統計
-      const approvedUsers = accountStatuses?.filter(u => u.is_approved).length || 0;
+      // 承認済みユーザー数を正確に計算
+      const approvedUsers = accountStatuses?.filter(u => u.is_approved === true).length || 0;
       
       // 承認待ちユーザー = 総ユーザー数 - 承認済みユーザー数
       const pendingUsers = totalUsers - approvedUsers;
       
+      // 有料プランユーザー数
       const activeSubscriptions = accountStatuses?.filter(u => 
         u.subscription_status && u.subscription_status !== 'free'
       ).length || 0;
