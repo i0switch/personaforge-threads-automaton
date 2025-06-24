@@ -1,4 +1,3 @@
-
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
@@ -27,25 +26,41 @@ serve(async (req) => {
       const mode = url.searchParams.get('hub.mode');
       const token = url.searchParams.get('hub.verify_token');
       const challenge = url.searchParams.get('hub.challenge');
+      const personaId = url.searchParams.get('persona_id');
 
-      console.log('Webhook verification request:', { mode, token, challenge });
+      console.log('Webhook verification request:', { mode, token, challenge, personaId });
 
-      // アクティブなペルソナでverify_tokenをチェック
-      const { data: personas } = await supabase
-        .from('personas')
-        .select('webhook_verify_token')
-        .eq('is_active', true)
-        .not('webhook_verify_token', 'is', null);
+      // 特定のペルソナでverify_tokenをチェック
+      if (personaId) {
+        const { data: persona } = await supabase
+          .from('personas')
+          .select('webhook_verify_token')
+          .eq('id', personaId)
+          .eq('is_active', true)
+          .single();
 
-      const isValidToken = personas?.some(persona => persona.webhook_verify_token === token);
-
-      if (mode === 'subscribe' && isValidToken) {
-        console.log('Webhook verification successful');
-        return new Response(challenge, { status: 200 });
+        if (mode === 'subscribe' && persona?.webhook_verify_token === token) {
+          console.log('Webhook verification successful for persona:', personaId);
+          return new Response(challenge, { status: 200 });
+        }
       } else {
-        console.log('Webhook verification failed');
-        return new Response('Verification failed', { status: 403 });
+        // レガシー対応：persona_idが指定されていない場合はすべてのアクティブなペルソナをチェック
+        const { data: personas } = await supabase
+          .from('personas')
+          .select('webhook_verify_token')
+          .eq('is_active', true)
+          .not('webhook_verify_token', 'is', null);
+
+        const isValidToken = personas?.some(persona => persona.webhook_verify_token === token);
+
+        if (mode === 'subscribe' && isValidToken) {
+          console.log('Webhook verification successful (legacy mode)');
+          return new Response(challenge, { status: 200 });
+        }
       }
+
+      console.log('Webhook verification failed');
+      return new Response('Verification failed', { status: 403 });
     }
 
     // POST requestはThreads eventデータ
@@ -53,7 +68,6 @@ serve(async (req) => {
       const rawBody = await req.text();
       console.log('Raw webhook body:', rawBody);
 
-      //署名検証のためにヘッダーを取得
       const signature = req.headers.get('x-hub-signature-256');
       console.log('Webhook signature:', signature);
 
@@ -65,24 +79,45 @@ serve(async (req) => {
       const webhookData = JSON.parse(rawBody);
       console.log('Webhook data received:', JSON.stringify(webhookData, null, 2));
 
-      // 署名検証は各ペルソナのApp Secretで試行
-      let validatedPersona = null;
-      const { data: personas } = await supabase
-        .from('personas')
-        .select('*')
-        .eq('is_active', true)
-        .not('threads_app_secret', 'is', null);
+      // URLからpersona_idを取得
+      const url = new URL(req.url);
+      const personaId = url.searchParams.get('persona_id');
 
-      for (const persona of personas || []) {
-        if (await verifySignature(rawBody, signature, persona.threads_app_secret)) {
+      let validatedPersona = null;
+
+      if (personaId) {
+        // 特定のペルソナで署名検証
+        const { data: persona } = await supabase
+          .from('personas')
+          .select('*')
+          .eq('id', personaId)
+          .eq('is_active', true)
+          .not('threads_app_secret', 'is', null)
+          .single();
+
+        if (persona && await verifySignature(rawBody, signature, persona.threads_app_secret)) {
           validatedPersona = persona;
-          console.log('Signature validated for persona:', persona.name);
-          break;
+          console.log('Signature validated for specific persona:', persona.name);
+        }
+      } else {
+        // レガシー対応：すべてのアクティブなペルソナで署名検証を試行
+        const { data: personas } = await supabase
+          .from('personas')
+          .select('*')
+          .eq('is_active', true)
+          .not('threads_app_secret', 'is', null);
+
+        for (const persona of personas || []) {
+          if (await verifySignature(rawBody, signature, persona.threads_app_secret)) {
+            validatedPersona = persona;
+            console.log('Signature validated for persona:', persona.name);
+            break;
+          }
         }
       }
 
       if (!validatedPersona) {
-        console.error('Invalid signature for all personas');
+        console.error('Invalid signature for persona(s)');
         return new Response('Invalid signature', { status: 401 });
       }
 
