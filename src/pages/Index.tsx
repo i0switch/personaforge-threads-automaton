@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,9 +11,6 @@ import {
   Edit, 
   Trash2, 
   User,
-  FileImage,
-  BarChart3,
-  Bell,
   MessageCircle
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -94,13 +90,6 @@ const Index = () => {
       color: "bg-blue-500"
     },
     {
-      title: "画像生成",
-      description: "AI画像を生成",
-      icon: FileImage,
-      action: () => navigate("/image-generation"),
-      color: "bg-purple-500"
-    },
-    {
       title: "投稿管理",
       description: "予定済み投稿を確認",
       icon: Calendar,
@@ -120,13 +109,6 @@ const Index = () => {
       icon: MessageCircle,
       action: () => navigate("/reply-monitoring"),
       color: "bg-red-500"
-    },
-    {
-      title: "スケジュール",
-      description: "投稿スケジュール管理",
-      icon: BarChart3,
-      action: () => navigate("/scheduling"),
-      color: "bg-indigo-500"
     }
   ];
 
@@ -155,7 +137,7 @@ const Index = () => {
         </div>
 
         {/* Quick Actions */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {quickActions.map((action, index) => (
             <Card key={index} className="cursor-pointer hover:shadow-lg transition-shadow" onClick={action.action}>
               <CardContent className="p-4 text-center">
