@@ -22,11 +22,31 @@ serve(async (req) => {
   try {
     console.log('Starting auto reply process...');
 
-    const { postContent, replyContent, personaId, userId } = await req.json();
+    const body = await req.json();
+    console.log('Request body:', body);
 
-    if (!postContent || !replyContent || !personaId || !userId) {
-      throw new Error('Missing required fields');
+    const { postContent, replyContent, personaId, userId } = body;
+
+    // より詳細なパラメータ検証
+    if (!replyContent) {
+      console.error('Missing replyContent');
+      throw new Error('replyContent is required');
     }
+    if (!personaId) {
+      console.error('Missing personaId');
+      throw new Error('personaId is required');
+    }
+    if (!userId) {
+      console.error('Missing userId');
+      throw new Error('userId is required');
+    }
+
+    console.log('Parameters validated:', {
+      postContent: postContent ? 'present' : 'empty',
+      replyContent: replyContent?.substring(0, 50) + '...',
+      personaId,
+      userId
+    });
 
     // Get persona information
     const { data: persona, error: personaError } = await supabase
@@ -37,14 +57,17 @@ serve(async (req) => {
       .single();
 
     if (personaError || !persona) {
+      console.error('Persona error:', personaError);
       throw new Error('Persona not found');
     }
+
+    console.log('Persona found:', persona.name);
 
     if (!persona.threads_access_token) {
       throw new Error('Threads access token not configured for this persona');
     }
 
-    // Generate AI reply using Gemini - Updated model name
+    // Generate AI reply using Gemini
     const prompt = [
       'あなたは、ソーシャルメディア「Threads」で活躍する、経験豊富なコミュニティマネージャーです。',
       'あなたのゴールは、受信したリプライに対して、あなたのペルソナに沿った、人間らしく、魅力的で、気の利いた返信を生成し、会話を促進することです。',
@@ -75,6 +98,8 @@ serve(async (req) => {
       '- **出力形式**: 生成する返信文のみを出力してください。思考プロセスや言い訳、前置きは一切含めないでください。'
     ].join('\n');
 
+    console.log('Calling Gemini API...');
+
     const geminiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`, {
       method: 'POST',
       headers: {
@@ -85,24 +110,35 @@ serve(async (req) => {
           parts: [{
             text: prompt
           }]
-        }]
+        }],
+        generationConfig: {
+          temperature: 0.7,
+          topK: 40,
+          topP: 0.95,
+          maxOutputTokens: 500,
+        },
       }),
     });
 
     if (!geminiResponse.ok) {
-      throw new Error('Failed to generate AI reply');
+      const errorText = await geminiResponse.text();
+      console.error('Gemini API error:', errorText);
+      throw new Error(`Gemini API error: ${geminiResponse.status} ${errorText}`);
     }
 
     const geminiData = await geminiResponse.json();
+    console.log('Gemini response received');
+
     const generatedReply = geminiData.candidates?.[0]?.content?.parts?.[0]?.text;
 
     if (!generatedReply) {
-      throw new Error('No reply generated');
+      throw new Error('No reply generated from Gemini');
     }
 
     console.log('Generated reply:', generatedReply);
 
     // Post the reply to Threads
+    console.log('Creating Threads container...');
     const createContainerResponse = await fetch('https://graph.threads.net/v1.0/me/threads', {
       method: 'POST',
       headers: {
@@ -118,19 +154,21 @@ serve(async (req) => {
     if (!createContainerResponse.ok) {
       const errorText = await createContainerResponse.text();
       console.error('Threads create container error:', errorText);
-      throw new Error(`Failed to create Threads container: ${createContainerResponse.status}`);
+      throw new Error(`Failed to create Threads container: ${createContainerResponse.status} - ${errorText}`);
     }
 
     const containerData = await createContainerResponse.json();
-    console.log('Container created:', containerData);
+    console.log('Container created:', containerData.id);
 
     if (!containerData.id) {
       throw new Error('No container ID returned from Threads API');
     }
 
     // Wait and publish
+    console.log('Waiting before publish...');
     await new Promise(resolve => setTimeout(resolve, 2000));
 
+    console.log('Publishing to Threads...');
     const publishResponse = await fetch('https://graph.threads.net/v1.0/me/threads_publish', {
       method: 'POST',
       headers: {
@@ -145,11 +183,11 @@ serve(async (req) => {
     if (!publishResponse.ok) {
       const errorText = await publishResponse.text();
       console.error('Threads publish error:', errorText);
-      throw new Error(`Failed to publish to Threads: ${publishResponse.status}`);
+      throw new Error(`Failed to publish to Threads: ${publishResponse.status} - ${errorText}`);
     }
 
     const publishData = await publishResponse.json();
-    console.log('Reply published:', publishData);
+    console.log('Reply published:', publishData.id);
 
     // Log activity
     await supabase
@@ -160,7 +198,7 @@ serve(async (req) => {
         action_type: 'auto_reply_sent',
         description: 'AI自動返信を送信しました',
         metadata: {
-          original_post: postContent,
+          original_post: postContent || '(empty)',
           reply_to: replyContent,
           generated_reply: generatedReply,
           threads_id: publishData.id
