@@ -25,12 +25,16 @@ serve(async (req) => {
     const body = await req.json();
     console.log('Request body:', body);
 
-    const { postContent, replyContent, personaId, userId } = body;
+    const { postContent, replyContent, replyId, personaId, userId } = body;
 
     // より詳細なパラメータ検証
     if (!replyContent) {
       console.error('Missing replyContent');
       throw new Error('replyContent is required');
+    }
+    if (!replyId) {
+      console.error('Missing replyId');
+      throw new Error('replyId is required for creating a reply');
     }
     if (!personaId) {
       console.error('Missing personaId');
@@ -44,6 +48,7 @@ serve(async (req) => {
     console.log('Parameters validated:', {
       postContent: postContent ? 'present' : 'empty',
       replyContent: replyContent?.substring(0, 50) + '...',
+      replyId,
       personaId,
       userId
     });
@@ -137,16 +142,17 @@ serve(async (req) => {
 
     console.log('Generated reply:', generatedReply);
 
-    // Post the reply to Threads
-    console.log('Creating Threads container...');
+    // Create reply to the original reply using Threads API
+    console.log('Creating Threads reply container...');
     const createContainerResponse = await fetch('https://graph.threads.net/v1.0/me/threads', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        media_type: 'TEXT',
+        media_type: 'TEXT_POST',
         text: generatedReply,
+        reply_to_id: replyId,
         access_token: persona.threads_access_token
       }),
     });
@@ -158,7 +164,7 @@ serve(async (req) => {
     }
 
     const containerData = await createContainerResponse.json();
-    console.log('Container created:', containerData.id);
+    console.log('Reply container created:', containerData.id);
 
     if (!containerData.id) {
       throw new Error('No container ID returned from Threads API');
@@ -168,7 +174,7 @@ serve(async (req) => {
     console.log('Waiting before publish...');
     await new Promise(resolve => setTimeout(resolve, 2000));
 
-    console.log('Publishing to Threads...');
+    console.log('Publishing reply to Threads...');
     const publishResponse = await fetch('https://graph.threads.net/v1.0/me/threads_publish', {
       method: 'POST',
       headers: {
@@ -200,6 +206,7 @@ serve(async (req) => {
         metadata: {
           original_post: postContent || '(empty)',
           reply_to: replyContent,
+          reply_to_id: replyId,
           generated_reply: generatedReply,
           threads_id: publishData.id
         }

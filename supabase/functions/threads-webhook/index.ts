@@ -231,11 +231,12 @@ async function processReplyData(replyData: any, persona: any) {
         originalPostContent = '元の投稿の内容を取得できませんでした';
       }
       
-      // 自動返信を送信
+      // 自動返信を送信（replyIdを追加）
       const { data: autoReplyResult, error: autoReplyError } = await supabase.functions.invoke('threads-auto-reply', {
         body: {
           postContent: originalPostContent,
           replyContent: replyData.text,
+          replyId: replyData.id,
           personaId: persona.id,
           userId: persona.user_id
         }
@@ -255,6 +256,7 @@ async function processReplyData(replyData: any, persona: any) {
             metadata: {
               error: autoReplyError.message,
               reply_text: replyData.text,
+              reply_id: replyData.id,
               original_post: originalPostContent
             }
           });
