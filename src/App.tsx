@@ -4,6 +4,7 @@ import { BrowserRouter as Router, Route, Routes } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ProtectedRoute } from "./components/ProtectedRoute";
+import { ProtectedAdminRoute } from "./components/ProtectedAdminRoute";
 import { Toaster } from "@/components/ui/toaster"
 import ReplyMonitoring from "@/pages/ReplyMonitoring";
 import Index from "@/pages/Index";
@@ -13,6 +14,7 @@ import CreatePosts from "@/pages/CreatePosts";
 import ScheduledPosts from "@/pages/ScheduledPosts";
 import AutoReply from "@/pages/AutoReply";
 import Settings from "@/pages/Settings";
+import AdminDashboard from "@/pages/AdminDashboard";
 
 const queryClient = new QueryClient();
 
@@ -80,6 +82,14 @@ function App() {
                       <ProtectedRoute>
                         <ReplyMonitoring />
                       </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/admin"
+                    element={
+                      <ProtectedAdminRoute>
+                        <AdminDashboard />
+                      </ProtectedAdminRoute>
                     }
                   />
                 </Routes>
