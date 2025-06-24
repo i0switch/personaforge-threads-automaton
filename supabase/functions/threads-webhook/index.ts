@@ -216,10 +216,25 @@ async function processReplyData(replyData: any, persona: any) {
     if (profile?.auto_reply_enabled || profile?.ai_auto_reply_enabled) {
       console.log('Auto-reply is enabled, sending auto-reply...');
       
+      // 元の投稿を取得してコンテキストを提供
+      let originalPostContent = '';
+      try {
+        // Threads APIから元の投稿を取得
+        const threadsResponse = await fetch(`https://graph.threads.net/v1.0/${replyData.replied_to?.id || replyData.root_post?.id}?fields=text&access_token=${persona.threads_access_token}`);
+        if (threadsResponse.ok) {
+          const originalPost = await threadsResponse.json();
+          originalPostContent = originalPost.text || '';
+          console.log('Original post content:', originalPostContent);
+        }
+      } catch (error) {
+        console.log('Could not fetch original post content:', error);
+        originalPostContent = '元の投稿の内容を取得できませんでした';
+      }
+      
       // 自動返信を送信
       const { data: autoReplyResult, error: autoReplyError } = await supabase.functions.invoke('threads-auto-reply', {
         body: {
-          postContent: '',
+          postContent: originalPostContent,
           replyContent: replyData.text,
           personaId: persona.id,
           userId: persona.user_id
@@ -228,6 +243,21 @@ async function processReplyData(replyData: any, persona: any) {
 
       if (autoReplyError) {
         console.error('Auto-reply error:', autoReplyError);
+        
+        // エラーログをactivity_logsに記録
+        await supabase
+          .from('activity_logs')
+          .insert({
+            user_id: persona.user_id,
+            persona_id: persona.id,
+            action_type: 'auto_reply_failed',
+            description: 'AI自動返信の送信に失敗しました',
+            metadata: {
+              error: autoReplyError.message,
+              reply_text: replyData.text,
+              original_post: originalPostContent
+            }
+          });
       } else {
         console.log('Auto-reply sent successfully:', autoReplyResult);
         
