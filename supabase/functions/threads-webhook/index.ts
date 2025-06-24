@@ -1,4 +1,3 @@
-
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
@@ -210,7 +209,7 @@ async function processReplyData(replyData: any, persona: any) {
 
     console.log('Reply saved successfully:', replyData.id);
 
-    // 自動返信が有効かチェック（ai_auto_reply_enabledを確認）
+    // ユーザーの自動返信設定を取得
     const { data: profile } = await supabase
       .from('profiles')
       .select('auto_reply_enabled, ai_auto_reply_enabled')
@@ -219,15 +218,91 @@ async function processReplyData(replyData: any, persona: any) {
 
     console.log('Profile auto-reply settings:', profile);
 
-    // AI自動返信が有効でない場合は処理を停止
-    if (!profile?.ai_auto_reply_enabled) {
-      console.log('AI auto-reply is disabled for this user');
-      return;
-    }
+    // キーワード自動返信が有効な場合の処理
+    if (profile?.auto_reply_enabled && !profile?.ai_auto_reply_enabled) {
+      console.log('Keyword auto-reply is enabled, checking for matching rules...');
+      
+      // キーワード自動返信ルールを取得
+      const { data: autoReplyRules } = await supabase
+        .from('auto_replies')
+        .select('*')
+        .eq('user_id', persona.user_id)
+        .eq('persona_id', persona.id)
+        .eq('is_active', true);
 
-    console.log('AI auto-reply is enabled, sending auto-reply...');
-    
-    // 元の投稿を取得してコンテキストを提供
+      console.log('Auto-reply rules found:', autoReplyRules?.length || 0);
+
+      if (autoReplyRules && autoReplyRules.length > 0) {
+        const replyText = replyData.text || '';
+        
+        // マッチするルールを探す
+        for (const rule of autoReplyRules) {
+          const keywords = rule.trigger_keywords || [];
+          console.log('Checking keywords:', keywords, 'against reply:', replyText);
+          
+          const hasMatchingKeyword = keywords.some((keyword: string) => 
+            replyText.toLowerCase().includes(keyword.toLowerCase())
+          );
+
+          if (hasMatchingKeyword) {
+            console.log('Keyword match found, sending auto-reply...');
+            
+            try {
+              // キーワード自動返信を送信
+              await sendKeywordAutoReply(replyData.id, rule.response_template, persona);
+              
+              // auto_reply_sentフラグを更新
+              await supabase
+                .from('thread_replies')
+                .update({ auto_reply_sent: true })
+                .eq('reply_id', replyData.id);
+
+              // ログを記録
+              await supabase
+                .from('activity_logs')
+                .insert({
+                  user_id: persona.user_id,
+                  persona_id: persona.id,
+                  action_type: 'auto_reply_sent',
+                  description: 'キーワード自動返信を送信しました',
+                  metadata: {
+                    reply_text: replyText,
+                    reply_id: replyData.id,
+                    matched_keywords: keywords.filter((k: string) => 
+                      replyText.toLowerCase().includes(k.toLowerCase())
+                    ),
+                    response_template: rule.response_template
+                  }
+                });
+
+              break; // 最初にマッチしたルールで返信して終了
+            } catch (error) {
+              console.error('Error sending keyword auto-reply:', error);
+              
+              // エラーログを記録
+              await supabase
+                .from('activity_logs')
+                .insert({
+                  user_id: persona.user_id,
+                  persona_id: persona.id,
+                  action_type: 'auto_reply_failed',
+                  description: 'キーワード自動返信の送信に失敗しました',
+                  metadata: {
+                    error: error.message,
+                    reply_text: replyText,
+                    reply_id: replyData.id
+                  }
+                });
+            }
+          }
+        }
+      }
+    }
+    // AI自動返信が有効でない場合は処理を停止
+    else if (profile?.ai_auto_reply_enabled && !profile?.auto_reply_enabled) {
+      console.log('AI auto-reply is enabled, sending auto-reply...');
+      
+          // 元の投稿を取得してコンテキストを提供
     let originalPostContent = '';
     try {
       // Threads APIから元の投稿を取得
@@ -280,8 +355,70 @@ async function processReplyData(replyData: any, persona: any) {
         .update({ auto_reply_sent: true })
         .eq('reply_id', replyData.id);
     }
+    } else {
+      console.log('Auto-reply is disabled for this user');
+    }
 
   } catch (error) {
     console.error('Error in processReplyData:', error);
   }
+}
+
+async function sendKeywordAutoReply(replyToId: string, responseText: string, persona: any) {
+  console.log('Sending keyword auto-reply to:', replyToId, 'with text:', responseText);
+
+  // Create reply to the original reply using Threads API
+  console.log('Creating Threads reply container...');
+  const createContainerResponse = await fetch('https://graph.threads.net/v1.0/me/threads', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      media_type: 'TEXT_POST',
+      text: responseText,
+      reply_to_id: replyToId,
+      access_token: persona.threads_access_token
+    }),
+  });
+
+  if (!createContainerResponse.ok) {
+    const errorText = await createContainerResponse.text();
+    console.error('Threads create container error:', errorText);
+    throw new Error(`Failed to create Threads container: ${createContainerResponse.status} - ${errorText}`);
+  }
+
+  const containerData = await createContainerResponse.json();
+  console.log('Reply container created:', containerData.id);
+
+  if (!containerData.id) {
+    throw new Error('No container ID returned from Threads API');
+  }
+
+  // Wait and publish
+  console.log('Waiting before publish...');
+  await new Promise(resolve => setTimeout(resolve, 2000));
+
+  console.log('Publishing reply to Threads...');
+  const publishResponse = await fetch('https://graph.threads.net/v1.0/me/threads_publish', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      creation_id: containerData.id,
+      access_token: persona.threads_access_token
+    }),
+  });
+
+  if (!publishResponse.ok) {
+    const errorText = await publishResponse.text();
+    console.error('Threads publish error:', errorText);
+    throw new Error(`Failed to publish to Threads: ${publishResponse.status} - ${errorText}`);
+  }
+
+  const publishData = await publishResponse.json();
+  console.log('Keyword auto-reply published:', publishData.id);
+
+  return publishData;
 }
