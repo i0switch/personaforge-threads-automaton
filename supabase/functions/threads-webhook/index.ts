@@ -1,3 +1,4 @@
+
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
@@ -30,7 +31,6 @@ serve(async (req) => {
 
       console.log('Webhook verification request:', { mode, token, challenge, personaId });
 
-      // 特定のペルソナでverify_tokenをチェック
       if (personaId) {
         const { data: persona } = await supabase
           .from('personas')
@@ -44,7 +44,6 @@ serve(async (req) => {
           return new Response(challenge, { status: 200 });
         }
       } else {
-        // レガシー対応：persona_idが指定されていない場合はすべてのアクティブなペルソナをチェック
         const { data: personas } = await supabase
           .from('personas')
           .select('webhook_verify_token')
@@ -79,14 +78,12 @@ serve(async (req) => {
       const webhookData = JSON.parse(rawBody);
       console.log('Webhook data received:', JSON.stringify(webhookData, null, 2));
 
-      // URLからpersona_idを取得
       const url = new URL(req.url);
       const personaId = url.searchParams.get('persona_id');
 
       let validatedPersona = null;
 
       if (personaId) {
-        // 特定のペルソナで署名検証
         const { data: persona } = await supabase
           .from('personas')
           .select('*')
@@ -100,7 +97,6 @@ serve(async (req) => {
           console.log('Signature validated for specific persona:', persona.name);
         }
       } else {
-        // レガシー対応：すべてのアクティブなペルソナで署名検証を試行
         const { data: personas } = await supabase
           .from('personas')
           .select('*')
@@ -121,15 +117,11 @@ serve(async (req) => {
         return new Response('Invalid signature', { status: 401 });
       }
 
-      // Threads webhook eventを処理
-      if (webhookData.object === 'page') {
-        for (const entry of webhookData.entry) {
-          if (entry.changes) {
-            for (const change of entry.changes) {
-              if (change.field === 'mentions' && change.value) {
-                await processReplyMention(change.value, validatedPersona);
-              }
-            }
+      // 新しいWebhookデータ形式を処理
+      if (webhookData.values && Array.isArray(webhookData.values)) {
+        for (const valueItem of webhookData.values) {
+          if (valueItem.field === 'replies' && valueItem.value) {
+            await processReplyData(valueItem.value, validatedPersona);
           }
         }
       }
@@ -175,74 +167,81 @@ async function verifySignature(payload: string, signature: string, secret: strin
   }
 }
 
-async function processReplyMention(mentionData: any, persona: any) {
+async function processReplyData(replyData: any, persona: any) {
   try {
-    console.log('Processing reply mention:', mentionData);
+    console.log('Processing reply data:', replyData);
 
-    // Threads APIから詳細情報を取得
-    const replyId = mentionData.media_id || mentionData.id;
-    if (!replyId) {
-      console.error('No reply ID found in mention data');
+    // 既存のリプライかチェック
+    const { data: existingReply } = await supabase
+      .from('thread_replies')
+      .select('id')
+      .eq('reply_id', replyData.id)
+      .single();
+
+    if (existingReply) {
+      console.log('Reply already exists:', replyData.id);
       return;
     }
 
-    try {
-      // Threads APIからリプライ詳細を取得
-      const response = await fetch(`https://graph.threads.net/v1.0/${replyId}?fields=id,text,username,timestamp,media_type,reply_to_id&access_token=${persona.threads_access_token}`);
+    // リプライをデータベースに保存
+    const { error: insertError } = await supabase
+      .from('thread_replies')
+      .insert({
+        user_id: persona.user_id,
+        persona_id: persona.id,
+        original_post_id: replyData.replied_to?.id || replyData.root_post?.id || '',
+        reply_id: replyData.id,
+        reply_text: replyData.text || '',
+        reply_author_id: replyData.username || '',
+        reply_author_username: replyData.username,
+        reply_timestamp: new Date(replyData.timestamp || Date.now()).toISOString()
+      });
+
+    if (insertError) {
+      console.error('Failed to insert reply:', insertError);
+      return;
+    }
+
+    console.log('Reply saved successfully:', replyData.id);
+
+    // 自動返信が有効かチェック
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('auto_reply_enabled, ai_auto_reply_enabled')
+      .eq('user_id', persona.user_id)
+      .single();
+
+    console.log('Profile auto-reply settings:', profile);
+
+    if (profile?.auto_reply_enabled || profile?.ai_auto_reply_enabled) {
+      console.log('Auto-reply is enabled, sending auto-reply...');
       
-      if (!response.ok) {
-        console.error(`Failed to fetch reply details for persona ${persona.id}:`, response.status);
-        return;
+      // 自動返信を送信
+      const { data: autoReplyResult, error: autoReplyError } = await supabase.functions.invoke('threads-auto-reply', {
+        body: {
+          postContent: '',
+          replyContent: replyData.text,
+          personaId: persona.id,
+          userId: persona.user_id
+        }
+      });
+
+      if (autoReplyError) {
+        console.error('Auto-reply error:', autoReplyError);
+      } else {
+        console.log('Auto-reply sent successfully:', autoReplyResult);
+        
+        // auto_reply_sentフラグを更新
+        await supabase
+          .from('thread_replies')
+          .update({ auto_reply_sent: true })
+          .eq('reply_id', replyData.id);
       }
-
-      const replyData = await response.json();
-      console.log('Reply data from Threads API:', replyData);
-
-      // リプライをデータベースに保存
-      const { error: insertError } = await supabase
-        .from('thread_replies')
-        .insert({
-          user_id: persona.user_id,
-          persona_id: persona.id,
-          original_post_id: replyData.reply_to_id || '',
-          reply_id: replyData.id,
-          reply_text: replyData.text || '',
-          reply_author_id: replyData.username || '',
-          reply_author_username: replyData.username,
-          reply_timestamp: new Date(replyData.timestamp || Date.now()).toISOString()
-        });
-
-      if (insertError) {
-        console.error('Failed to insert reply:', insertError);
-        return;
-      }
-
-      console.log('Reply saved successfully');
-
-      // 自動返信が有効かチェック
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('auto_reply_enabled, ai_auto_reply_enabled')
-        .eq('user_id', persona.user_id)
-        .single();
-
-      if (profile?.auto_reply_enabled || profile?.ai_auto_reply_enabled) {
-        // 自動返信を送信
-        await supabase.functions.invoke('threads-auto-reply', {
-          body: {
-            postContent: '', // 元投稿の内容が必要な場合は取得
-            replyContent: replyData.text,
-            personaId: persona.id,
-            userId: persona.user_id
-          }
-        });
-      }
-
-    } catch (error) {
-      console.error(`Error processing reply for persona ${persona.id}:`, error);
+    } else {
+      console.log('Auto-reply is disabled for this user');
     }
 
   } catch (error) {
-    console.error('Error in processReplyMention:', error);
+    console.error('Error in processReplyData:', error);
   }
 }
