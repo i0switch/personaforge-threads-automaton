@@ -36,42 +36,87 @@ export const UserManagementTable = () => {
 
   const loadUsers = async () => {
     try {
-      // Supabaseの認証テーブルから直接は取得できないため、プロフィールテーブルとアカウント状態テーブルを結合
-      const { data: profiles, error: profilesError } = await supabase
+      // プロフィールとアカウント状態を結合してユーザー情報を取得
+      const { data: profilesData, error: profilesError } = await supabase
         .from('profiles')
-        .select('*');
+        .select(`
+          user_id,
+          display_name,
+          created_at,
+          user_account_status (
+            is_approved,
+            is_active,
+            subscription_status,
+            approved_at
+          )
+        `);
 
       if (profilesError) throw profilesError;
 
-      const { data: accountStatuses, error: statusError } = await supabase
-        .from('user_account_status')
-        .select('*');
+      // 認証ユーザーの情報を管理者として取得
+      const { data: { users: authUsers }, error: authError } = await supabase.auth.admin.listUsers();
+      
+      if (authError) {
+        console.error('Auth users fetch error:', authError);
+        // 認証ユーザー情報が取得できない場合は、プロフィール情報のみで進める
+      }
 
-      if (statusError) throw statusError;
-
-      // プロフィールとアカウント状態を結合
-      const combinedData = profiles?.map(profile => {
-        const status = accountStatuses?.find(s => s.user_id === profile.user_id);
+      const combinedData = profilesData?.map(profile => {
+        const authUser = authUsers?.find(u => u.id === profile.user_id);
+        const accountStatus = profile.user_account_status?.[0];
+        
         return {
           user_id: profile.user_id,
-          email: `user-${profile.user_id.slice(0, 8)}`, // 実際のメールアドレスは認証テーブルから取得できないため仮の表示
+          email: authUser?.email || `user-${profile.user_id.slice(0, 8)}@example.com`,
           display_name: profile.display_name || 'Unknown',
-          is_approved: status?.is_approved || false,
-          is_active: status?.is_active || false,
-          subscription_status: status?.subscription_status || 'free',
+          is_approved: accountStatus?.is_approved || false,
+          is_active: accountStatus?.is_active || false,
+          subscription_status: accountStatus?.subscription_status || 'free',
           created_at: profile.created_at,
-          approved_at: status?.approved_at
+          approved_at: accountStatus?.approved_at
         };
       }) || [];
 
       setUsers(combinedData);
     } catch (error) {
       console.error('Error loading users:', error);
-      toast({
-        title: "エラー",
-        description: "ユーザー情報の読み込みに失敗しました。",
-        variant: "destructive",
-      });
+      // フォールバック: プロフィールとアカウント状態のみで表示
+      try {
+        const { data: profiles, error: profilesError } = await supabase
+          .from('profiles')
+          .select('*');
+
+        if (profilesError) throw profilesError;
+
+        const { data: accountStatuses, error: statusError } = await supabase
+          .from('user_account_status')
+          .select('*');
+
+        if (statusError) throw statusError;
+
+        const fallbackData = profiles?.map(profile => {
+          const status = accountStatuses?.find(s => s.user_id === profile.user_id);
+          return {
+            user_id: profile.user_id,
+            email: `user-${profile.user_id.slice(0, 8)}@hidden.com`,
+            display_name: profile.display_name || 'Unknown',
+            is_approved: status?.is_approved || false,
+            is_active: status?.is_active || false,
+            subscription_status: status?.subscription_status || 'free',
+            created_at: profile.created_at,
+            approved_at: status?.approved_at
+          };
+        }) || [];
+
+        setUsers(fallbackData);
+      } catch (fallbackError) {
+        console.error('Fallback error:', fallbackError);
+        toast({
+          title: "エラー",
+          description: "ユーザー情報の読み込みに失敗しました。",
+          variant: "destructive",
+        });
+      }
     } finally {
       setLoading(false);
     }
@@ -90,12 +135,32 @@ export const UserManagementTable = () => {
         updateData.is_active = true;
       }
 
-      const { error } = await supabase
+      // user_account_statusレコードが存在しない場合は作成
+      const { data: existingStatus } = await supabase
         .from('user_account_status')
-        .update(updateData)
-        .eq('user_id', userId);
+        .select('id')
+        .eq('user_id', userId)
+        .maybeSingle();
 
-      if (error) throw error;
+      if (!existingStatus) {
+        // レコードが存在しない場合は新規作成
+        const { error: insertError } = await supabase
+          .from('user_account_status')
+          .insert({
+            user_id: userId,
+            ...updateData
+          });
+
+        if (insertError) throw insertError;
+      } else {
+        // レコードが存在する場合は更新
+        const { error: updateError } = await supabase
+          .from('user_account_status')
+          .update(updateData)
+          .eq('user_id', userId);
+
+        if (updateError) throw updateError;
+      }
 
       toast({
         title: "成功",
@@ -118,12 +183,32 @@ export const UserManagementTable = () => {
   const updateSubscriptionStatus = async (userId: string, subscriptionStatus: string) => {
     setUpdating(userId);
     try {
-      const { error } = await supabase
+      // user_account_statusレコードが存在しない場合は作成
+      const { data: existingStatus } = await supabase
         .from('user_account_status')
-        .update({ subscription_status: subscriptionStatus })
-        .eq('user_id', userId);
+        .select('id')
+        .eq('user_id', userId)
+        .maybeSingle();
 
-      if (error) throw error;
+      if (!existingStatus) {
+        // レコードが存在しない場合は新規作成
+        const { error: insertError } = await supabase
+          .from('user_account_status')
+          .insert({
+            user_id: userId,
+            subscription_status: subscriptionStatus
+          });
+
+        if (insertError) throw insertError;
+      } else {
+        // レコードが存在する場合は更新
+        const { error: updateError } = await supabase
+          .from('user_account_status')
+          .update({ subscription_status: subscriptionStatus })
+          .eq('user_id', userId);
+
+        if (updateError) throw updateError;
+      }
 
       toast({
         title: "成功",

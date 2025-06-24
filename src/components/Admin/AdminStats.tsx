@@ -26,16 +26,31 @@ export const AdminStats = () => {
 
   const loadStats = async () => {
     try {
-      const { data: accountStatuses, error } = await supabase
+      // プロフィールの総数を取得（総ユーザー数）
+      const { data: profiles, error: profilesError } = await supabase
+        .from('profiles')
+        .select('user_id');
+
+      if (profilesError) throw profilesError;
+
+      // アカウント状態を取得
+      const { data: accountStatuses, error: statusError } = await supabase
         .from('user_account_status')
-        .select('is_approved, is_active, subscription_status');
+        .select('user_id, is_approved, is_active, subscription_status');
 
-      if (error) throw error;
+      if (statusError) throw statusError;
 
-      const totalUsers = accountStatuses?.length || 0;
+      const totalUsers = profiles?.length || 0;
+      
+      // アカウント状態が存在するユーザーの統計
       const approvedUsers = accountStatuses?.filter(u => u.is_approved).length || 0;
-      const pendingUsers = accountStatuses?.filter(u => !u.is_approved).length || 0;
-      const activeSubscriptions = accountStatuses?.filter(u => u.subscription_status !== 'free').length || 0;
+      
+      // 承認待ちユーザー = 総ユーザー数 - 承認済みユーザー数
+      const pendingUsers = totalUsers - approvedUsers;
+      
+      const activeSubscriptions = accountStatuses?.filter(u => 
+        u.subscription_status && u.subscription_status !== 'free'
+      ).length || 0;
 
       setStats({
         totalUsers,
