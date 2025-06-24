@@ -4,17 +4,37 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import { useNavigate } from "react-router-dom";
+import { useState } from "react";
 
 export const AccountTab = () => {
   const { user, signOut } = useAuth();
   const { toast } = useToast();
+  const navigate = useNavigate();
+  const [isSigningOut, setIsSigningOut] = useState(false);
 
   const handleSignOut = async () => {
-    await signOut();
-    toast({
-      title: "ログアウト",
-      description: "正常にログアウトしました。",
-    });
+    setIsSigningOut(true);
+    try {
+      await signOut();
+      toast({
+        title: "ログアウト",
+        description: "正常にログアウトしました。",
+      });
+      // ログアウト後にホームページにリダイレクト
+      navigate("/");
+    } catch (error) {
+      console.error('Sign out error:', error);
+      toast({
+        title: "ログアウトエラー",
+        description: "ログアウト中にエラーが発生しましたが、セッションをクリアしました。",
+        variant: "destructive",
+      });
+      // エラーが発生してもホームページにリダイレクト
+      navigate("/");
+    } finally {
+      setIsSigningOut(false);
+    }
   };
 
   return (
@@ -42,8 +62,9 @@ export const AccountTab = () => {
           <Button 
             onClick={handleSignOut}
             variant="destructive"
+            disabled={isSigningOut}
           >
-            ログアウト
+            {isSigningOut ? "ログアウト中..." : "ログアウト"}
           </Button>
         </div>
       </CardContent>

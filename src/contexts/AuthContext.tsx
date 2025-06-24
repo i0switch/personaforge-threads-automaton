@@ -1,3 +1,4 @@
+
 import { createContext, useContext, useEffect, useState } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
@@ -30,6 +31,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     // Set up auth state listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
+        console.log('Auth state change:', event, session?.user?.id);
         setSession(session);
         setUser(session?.user ?? null);
         setLoading(false);
@@ -67,7 +69,27 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    try {
+      console.log('Signing out user...');
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        console.error('Sign out error:', error);
+        // セッションが見つからない場合でも、ローカル状態をクリア
+        if (error.message.includes('session_not_found') || error.message.includes('Session not found')) {
+          console.log('Session not found, clearing local state');
+          setSession(null);
+          setUser(null);
+          return;
+        }
+        throw error;
+      }
+      console.log('Sign out successful');
+    } catch (error) {
+      console.error('Unexpected sign out error:', error);
+      // エラーが発生しても、ローカル状態をクリア
+      setSession(null);
+      setUser(null);
+    }
   };
 
   const value = {
