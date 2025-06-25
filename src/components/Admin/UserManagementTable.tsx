@@ -60,36 +60,31 @@ export const UserManagementTable = () => {
 
       console.log('Account status data:', accountStatusData);
 
+      // Service Roleを使用してauth.usersから実際のメールアドレスを取得
+      const { data: { users: authUsers }, error: authError } = await supabase.auth.admin.listUsers();
+      
       let combinedData: UserAccount[] = [];
 
-      // Admin APIを試す（より安全な方法で）
-      try {
-        console.log('Attempting to use Admin API...');
-        const { data: authData, error: authError } = await supabase.auth.admin.listUsers();
-        
-        if (authData && authData.users && !authError) {
-          console.log('Successfully got auth users:', authData.users.length);
-          // 実際のメールアドレスを使用してデータを結合
-          combinedData = authData.users.map(authUser => {
-            const accountStatus = accountStatusData?.find(s => s.user_id === authUser.id);
-            const profile = profilesData?.find(p => p.user_id === authUser.id);
-            
-            return {
-              user_id: authUser.id,
-              email: authUser.email || 'メールアドレス不明',
-              display_name: profile?.display_name || authUser.user_metadata?.display_name || `User ${authUser.id.slice(0, 8)}`,
-              is_approved: accountStatus?.is_approved ?? false,
-              is_active: accountStatus?.is_active ?? false,
-              subscription_status: accountStatus?.subscription_status || 'free',
-              created_at: profile?.created_at || authUser.created_at,
-              approved_at: accountStatus?.approved_at || null
-            };
-          });
-        } else {
-          throw new Error('Admin API returned no data or error');
-        }
-      } catch (adminError) {
-        console.log('Admin API failed, using profiles-based approach:', adminError);
+      if (authUsers && !authError) {
+        console.log('Successfully got auth users:', authUsers.length);
+        // 実際のメールアドレスを使用してデータを結合
+        combinedData = authUsers.map(authUser => {
+          const accountStatus = accountStatusData?.find(s => s.user_id === authUser.id);
+          const profile = profilesData?.find(p => p.user_id === authUser.id);
+          
+          return {
+            user_id: authUser.id,
+            email: authUser.email || 'メールアドレス不明',
+            display_name: profile?.display_name || authUser.user_metadata?.display_name || `User ${authUser.id.slice(0, 8)}`,
+            is_approved: accountStatus?.is_approved ?? false,
+            is_active: accountStatus?.is_active ?? false,
+            subscription_status: accountStatus?.subscription_status || 'free',
+            created_at: profile?.created_at || authUser.created_at,
+            approved_at: accountStatus?.approved_at || null
+          };
+        });
+      } else {
+        console.log('Auth users query failed, using profiles-based approach:', authError);
         
         // フォールバック: profilesのuser_idを基に処理
         combinedData = profilesData?.map(profile => {
@@ -98,7 +93,7 @@ export const UserManagementTable = () => {
           
           return {
             user_id: profile.user_id,
-            email: `user-${shortUserId}@システム.ユーザー`,
+            email: `user-${shortUserId}@example.com`,
             display_name: profile.display_name || `User ${shortUserId}`,
             is_approved: accountStatus?.is_approved ?? false,
             is_active: accountStatus?.is_active ?? false,
