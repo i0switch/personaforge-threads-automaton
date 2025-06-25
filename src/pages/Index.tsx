@@ -1,5 +1,3 @@
-
-
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,8 +13,9 @@ import {
   BarChart3,
   Shield,
   Edit,
-  Heart,
-  ExternalLink
+  Zap,
+  ExternalLink,
+  CheckCircle
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAccountStatus } from "@/hooks/useAccountStatus";
@@ -180,54 +179,73 @@ const Index = () => {
           })}
         </div>
 
-        <Card className="border-pink-200 bg-gradient-to-r from-pink-50 to-yellow-50">
+        <Card className="border-purple-200 bg-gradient-to-r from-purple-50 to-blue-50">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-pink-800">
-              <Heart className="h-5 w-5" />
-              恋愛アカウント完全攻略
+            <CardTitle className="flex items-center gap-2 text-purple-800">
+              <Zap className="h-5 w-5" />
+              次元を超越したドスケベライティング革命
             </CardTitle>
-            <CardDescription className="text-pink-700">
-              無限マネタイズ ALL in ONE GPTs
+            <CardDescription className="text-purple-700">
+              AIでアダルトマネタイズを極限まで加速させる禁断の方法
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-3">
-              <div className="bg-white/60 rounded-lg p-4 border border-pink-100">
+              <div className="bg-white/60 rounded-lg p-4 border border-purple-100">
                 <h3 className="font-bold text-lg text-gray-800 mb-2">
-                  「恋愛ジャンルはもう飽和」と思ってません？
+                  「エロが書けないAI」はもう時代遅れ。
                 </h3>
                 <p className="text-gray-700 mb-3">
-                  まだまだ稼ぎ放題なんです。<br/>
-                  しかも、AIが勝手にネタ・コピーを全部作成。<br/>
-                  あなたは投稿ボタンを押すだけ。
+                  AIで"売れるドスケベ文章"を量産可能に<br/>
+                  <br/>
+                  これまでAIはエロ系コンテンツを弾く仕様だった。<br/>
+                  しかし、ある手法を使えば<br/>
+                  <strong>その壁を超えたドスケベライティング</strong>が実現可能に！
                 </p>
               </div>
               
-              <div className="bg-yellow-100 rounded-lg p-4 border border-yellow-200">
-                <h4 className="font-semibold text-gray-800 mb-2">
-                  アカウント設計・ペルソナ・投稿文・長文コンテンツ・セールスレター
+              <div className="bg-gradient-to-r from-yellow-100 to-orange-100 rounded-lg p-4 border border-orange-200">
+                <h4 className="font-semibold text-gray-800 mb-3">
+                  AIがエロを書けない時代は終わった。
                 </h4>
-                <p className="text-gray-700 text-sm mb-2">
-                  恋愛系アカウントを徹底学習したAIが、すべてを一発生成
+                <p className="text-gray-700 text-sm mb-3">
+                  ついに、"制限を超えた文章革命"がここに誕生。
                 </p>
-                <p className="text-pink-700 font-medium">
-                  AIに恐怖すら覚えるこのクオリティをあなたの手に。
+                
+                <div className="space-y-2 mb-3">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="h-4 w-4 text-green-600" />
+                    <span className="text-sm text-gray-700">売れるドスケベライティングをAIで爆速生成</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="h-4 w-4 text-green-600" />
+                    <span className="text-sm text-gray-700">心理学×FOMOを駆使して購買意欲を最大化</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="h-4 w-4 text-green-600" />
+                    <span className="text-sm text-gray-700">今ならまだ誰も知らない、先行者利益を独占！</span>
+                  </div>
+                </div>
+                
+                <p className="text-purple-700 font-medium">
+                  あなたがこの情報を手に入れた瞬間、<br/>
+                  アダアフィの新時代を先取りする側に立つことになる👇
                 </p>
               </div>
             </div>
             
             <Button 
-              className="w-full bg-pink-600 hover:bg-pink-700 text-white"
+              className="w-full bg-purple-600 hover:bg-purple-700 text-white"
               asChild
             >
               <a 
-                href="https://note.com/mido_renai/n/n9a3cdcc9dc4f" 
+                href="https://deeps.me/u/mountain_cb/a/ChatGPTHack" 
                 target="_blank" 
                 rel="noopener noreferrer"
                 className="flex items-center justify-center gap-2"
               >
                 <ExternalLink className="h-4 w-4" />
-                詳細を見る
+                禁断の手法を今すぐ確認する
               </a>
             </Button>
           </CardContent>
@@ -238,4 +256,3 @@ const Index = () => {
 };
 
 export default Index;
-
