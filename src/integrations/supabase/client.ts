@@ -3,22 +3,16 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
-// Environment variable validation
+// Environment variable validation with fallback
 const validateEnvironment = () => {
   const requiredVars = {
-    VITE_SUPABASE_URL: import.meta.env.VITE_SUPABASE_URL,
-    VITE_SUPABASE_ANON_KEY: import.meta.env.VITE_SUPABASE_ANON_KEY,
+    VITE_SUPABASE_URL: import.meta.env.VITE_SUPABASE_URL || 'https://tqcgbsnoiarnawnppwia.supabase.co',
+    VITE_SUPABASE_ANON_KEY: import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRxY2dic25vaWFybmF3bnBwd2lhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk5MTUxODEsImV4cCI6MjA2NTQ5MTE4MX0.5_mXobtncEbIHyigC_EqP-z1cr7AWYepR7L2CZwjBvI',
   };
 
-  const missing = Object.entries(requiredVars)
-    .filter(([_, value]) => !value)
-    .map(([key]) => key);
-
-  if (missing.length > 0) {
-    throw new Error(
-      `Missing required environment variables: ${missing.join(', ')}\n` +
-      'Please check your environment configuration.'
-    );
+  // Use fallback values if environment variables are not set
+  if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
+    console.warn('Using fallback Supabase configuration. For production, set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY environment variables.');
   }
 
   return requiredVars;
@@ -44,4 +38,5 @@ export const supabase = createClient<Database>(
 // Log configuration status (development only)
 if (import.meta.env.DEV) {
   console.log('Supabase client configured successfully');
+  console.log('Project URL:', env.VITE_SUPABASE_URL);
 }
