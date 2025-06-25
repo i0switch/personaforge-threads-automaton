@@ -14,7 +14,9 @@ import {
   Image,
   BarChart3,
   Shield,
-  Edit
+  Edit,
+  Heart,
+  ExternalLink
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAccountStatus } from "@/hooks/useAccountStatus";
@@ -178,17 +180,56 @@ const Index = () => {
           })}
         </div>
 
-        <Card>
+        <Card className="border-pink-200 bg-gradient-to-r from-pink-50 to-yellow-50">
           <CardHeader>
-            <CardTitle>広告スペース</CardTitle>
-            <CardDescription>
-              こちらにあなたのコンテンツの広告を配置できます
+            <CardTitle className="flex items-center gap-2 text-pink-800">
+              <Heart className="h-5 w-5" />
+              恋愛アカウント完全攻略
+            </CardTitle>
+            <CardDescription className="text-pink-700">
+              無限マネタイズ ALL in ONE GPTs
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="text-center py-8 text-muted-foreground">
-              広告コンテンツをここに配置してください
+            <div className="space-y-3">
+              <div className="bg-white/60 rounded-lg p-4 border border-pink-100">
+                <h3 className="font-bold text-lg text-gray-800 mb-2">
+                  「恋愛ジャンルはもう飽和」と思ってません？
+                </h3>
+                <p className="text-gray-700 mb-3">
+                  まだまだ稼ぎ放題なんです。<br/>
+                  しかも、AIが勝手にネタ・コピーを全部作成。<br/>
+                  あなたは投稿ボタンを押すだけ。
+                </p>
+              </div>
+              
+              <div className="bg-yellow-100 rounded-lg p-4 border border-yellow-200">
+                <h4 className="font-semibold text-gray-800 mb-2">
+                  アカウント設計・ペルソナ・投稿文・長文コンテンツ・セールスレター
+                </h4>
+                <p className="text-gray-700 text-sm mb-2">
+                  恋愛系アカウントを徹底学習したAIが、すべてを一発生成
+                </p>
+                <p className="text-pink-700 font-medium">
+                  AIに恐怖すら覚えるこのクオリティをあなたの手に。
+                </p>
+              </div>
             </div>
+            
+            <Button 
+              className="w-full bg-pink-600 hover:bg-pink-700 text-white"
+              asChild
+            >
+              <a 
+                href="https://note.com/mido_renai/n/n9a3cdcc9dc4f" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="flex items-center justify-center gap-2"
+              >
+                <ExternalLink className="h-4 w-4" />
+                詳細を見る
+              </a>
+            </Button>
           </CardContent>
         </Card>
       </div>
