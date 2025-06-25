@@ -4,89 +4,65 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
-import { Upload, ArrowLeft, Save, Loader2, ImagePlus, Link } from "lucide-react";
-import { useNavigate, useSearchParams } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import type { Database } from "@/integrations/supabase/types";
-import { PersonaList } from "@/components/PersonaList";
+import { Badge } from "@/components/ui/badge";
+import { Trash2, Eye, EyeOff } from "lucide-react";
 
-type PersonaData = {
+interface Persona {
+  id: string;
   name: string;
   age: string;
   personality: string;
   expertise: string[];
-  toneOfVoice: string;
-  avatar: string;
-  threadsAccessToken: string;
-  threadsAppId: string;
-  threadsAppSecret: string;
-  webhookVerifyToken: string;
-};
+  tone_of_voice: string;
+  avatar_url?: string;
+  is_active: boolean;
+  threads_app_id?: string;
+  threads_app_secret?: string;
+  webhook_verify_token?: string;
+}
 
 const PersonaSetup = () => {
-  const navigate = useNavigate();
-  const { toast } = useToast();
   const { user } = useAuth();
-  const [searchParams] = useSearchParams();
-  const personaId = searchParams.get('id');
-  
-  const [persona, setPersona] = useState<PersonaData>({
+  const { toast } = useToast();
+  const [personas, setPersonas] = useState<Persona[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editingPersona, setEditingPersona] = useState<Persona | null>(null);
+  const [showAppSecret, setShowAppSecret] = useState(false);
+  const [showVerifyToken, setShowVerifyToken] = useState(false);
+
+  const [formData, setFormData] = useState({
     name: "",
     age: "",
     personality: "",
-    expertise: [],
-    toneOfVoice: "",
-    avatar: "https://images.unsplash.com/photo-1649972904349-6e44c42644a7?w=150",
-    threadsAccessToken: "",
-    threadsAppId: "",
-    threadsAppSecret: "",
-    webhookVerifyToken: ""
+    expertise: "",
+    tone_of_voice: "",
+    threads_app_id: "",
+    threads_app_secret: "",
+    webhook_verify_token: ""
   });
 
-  const [newExpertise, setNewExpertise] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [showImageUrlInput, setShowImageUrlInput] = useState(false);
-  const [imageUrl, setImageUrl] = useState("");
-
   useEffect(() => {
-    if (personaId) {
-      loadPersona(personaId);
+    if (user) {
+      loadPersonas();
     }
-  }, [personaId]);
+  }, [user]);
 
-  const loadPersona = async (id: string) => {
-    setLoading(true);
+  const loadPersonas = async () => {
     try {
       const { data, error } = await supabase
-        .from('personas')
-        .select('*')
-        .eq('id', id)
-        .eq('user_id', user?.id)
-        .single();
+        .from("personas")
+        .select("*")
+        .eq("user_id", user?.id)
+        .order("created_at", { ascending: false });
 
       if (error) throw error;
-
-      if (data) {
-        setPersona({
-          name: data.name,
-          age: data.age || "",
-          personality: data.personality || "",
-          expertise: data.expertise || [],
-          toneOfVoice: data.tone_of_voice || "",
-          avatar: data.avatar_url || "https://images.unsplash.com/photo-1649972904349-6e44c42644a7?w=150",
-          threadsAccessToken: data.threads_access_token || "",
-          threadsAppId: data.threads_app_id || "",
-          threadsAppSecret: data.threads_app_secret || "",
-          webhookVerifyToken: data.webhook_verify_token || ""
-        });
-      }
+      setPersonas(data || []);
     } catch (error) {
-      console.error('Error loading persona:', error);
+      console.error("Error loading personas:", error);
       toast({
         title: "エラー",
         description: "ペルソナの読み込みに失敗しました。",
@@ -97,441 +73,405 @@ const PersonaSetup = () => {
     }
   };
 
-  const handleSave = async () => {
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
     if (!user) return;
-    if (!persona.name.trim()) {
-      toast({
-        title: "エラー",
-        description: "ペルソナ名を入力してください。",
-        variant: "destructive",
-      });
-      return;
-    }
 
-    setSaving(true);
     try {
-      const personaData = {
-        name: persona.name,
-        age: persona.age,
-        personality: persona.personality,
-        expertise: persona.expertise,
-        tone_of_voice: persona.toneOfVoice,
-        avatar_url: persona.avatar,
-        threads_access_token: persona.threadsAccessToken,
-        threads_app_id: persona.threadsAppId,
-        threads_app_secret: persona.threadsAppSecret,
-        webhook_verify_token: persona.webhookVerifyToken,
-        user_id: user.id,
-        is_active: true
+      const expertiseArray = formData.expertise.split(',').map(item => item.trim()).filter(Boolean);
+      
+      let personaData: any = {
+        name: formData.name,
+        age: formData.age,
+        personality: formData.personality,
+        expertise: expertiseArray,
+        tone_of_voice: formData.tone_of_voice,
+        threads_app_id: formData.threads_app_id || null,
+        webhook_verify_token: formData.webhook_verify_token || null,
+        user_id: user.id
       };
 
-      if (personaId) {
-        // Update existing persona
+      // threads_app_secretが入力されている場合は暗号化して保存
+      if (formData.threads_app_secret) {
+        const { data: secretData, error: secretError } = await supabase.functions.invoke('save-secret', {
+          body: {
+            key_name: `threads_app_secret_${editingPersona?.id || 'new'}`,
+            key_value: formData.threads_app_secret
+          }
+        });
+
+        if (secretError) {
+          throw new Error('APIキーの暗号化に失敗しました');
+        }
+
+        personaData.threads_app_secret = secretData.encrypted_key;
+      }
+
+      if (editingPersona) {
         const { error } = await supabase
-          .from('personas')
+          .from("personas")
           .update(personaData)
-          .eq('id', personaId)
-          .eq('user_id', user.id);
+          .eq("id", editingPersona.id);
 
         if (error) throw error;
+        
+        toast({
+          title: "成功",
+          description: "ペルソナが更新されました。",
+        });
       } else {
-        // Create new persona
         const { error } = await supabase
-          .from('personas')
+          .from("personas")
           .insert([personaData]);
 
         if (error) throw error;
-      }
-
-      toast({
-        title: "成功",
-        description: personaId ? "ペルソナを更新しました。" : "ペルソナを作成しました。",
-      });
-      navigate("/");
-    } catch (error) {
-      console.error('Error saving persona:', error);
-      toast({
-        title: "エラー",
-        description: "ペルソナの保存に失敗しました。",
-        variant: "destructive",
-      });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const addExpertise = () => {
-    if (newExpertise && !persona.expertise.includes(newExpertise)) {
-      setPersona(prev => ({
-        ...prev,
-        expertise: [...prev.expertise, newExpertise]
-      }));
-      setNewExpertise("");
-    }
-  };
-
-  const removeExpertise = (item: string) => {
-    setPersona(prev => ({
-      ...prev,
-      expertise: prev.expertise.filter(exp => exp !== item)
-    }));
-  };
-
-  const handleImageChange = () => {
-    setShowImageUrlInput(true);
-    setImageUrl(persona.avatar);
-  };
-
-  const handleImageUrlSave = () => {
-    if (imageUrl.trim()) {
-      setPersona(prev => ({ ...prev, avatar: imageUrl }));
-      setShowImageUrlInput(false);
-      setImageUrl("");
-      toast({
-        title: "成功",
-        description: "画像を変更しました。",
-      });
-    }
-  };
-
-  const handleImageUrlCancel = () => {
-    setShowImageUrlInput(false);
-    setImageUrl("");
-  };
-
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file && user) {
-      try {
-        setSaving(true);
         
-        // Upload file to Supabase Storage
-        const fileExt = file.name.split('.').pop();
-        const fileName = `${user.id}/${Date.now()}.${fileExt}`;
-        
-        const { data, error } = await supabase.storage
-          .from('persona-avatars')
-          .upload(fileName, file);
-
-        if (error) throw error;
-
-        // Get public URL
-        const { data: { publicUrl } } = supabase.storage
-          .from('persona-avatars')
-          .getPublicUrl(fileName);
-
-        setPersona(prev => ({ ...prev, avatar: publicUrl }));
         toast({
           title: "成功",
-          description: "画像をアップロードしました。",
+          description: "ペルソナが作成されました。",
         });
+      }
+
+      setFormData({
+        name: "",
+        age: "",
+        personality: "",
+        expertise: "",
+        tone_of_voice: "",
+        threads_app_id: "",
+        threads_app_secret: "",
+        webhook_verify_token: ""
+      });
+      setIsEditing(false);
+      setEditingPersona(null);
+      loadPersonas();
+    } catch (error) {
+      console.error("Error saving persona:", error);
+      toast({
+        title: "エラー",
+        description: error instanceof Error ? error.message : "ペルソナの保存に失敗しました。",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleEdit = async (persona: Persona) => {
+    setEditingPersona(persona);
+    
+    // 暗号化されたthreads_app_secretを復号化
+    let decryptedSecret = "";
+    if (persona.threads_app_secret) {
+      try {
+        const { data: secretData, error: secretError } = await supabase.functions.invoke('retrieve-secret', {
+          body: {
+            key_name: `threads_app_secret_${persona.id}`
+          }
+        });
+
+        if (!secretError && secretData?.key_value) {
+          decryptedSecret = secretData.key_value;
+        }
       } catch (error) {
-        console.error('Error uploading image:', error);
-        toast({
-          title: "エラー",
-          description: "画像のアップロードに失敗しました。",
-          variant: "destructive",
-        });
-      } finally {
-        setSaving(false);
+        console.error("Error retrieving secret:", error);
       }
     }
+    
+    setFormData({
+      name: persona.name,
+      age: persona.age || "",
+      personality: persona.personality || "",
+      expertise: persona.expertise?.join(", ") || "",
+      tone_of_voice: persona.tone_of_voice || "",
+      threads_app_id: persona.threads_app_id || "",
+      threads_app_secret: decryptedSecret,
+      webhook_verify_token: persona.webhook_verify_token || ""
+    });
+    setIsEditing(true);
   };
 
-  const getWebhookUrl = () => {
-    const baseUrl = 'https://tqcgbsnoiarnawnppwia.supabase.co/functions/v1/threads-webhook';
-    if (personaId) {
-      return `${baseUrl}?persona_id=${personaId}`;
+  const handleDelete = async (id: string) => {
+    if (!confirm("このペルソナを削除してもよろしいですか？")) return;
+
+    try {
+      const { error } = await supabase
+        .from("personas")
+        .delete()
+        .eq("id", id);
+
+      if (error) throw error;
+
+      toast({
+        title: "成功",
+        description: "ペルソナが削除されました。",
+      });
+      loadPersonas();
+    } catch (error) {
+      console.error("Error deleting persona:", error);
+      toast({
+        title: "エラー",
+        description: "ペルソナの削除に失敗しました。",
+        variant: "destructive",
+      });
     }
-    return `${baseUrl}?persona_id={ペルソナID}`;
   };
+
+  const toggleActive = async (id: string, currentStatus: boolean) => {
+    try {
+      const { error } = await supabase
+        .from("personas")
+        .update({ is_active: !currentStatus })
+        .eq("id", id);
+
+      if (error) throw error;
+
+      toast({
+        title: "成功",
+        description: `ペルソナが${!currentStatus ? "有効" : "無効"}になりました。`,
+      });
+      loadPersonas();
+    } catch (error) {
+      console.error("Error toggling persona status:", error);
+      toast({
+        title: "エラー",
+        description: "ペルソナの状態変更に失敗しました。",
+        variant: "destructive",
+      });
+    }
+  };
+
+  if (loading) {
+    return <div className="flex justify-center p-8">読み込み中...</div>;
+  }
 
   return (
-    <div className="min-h-screen bg-background p-6">
-      <div className="max-w-4xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="flex items-center gap-4">
-          <Button onClick={() => navigate("/")} variant="ghost" size="sm">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            戻る
+    <div className="container mx-auto p-6 space-y-6">
+      <div className="flex justify-between items-center">
+        <h1 className="text-2xl font-bold">ペルソナ設定</h1>
+        {!isEditing && (
+          <Button onClick={() => setIsEditing(true)}>
+            新しいペルソナを作成
           </Button>
-          <div>
-            <h1 className="text-3xl font-bold text-foreground">ペルソナ設定</h1>
-            <p className="text-muted-foreground">AIの人格とキャラクター、Threads設定を設定します</p>
-          </div>
-        </div>
-
-        {/* Show existing personas if not editing */}
-        {!personaId && !loading && (
-          <div className="mb-6">
-            <PersonaList />
-          </div>
         )}
+      </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Preview */}
-          <Card className="lg:col-span-1">
-            <CardHeader>
-              <CardTitle>プレビュー</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="text-center">
-                <Avatar className="h-24 w-24 mx-auto mb-4">
-                  <AvatarImage src={persona.avatar} />
-                  <AvatarFallback>AI</AvatarFallback>
-                </Avatar>
+      {isEditing && (
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              {editingPersona ? "ペルソナを編集" : "新しいペルソナを作成"}
+            </CardTitle>
+            <CardDescription>
+              AIペルソナの基本情報とThreads APIの設定を入力してください。
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="name">名前 *</Label>
+                  <Input
+                    id="name"
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    required
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="age">年齢</Label>
+                  <Input
+                    id="age"
+                    value={formData.age}
+                    onChange={(e) => setFormData({ ...formData, age: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <Label htmlFor="personality">性格・特徴</Label>
+                <Textarea
+                  id="personality"
+                  value={formData.personality}
+                  onChange={(e) => setFormData({ ...formData, personality: e.target.value })}
+                  rows={3}
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="expertise">専門分野（カンマ区切り）</Label>
+                <Input
+                  id="expertise"
+                  value={formData.expertise}
+                  onChange={(e) => setFormData({ ...formData, expertise: e.target.value })}
+                  placeholder="例: テクノロジー, マーケティング, デザイン"
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="tone_of_voice">口調・トーン</Label>
+                <Input
+                  id="tone_of_voice"
+                  value={formData.tone_of_voice}
+                  onChange={(e) => setFormData({ ...formData, tone_of_voice: e.target.value })}
+                  placeholder="例: フレンドリー, 専門的, カジュアル"
+                />
+              </div>
+
+              <div className="border-t pt-4">
+                <h3 className="text-lg font-semibold mb-4">Threads API設定</h3>
                 
-                {/* Image Change UI */}
-                {showImageUrlInput ? (
-                  <div className="space-y-2 mb-4">
-                    <Label htmlFor="imageUrl">画像URL</Label>
+                <div className="grid grid-cols-1 gap-4">
+                  <div>
+                    <Label htmlFor="threads_app_id">Threads App ID</Label>
                     <Input
-                      id="imageUrl"
-                      value={imageUrl}
-                      onChange={(e) => setImageUrl(e.target.value)}
-                      placeholder="画像のURLを入力してください"
+                      id="threads_app_id"
+                      value={formData.threads_app_id}
+                      onChange={(e) => setFormData({ ...formData, threads_app_id: e.target.value })}
                     />
-                    <div className="flex gap-2 justify-center">
-                      <Button onClick={handleImageUrlSave} size="sm">
-                        <Save className="h-4 w-4 mr-2" />
-                        保存
-                      </Button>
-                      <Button onClick={handleImageUrlCancel} variant="outline" size="sm">
-                        キャンセル
+                  </div>
+
+                  <div>
+                    <Label htmlFor="threads_app_secret">Threads App Secret</Label>
+                    <div className="relative">
+                      <Input
+                        id="threads_app_secret"
+                        type={showAppSecret ? "text" : "password"}
+                        value={formData.threads_app_secret}
+                        onChange={(e) => setFormData({ ...formData, threads_app_secret: e.target.value })}
+                        className="pr-10"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="absolute right-0 top-0 h-full px-3"
+                        onClick={() => setShowAppSecret(!showAppSecret)}
+                      >
+                        {showAppSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </Button>
                     </div>
                   </div>
-                ) : (
-                  <div className="space-y-2 mb-4">
-                    <div className="flex gap-2 justify-center">
-                      <Button 
-                        onClick={handleImageChange} 
-                        variant="outline" 
+
+                  <div>
+                    <Label htmlFor="webhook_verify_token">Webhook Verify Token</Label>
+                    <div className="relative">
+                      <Input
+                        id="webhook_verify_token"
+                        type={showVerifyToken ? "text" : "password"}
+                        value={formData.webhook_verify_token}
+                        onChange={(e) => setFormData({ ...formData, webhook_verify_token: e.target.value })}
+                        className="pr-10"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
                         size="sm"
-                        disabled={saving}
+                        className="absolute right-0 top-0 h-full px-3"
+                        onClick={() => setShowVerifyToken(!showVerifyToken)}
                       >
-                        <Link className="h-4 w-4 mr-2" />
-                        URLで変更
-                      </Button>
-                      <Button 
-                        onClick={() => document.getElementById('fileInput')?.click()}
-                        variant="outline" 
-                        size="sm"
-                        disabled={saving}
-                      >
-                        <Upload className="h-4 w-4 mr-2" />
-                        ファイル選択
+                        {showVerifyToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </Button>
                     </div>
-                    <input
-                      id="fileInput"
-                      type="file"
-                      accept="image/*"
-                      onChange={handleFileUpload}
-                      className="hidden"
-                    />
                   </div>
-                )}
-              </div>
-              <div className="space-y-2">
-                <h3 className="font-semibold text-lg">{persona.name}</h3>
-                <p className="text-sm text-muted-foreground">{persona.age}</p>
-                <p className="text-sm">{persona.personality}</p>
-                <div className="flex flex-wrap gap-2">
-                  {persona.expertise.map((item, index) => (
-                    <Badge key={index} variant="secondary">{item}</Badge>
-                  ))}
                 </div>
               </div>
-            </CardContent>
-          </Card>
 
-          {/* Settings */}
-          <Card className="lg:col-span-2">
+              <div className="flex space-x-2">
+                <Button type="submit">
+                  {editingPersona ? "更新" : "作成"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setIsEditing(false);
+                    setEditingPersona(null);
+                    setFormData({
+                      name: "",
+                      age: "",
+                      personality: "",
+                      expertise: "",
+                      tone_of_voice: "",
+                      threads_app_id: "",
+                      threads_app_secret: "",
+                      webhook_verify_token: ""
+                    });
+                  }}
+                >
+                  キャンセル
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="grid gap-4">
+        {personas.map((persona) => (
+          <Card key={persona.id}>
             <CardHeader>
-              <CardTitle>{personaId ? "ペルソナ編集" : "新規ペルソナ作成"}</CardTitle>
-              <CardDescription>
-                ペルソナの基本的な特性とThreads連携設定
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {loading ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="h-6 w-6 animate-spin mr-2" />
-                  <span>読み込み中...</span>
+              <div className="flex justify-between items-start">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    {persona.name}
+                    <Badge variant={persona.is_active ? "default" : "secondary"}>
+                      {persona.is_active ? "有効" : "無効"}
+                    </Badge>
+                  </CardTitle>
+                  <CardDescription>
+                    {persona.age && `年齢: ${persona.age}`}
+                    {persona.tone_of_voice && ` | トーン: ${persona.tone_of_voice}`}
+                  </CardDescription>
                 </div>
-              ) : (
-                <>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="name">名前</Label>
-                      <Input
-                        id="name"
-                        value={persona.name}
-                        onChange={(e) => setPersona(prev => ({ ...prev, name: e.target.value }))}
-                        placeholder="ペルソナの名前"
-                        disabled={saving}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="age">年齢層</Label>
-                      <Input
-                        id="age"
-                        value={persona.age}
-                        onChange={(e) => setPersona(prev => ({ ...prev, age: e.target.value }))}
-                        placeholder="年齢層（例：20代）"
-                        disabled={saving}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="personality">性格・特徴</Label>
-                    <Textarea
-                      id="personality"
-                      value={persona.personality}
-                      onChange={(e) => setPersona(prev => ({ ...prev, personality: e.target.value }))}
-                      placeholder="ペルソナの性格や特徴を詳しく記述してください"
-                      rows={3}
-                      disabled={saving}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="tone">話し方・トーン</Label>
-                    <Textarea
-                      id="tone"
-                      value={persona.toneOfVoice}
-                      onChange={(e) => setPersona(prev => ({ ...prev, toneOfVoice: e.target.value }))}
-                      placeholder="どのような話し方をするか詳しく記述してください"
-                      rows={3}
-                      disabled={saving}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>専門分野・興味関心</Label>
-                    <div className="flex gap-2 mb-2">
-                      <Input
-                        value={newExpertise}
-                        onChange={(e) => setNewExpertise(e.target.value)}
-                        placeholder="新しい分野を追加"
-                        onKeyPress={(e) => e.key === 'Enter' && addExpertise()}
-                        disabled={saving}
-                      />
-                      <Button onClick={addExpertise} variant="outline" size="sm" disabled={saving}>
-                        追加
-                      </Button>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {persona.expertise.map((item, index) => (
-                        <Badge 
-                          key={index} 
-                          variant="secondary"
-                          className="cursor-pointer hover:bg-destructive hover:text-destructive-foreground"
-                          onClick={() => !saving && removeExpertise(item)}
-                        >
-                          {item} ×
+                <div className="flex space-x-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => toggleActive(persona.id, persona.is_active)}
+                  >
+                    {persona.is_active ? "無効化" : "有効化"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleEdit(persona)}
+                  >
+                    編集
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleDelete(persona.id)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {persona.personality && (
+                  <p><strong>性格:</strong> {persona.personality}</p>
+                )}
+                {persona.expertise && persona.expertise.length > 0 && (
+                  <div>
+                    <strong>専門分野:</strong>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {persona.expertise.map((skill, index) => (
+                        <Badge key={index} variant="outline">
+                          {skill}
                         </Badge>
                       ))}
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      クリックして削除
-                    </p>
                   </div>
-
-                  {/* Threads設定セクション */}
-                  <div className="border-t pt-6">
-                    <h3 className="text-lg font-semibold mb-4">Threads連携設定</h3>
-                    
-                    <div className="space-y-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="threadsToken">Threadsアクセストークン</Label>
-                        <Input
-                          id="threadsToken"
-                          type="password"
-                          value={persona.threadsAccessToken}
-                          onChange={(e) => setPersona(prev => ({ ...prev, threadsAccessToken: e.target.value }))}
-                          placeholder="このペルソナ用のThreadsアクセストークンを入力"
-                          disabled={saving}
-                        />
-                        <p className="text-xs text-muted-foreground">
-                          このペルソナでThreadsに投稿する際に使用されるアクセストークンです
-                        </p>
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="threadsAppId">Threads App ID</Label>
-                          <Input
-                            id="threadsAppId"
-                            value={persona.threadsAppId}
-                            onChange={(e) => setPersona(prev => ({ ...prev, threadsAppId: e.target.value }))}
-                            placeholder="Meta for DevelopersのApp ID"
-                            disabled={saving}
-                          />
-                        </div>
-                        
-                        <div className="space-y-2">
-                          <Label htmlFor="threadsAppSecret">App Secret</Label>
-                          <Input
-                            id="threadsAppSecret"
-                            type="password"
-                            value={persona.threadsAppSecret}
-                            onChange={(e) => setPersona(prev => ({ ...prev, threadsAppSecret: e.target.value }))}
-                            placeholder="Webhook署名検証用のApp Secret"
-                            disabled={saving}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor="webhookVerifyToken">Webhook Verify Token</Label>
-                        <Input
-                          id="webhookVerifyToken"
-                          value={persona.webhookVerifyToken}
-                          onChange={(e) => setPersona(prev => ({ ...prev, webhookVerifyToken: e.target.value }))}
-                          placeholder="Webhook検証用のトークン（任意の文字列）"
-                          disabled={saving}
-                        />
-                        <p className="text-xs text-muted-foreground">
-                          Meta for DevelopersのWebhook設定で同じ値を設定してください
-                        </p>
-                      </div>
-
-                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                        <div className="text-sm text-blue-700">
-                          <strong>Webhook URL:</strong><br/>
-                          <code>{getWebhookUrl()}</code><br/>
-                          <small className="text-blue-600">↑ Meta for DevelopersでこのURLを設定してください</small>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex justify-end gap-2">
-                    <Button onClick={() => navigate("/")} variant="outline" disabled={saving}>
-                      キャンセル
-                    </Button>
-                    <Button onClick={handleSave} disabled={saving}>
-                      {saving ? (
-                        <>
-                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                          保存中...
-                        </>
-                      ) : (
-                        <>
-                          <Save className="h-4 w-4 mr-2" />
-                          {personaId ? "更新" : "作成"}
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                </>
-              )}
+                )}
+                {persona.threads_app_id && (
+                  <p><strong>Threads App ID:</strong> {persona.threads_app_id}</p>
+                )}
+              </div>
             </CardContent>
           </Card>
-        </div>
+        ))}
       </div>
     </div>
   );

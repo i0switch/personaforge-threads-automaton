@@ -606,6 +606,15 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      get_user_stats: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          total_users: number
+          approved_users: number
+          pending_users: number
+          active_subscriptions: number
+        }[]
+      }
       has_role: {
         Args: {
           _user_id: string

@@ -17,6 +17,8 @@ export const useAccountStatus = () => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    let channel: any = null;
+
     const fetchAccountStatus = async () => {
       if (!user) {
         setLoading(false);
@@ -37,6 +39,25 @@ export const useAccountStatus = () => {
         }
 
         setAccountStatus(data);
+
+        // Realtimeチャンネルの設定（静的なチャンネル名を使用）
+        channel = supabase
+          .channel(`account-status-${user.id}`)
+          .on(
+            'postgres_changes',
+            {
+              event: 'UPDATE',
+              schema: 'public',
+              table: 'user_account_status',
+              filter: `user_id=eq.${user.id}`
+            },
+            (payload) => {
+              console.log('Account status updated:', payload.new);
+              setAccountStatus(payload.new as AccountStatus);
+            }
+          )
+          .subscribe();
+
       } catch (err) {
         console.error('Unexpected error:', err);
         setError('予期しないエラーが発生しました');
@@ -46,6 +67,12 @@ export const useAccountStatus = () => {
     };
 
     fetchAccountStatus();
+
+    return () => {
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
+    };
   }, [user]);
 
   return {
