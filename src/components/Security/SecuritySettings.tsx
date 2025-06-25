@@ -72,6 +72,19 @@ export const SecuritySettings = () => {
 
     setSaving(true);
     try {
+      // configオブジェクトをJSON互換形式に変換
+      const configData = {
+        rateLimitEnabled: config.rateLimitEnabled,
+        rateLimitRequests: config.rateLimitRequests,
+        rateLimitWindow: config.rateLimitWindow,
+        auditLogEnabled: config.auditLogEnabled,
+        alertsEnabled: config.alertsEnabled,
+        alertEmail: config.alertEmail,
+        intrusionDetectionEnabled: config.intrusionDetectionEnabled,
+        suspiciousActivityThreshold: config.suspiciousActivityThreshold,
+        timestamp: new Date().toISOString()
+      };
+
       // 設定をactivity_logsに保存
       await supabase
         .from('activity_logs')
@@ -79,10 +92,7 @@ export const SecuritySettings = () => {
           user_id: user.id,
           action_type: 'security_settings_updated',
           description: 'セキュリティ設定が更新されました',
-          metadata: {
-            config,
-            timestamp: new Date().toISOString()
-          }
+          metadata: configData
         });
 
       toast({

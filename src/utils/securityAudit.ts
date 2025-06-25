@@ -130,9 +130,27 @@ export const securityAudit = {
         .gte('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString());
 
       if (recentAlerts && recentAlerts.length > 0) {
-        const criticalAlerts = recentAlerts.filter(alert => 
-          alert.metadata?.type === 'critical'
-        ).length;
+        const criticalAlerts = recentAlerts.filter(alert => {
+          // metadataがnullまたはundefinedの場合の処理
+          if (!alert.metadata) return false;
+          
+          // metadataが文字列の場合はJSONパースを試行
+          if (typeof alert.metadata === 'string') {
+            try {
+              const parsed = JSON.parse(alert.metadata);
+              return parsed.type === 'critical';
+            } catch {
+              return false;
+            }
+          }
+          
+          // metadataがオブジェクトの場合は直接アクセス
+          if (typeof alert.metadata === 'object' && alert.metadata !== null) {
+            return (alert.metadata as any).type === 'critical';
+          }
+          
+          return false;
+        }).length;
         
         if (criticalAlerts > 0) {
           vulnerabilities.high += criticalAlerts;
