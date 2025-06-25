@@ -25,40 +25,53 @@ export const AdminStats = () => {
   }, []);
 
   const loadStats = async () => {
+    console.log('Loading admin stats...');
     try {
       // プロフィールの総数を取得（総ユーザー数）
       const { data: profiles, error: profilesError } = await supabase
         .from('profiles')
         .select('user_id');
 
-      if (profilesError) throw profilesError;
+      if (profilesError) {
+        console.error('Profiles error:', profilesError);
+        throw profilesError;
+      }
 
       // アカウント状態を取得
       const { data: accountStatuses, error: statusError } = await supabase
         .from('user_account_status')
         .select('user_id, is_approved, is_active, subscription_status');
 
-      if (statusError) throw statusError;
+      if (statusError) {
+        console.error('Account status error:', statusError);
+        throw statusError;
+      }
+
+      console.log('Profiles:', profiles);
+      console.log('Account statuses:', accountStatuses);
 
       const totalUsers = profiles?.length || 0;
       
       // 承認済みユーザー数を正確に計算
-      const approvedUsers = accountStatuses?.filter(u => u.is_approved === true).length || 0;
+      const approvedUsers = accountStatuses?.filter(s => s.is_approved === true).length || 0;
       
       // 承認待ちユーザー = 総ユーザー数 - 承認済みユーザー数
-      const pendingUsers = totalUsers - approvedUsers;
+      const pendingUsers = Math.max(0, totalUsers - approvedUsers);
       
       // 有料プランユーザー数
-      const activeSubscriptions = accountStatuses?.filter(u => 
-        u.subscription_status && u.subscription_status !== 'free'
+      const activeSubscriptions = accountStatuses?.filter(s => 
+        s.subscription_status && s.subscription_status !== 'free'
       ).length || 0;
 
-      setStats({
+      const calculatedStats = {
         totalUsers,
         approvedUsers,
         pendingUsers,
         activeSubscriptions
-      });
+      };
+
+      console.log('Calculated stats:', calculatedStats);
+      setStats(calculatedStats);
     } catch (error) {
       console.error('Error loading stats:', error);
     } finally {

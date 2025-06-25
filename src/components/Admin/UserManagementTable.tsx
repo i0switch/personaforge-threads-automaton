@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
-import { Search, UserCheck, UserX, Shield, Loader2 } from "lucide-react";
+import { Search, UserCheck, UserX, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -35,33 +35,45 @@ export const UserManagementTable = () => {
   }, []);
 
   const loadUsers = async () => {
+    console.log('Loading users...');
     try {
-      // まずプロフィール情報を取得
+      // プロフィール情報を取得
       const { data: profilesData, error: profilesError } = await supabase
         .from('profiles')
         .select('user_id, display_name, created_at');
 
-      if (profilesError) throw profilesError;
+      if (profilesError) {
+        console.error('Profiles error:', profilesError);
+        throw profilesError;
+      }
 
-      // 次にアカウント状態を別々に取得
+      console.log('Profiles data:', profilesData);
+
+      // 認証ユーザー情報を取得（管理者のみ）
+      let authUsers: any[] = [];
+      try {
+        const { data: authResponse, error: authError } = await supabase.auth.admin.listUsers();
+        if (authError) {
+          console.error('Auth admin error:', authError);
+        } else {
+          authUsers = authResponse?.users || [];
+          console.log('Auth users:', authUsers);
+        }
+      } catch (error) {
+        console.error('Auth admin access error:', error);
+      }
+
+      // アカウント状態を取得
       const { data: accountStatusData, error: statusError } = await supabase
         .from('user_account_status')
         .select('user_id, is_approved, is_active, subscription_status, approved_at');
 
-      if (statusError) throw statusError;
-
-      // 認証ユーザー情報を取得（管理者権限が必要）
-      let authUsers: any[] = [];
-      try {
-        const { data: { users: fetchedUsers }, error: authError } = await supabase.auth.admin.listUsers();
-        if (authError) {
-          console.warn('Could not fetch auth users:', authError);
-        } else {
-          authUsers = fetchedUsers || [];
-        }
-      } catch (error) {
-        console.warn('Auth admin access not available:', error);
+      if (statusError) {
+        console.error('Account status error:', statusError);
+        throw statusError;
       }
+
+      console.log('Account status data:', accountStatusData);
 
       // データを結合
       const combinedData = profilesData?.map(profile => {
@@ -70,8 +82,8 @@ export const UserManagementTable = () => {
         
         return {
           user_id: profile.user_id,
-          email: authUser?.email || `user-${profile.user_id.slice(0, 8)}@hidden.com`,
-          display_name: profile.display_name || 'Unknown',
+          email: authUser?.email || `user-${profile.user_id.slice(0, 8)}@example.com`,
+          display_name: profile.display_name || 'Unknown User',
           is_approved: accountStatus?.is_approved || false,
           is_active: accountStatus?.is_active || false,
           subscription_status: accountStatus?.subscription_status || 'free',
@@ -80,6 +92,7 @@ export const UserManagementTable = () => {
         };
       }) || [];
 
+      console.log('Combined user data:', combinedData);
       setUsers(combinedData);
     } catch (error) {
       console.error('Error loading users:', error);
@@ -94,7 +107,9 @@ export const UserManagementTable = () => {
   };
 
   const updateUserStatus = async (userId: string, field: 'is_approved' | 'is_active', value: boolean) => {
+    console.log(`Updating user ${userId} ${field} to ${value}`);
     setUpdating(userId);
+    
     try {
       const updateData: any = { [field]: value };
       
@@ -106,12 +121,19 @@ export const UserManagementTable = () => {
         updateData.is_active = true;
       }
 
-      // user_account_statusレコードが存在するかチェック
-      const { data: existingStatus } = await supabase
+      // 既存のレコードを確認
+      const { data: existingStatus, error: checkError } = await supabase
         .from('user_account_status')
-        .select('id')
+        .select('id, user_id')
         .eq('user_id', userId)
         .maybeSingle();
+
+      if (checkError) {
+        console.error('Check error:', checkError);
+        throw checkError;
+      }
+
+      console.log('Existing status:', existingStatus);
 
       if (!existingStatus) {
         // レコードが存在しない場合は新規作成
@@ -122,7 +144,11 @@ export const UserManagementTable = () => {
             ...updateData
           });
 
-        if (insertError) throw insertError;
+        if (insertError) {
+          console.error('Insert error:', insertError);
+          throw insertError;
+        }
+        console.log('New status record created');
       } else {
         // レコードが存在する場合は更新
         const { error: updateError } = await supabase
@@ -130,7 +156,11 @@ export const UserManagementTable = () => {
           .update(updateData)
           .eq('user_id', userId);
 
-        if (updateError) throw updateError;
+        if (updateError) {
+          console.error('Update error:', updateError);
+          throw updateError;
+        }
+        console.log('Status record updated');
       }
 
       toast({
@@ -138,6 +168,7 @@ export const UserManagementTable = () => {
         description: `ユーザーの${field === 'is_approved' ? '承認' : 'アクティブ'}状態を更新しました。`,
       });
 
+      // データを再読み込み
       await loadUsers();
     } catch (error) {
       console.error('Error updating user status:', error);
@@ -152,9 +183,11 @@ export const UserManagementTable = () => {
   };
 
   const updateSubscriptionStatus = async (userId: string, subscriptionStatus: string) => {
+    console.log(`Updating subscription for user ${userId} to ${subscriptionStatus}`);
     setUpdating(userId);
+    
     try {
-      // user_account_statusレコードが存在するかチェック
+      // 既存のレコードを確認
       const { data: existingStatus } = await supabase
         .from('user_account_status')
         .select('id')
@@ -308,8 +341,24 @@ export const UserManagementTable = () => {
                         {updating === userAccount.user_id ? (
                           <Loader2 className="h-4 w-4 animate-spin" />
                         ) : (
-                          <UserCheck className="h-4 w-4" />
+                          <UserCheck className="h-4 w-4 mr-1" />
                         )}
+                        承認
+                      </Button>
+                    )}
+                    {userAccount.is_approved && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => updateUserStatus(userAccount.user_id, 'is_approved', false)}
+                        disabled={updating === userAccount.user_id}
+                      >
+                        {updating === userAccount.user_id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <UserX className="h-4 w-4 mr-1" />
+                        )}
+                        承認取消
                       </Button>
                     )}
                     <Button
@@ -321,9 +370,15 @@ export const UserManagementTable = () => {
                       {updating === userAccount.user_id ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
                       ) : userAccount.is_active ? (
-                        <UserX className="h-4 w-4" />
+                        <>
+                          <UserX className="h-4 w-4 mr-1" />
+                          無効化
+                        </>
                       ) : (
-                        <UserCheck className="h-4 w-4" />
+                        <>
+                          <UserCheck className="h-4 w-4 mr-1" />
+                          有効化
+                        </>
                       )}
                     </Button>
                   </div>
