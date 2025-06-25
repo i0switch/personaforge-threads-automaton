@@ -14,6 +14,7 @@ export const ProtectedAdminRoute = ({ children }: ProtectedAdminRouteProps) => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+  const [checkingAdmin, setCheckingAdmin] = useState(true);
 
   useEffect(() => {
     checkAdminAccess();
@@ -23,16 +24,26 @@ export const ProtectedAdminRoute = ({ children }: ProtectedAdminRouteProps) => {
     if (authLoading) return;
     
     if (!user) {
+      console.log('No user found, redirecting to auth');
       navigate("/auth");
       return;
     }
 
     try {
+      setCheckingAdmin(true);
+      console.log('Checking admin access for user:', user.id);
+      
       const { data, error } = await supabase.rpc('is_admin', { _user_id: user.id });
       
-      if (error) throw error;
+      if (error) {
+        console.error('Error checking admin access:', error);
+        throw error;
+      }
+      
+      console.log('Admin check result:', data);
       
       if (!data) {
+        console.log('User is not admin, showing error and redirecting');
         toast({
           title: "アクセス拒否",
           description: "管理者権限が必要です。",
@@ -42,6 +53,7 @@ export const ProtectedAdminRoute = ({ children }: ProtectedAdminRouteProps) => {
         return;
       }
       
+      console.log('User is admin, allowing access');
       setIsAdmin(true);
     } catch (error) {
       console.error('Error checking admin access:', error);
@@ -51,10 +63,13 @@ export const ProtectedAdminRoute = ({ children }: ProtectedAdminRouteProps) => {
         variant: "destructive",
       });
       navigate("/");
+    } finally {
+      setCheckingAdmin(false);
     }
   };
 
-  if (authLoading || isAdmin === null) {
+  // 認証が読み込み中、または管理者チェック中の場合
+  if (authLoading || checkingAdmin) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
@@ -65,6 +80,12 @@ export const ProtectedAdminRoute = ({ children }: ProtectedAdminRouteProps) => {
     );
   }
 
+  // ユーザーがいない（リダイレクト中）
+  if (!user) {
+    return null;
+  }
+
+  // 管理者でない（リダイレクト中）
   if (!isAdmin) {
     return null;
   }
