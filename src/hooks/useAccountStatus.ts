@@ -1,5 +1,5 @@
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -8,6 +8,7 @@ export const useAccountStatus = () => {
   const [isApproved, setIsApproved] = useState(false);
   const [isActive, setIsActive] = useState(false);
   const [loading, setLoading] = useState(true);
+  const channelRef = useRef<any>(null);
 
   useEffect(() => {
     if (!user) {
@@ -51,8 +52,14 @@ export const useAccountStatus = () => {
 
     checkAccountStatus();
 
+    // Clean up existing channel before creating a new one
+    if (channelRef.current) {
+      supabase.removeChannel(channelRef.current);
+      channelRef.current = null;
+    }
+
     // Create a unique channel name to avoid conflicts
-    const channelName = `account-status-${user.id}`;
+    const channelName = `account-status-${user.id}-${Date.now()}`;
     
     // リアルタイム更新を監視
     const channel = supabase
@@ -76,9 +83,15 @@ export const useAccountStatus = () => {
       )
       .subscribe();
 
+    // Store the channel reference
+    channelRef.current = channel;
+
     return () => {
       // Properly unsubscribe from the channel
-      supabase.removeChannel(channel);
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+      }
     };
   }, [user?.id]); // Only depend on user.id to avoid unnecessary re-subscriptions
 
