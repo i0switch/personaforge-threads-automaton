@@ -36,7 +36,6 @@ export const useAccountStatus = () => {
           setIsApproved(data.is_approved);
           setIsActive(data.is_active);
         } else {
-          // アカウント状態レコードが存在しない場合は未承認とする
           console.log('No account status record found, user is not approved');
           setIsApproved(false);
           setIsActive(false);
@@ -52,9 +51,12 @@ export const useAccountStatus = () => {
 
     checkAccountStatus();
 
+    // Create a unique channel name to avoid conflicts
+    const channelName = `account-status-${user.id}`;
+    
     // リアルタイム更新を監視
     const channel = supabase
-      .channel('account-status-changes')
+      .channel(channelName)
       .on(
         'postgres_changes',
         {
@@ -75,9 +77,10 @@ export const useAccountStatus = () => {
       .subscribe();
 
     return () => {
+      // Properly unsubscribe from the channel
       supabase.removeChannel(channel);
     };
-  }, [user]);
+  }, [user?.id]); // Only depend on user.id to avoid unnecessary re-subscriptions
 
   return { isApproved, isActive, loading };
 };
