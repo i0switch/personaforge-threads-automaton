@@ -3,66 +3,81 @@ import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 
-interface AccountStatus {
-  isApproved: boolean;
-  isActive: boolean;
-  subscriptionStatus: string;
-  loading: boolean;
-}
-
-export const useAccountStatus = (): AccountStatus => {
+export const useAccountStatus = () => {
   const { user } = useAuth();
-  const [accountStatus, setAccountStatus] = useState<AccountStatus>({
-    isApproved: false,
-    isActive: false,
-    subscriptionStatus: 'free',
-    loading: true
-  });
+  const [isApproved, setIsApproved] = useState(false);
+  const [isActive, setIsActive] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (user) {
-      checkAccountStatus();
+    if (!user) {
+      setLoading(false);
+      return;
     }
+
+    const checkAccountStatus = async () => {
+      try {
+        console.log('Checking account status for user:', user.id);
+        
+        const { data, error } = await supabase
+          .from('user_account_status')
+          .select('is_approved, is_active')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        if (error) {
+          console.error('Error checking account status:', error);
+          return;
+        }
+
+        console.log('Account status data:', data);
+
+        if (data) {
+          setIsApproved(data.is_approved);
+          setIsActive(data.is_active);
+        } else {
+          // アカウント状態レコードが存在しない場合は未承認とする
+          console.log('No account status record found, user is not approved');
+          setIsApproved(false);
+          setIsActive(false);
+        }
+      } catch (error) {
+        console.error('Error checking account status:', error);
+        setIsApproved(false);
+        setIsActive(false);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    checkAccountStatus();
+
+    // リアルタイム更新を監視
+    const channel = supabase
+      .channel('account-status-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'user_account_status',
+          filter: `user_id=eq.${user.id}`
+        },
+        (payload) => {
+          console.log('Account status changed:', payload);
+          if (payload.new && typeof payload.new === 'object') {
+            const newData = payload.new as { is_approved: boolean; is_active: boolean };
+            setIsApproved(newData.is_approved);
+            setIsActive(newData.is_active);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [user]);
 
-  const checkAccountStatus = async () => {
-    if (!user) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('user_account_status')
-        .select('is_approved, is_active, subscription_status')
-        .eq('user_id', user.id)
-        .maybeSingle();
-
-      if (error) {
-        console.error('Error checking account status:', error);
-        setAccountStatus(prev => ({ ...prev, loading: false }));
-        return;
-      }
-
-      if (data) {
-        setAccountStatus({
-          isApproved: data.is_approved,
-          isActive: data.is_active,
-          subscriptionStatus: data.subscription_status || 'free',
-          loading: false
-        });
-      } else {
-        // アカウント状態が存在しない場合、デフォルト値を設定
-        console.log('No account status found for user, using defaults');
-        setAccountStatus({
-          isApproved: false,
-          isActive: false,
-          subscriptionStatus: 'free',
-          loading: false
-        });
-      }
-    } catch (error) {
-      console.error('Error checking account status:', error);
-      setAccountStatus(prev => ({ ...prev, loading: false }));
-    }
-  };
-
-  return accountStatus;
+  return { isApproved, isActive, loading };
 };
