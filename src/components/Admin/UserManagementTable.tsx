@@ -49,20 +49,6 @@ export const UserManagementTable = () => {
 
       console.log('Profiles data:', profilesData);
 
-      // 認証ユーザー情報を取得（管理者のみ）
-      let authUsers: any[] = [];
-      try {
-        const { data: authResponse, error: authError } = await supabase.auth.admin.listUsers();
-        if (authError) {
-          console.error('Auth admin error:', authError);
-        } else {
-          authUsers = authResponse?.users || [];
-          console.log('Auth users:', authUsers);
-        }
-      } catch (error) {
-        console.error('Auth admin access error:', error);
-      }
-
       // アカウント状態を取得
       const { data: accountStatusData, error: statusError } = await supabase
         .from('user_account_status')
@@ -75,6 +61,30 @@ export const UserManagementTable = () => {
 
       console.log('Account status data:', accountStatusData);
 
+      // auth.usersからemail情報を取得（管理者権限が必要）
+      let authUsers: any[] = [];
+      try {
+        const { data: authResponse, error: authError } = await supabase.auth.admin.listUsers();
+        if (authError) {
+          console.error('Auth admin error:', authError);
+          // auth.admin権限がない場合は、ダミーのメールアドレスを生成
+          authUsers = profilesData?.map(profile => ({
+            id: profile.user_id,
+            email: `user-${profile.user_id.slice(0, 8)}@hidden.com`
+          })) || [];
+        } else {
+          authUsers = authResponse?.users || [];
+          console.log('Auth users:', authUsers);
+        }
+      } catch (error) {
+        console.error('Auth admin access error:', error);
+        // エラーの場合もダミーメールを生成
+        authUsers = profilesData?.map(profile => ({
+          id: profile.user_id,
+          email: `user-${profile.user_id.slice(0, 8)}@hidden.com`
+        })) || [];
+      }
+
       // データを結合
       const combinedData = profilesData?.map(profile => {
         const authUser = authUsers.find(u => u.id === profile.user_id);
@@ -82,10 +92,10 @@ export const UserManagementTable = () => {
         
         return {
           user_id: profile.user_id,
-          email: authUser?.email || `user-${profile.user_id.slice(0, 8)}@example.com`,
+          email: authUser?.email || `user-${profile.user_id.slice(0, 8)}@unknown.com`,
           display_name: profile.display_name || 'Unknown User',
-          is_approved: accountStatus?.is_approved || false,
-          is_active: accountStatus?.is_active || false,
+          is_approved: accountStatus?.is_approved ?? false,
+          is_active: accountStatus?.is_active ?? false,
           subscription_status: accountStatus?.subscription_status || 'free',
           created_at: profile.created_at,
           approved_at: accountStatus?.approved_at || null
@@ -119,6 +129,10 @@ export const UserManagementTable = () => {
         updateData.approved_by = user?.id;
         // 承認時は自動的にアクティブにする
         updateData.is_active = true;
+      } else if (field === 'is_approved' && !value) {
+        // 承認取り消しの場合は承認日時をクリア
+        updateData.approved_at = null;
+        updateData.approved_by = null;
       }
 
       // 既存のレコードを確認
@@ -332,35 +346,26 @@ export const UserManagementTable = () => {
                 </TableCell>
                 <TableCell>
                   <div className="flex gap-2">
-                    {!userAccount.is_approved && (
-                      <Button
-                        size="sm"
-                        onClick={() => updateUserStatus(userAccount.user_id, 'is_approved', true)}
-                        disabled={updating === userAccount.user_id}
-                      >
-                        {updating === userAccount.user_id ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <UserCheck className="h-4 w-4 mr-1" />
-                        )}
-                        承認
-                      </Button>
-                    )}
-                    {userAccount.is_approved && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => updateUserStatus(userAccount.user_id, 'is_approved', false)}
-                        disabled={updating === userAccount.user_id}
-                      >
-                        {updating === userAccount.user_id ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
+                    <Button
+                      size="sm"
+                      variant={userAccount.is_approved ? "outline" : "default"}
+                      onClick={() => updateUserStatus(userAccount.user_id, 'is_approved', !userAccount.is_approved)}
+                      disabled={updating === userAccount.user_id}
+                    >
+                      {updating === userAccount.user_id ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : userAccount.is_approved ? (
+                        <>
                           <UserX className="h-4 w-4 mr-1" />
-                        )}
-                        承認取消
-                      </Button>
-                    )}
+                          承認取消
+                        </>
+                      ) : (
+                        <>
+                          <UserCheck className="h-4 w-4 mr-1" />
+                          承認
+                        </>
+                      )}
+                    </Button>
                     <Button
                       size="sm"
                       variant={userAccount.is_active ? "destructive" : "default"}
