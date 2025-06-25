@@ -36,7 +36,7 @@ export const UserManagementTable = () => {
   const loadUsers = async () => {
     console.log('Loading users...');
     try {
-      // まずプロフィール情報を取得
+      // プロフィール情報を取得
       const { data: profilesData, error: profilesError } = await supabase
         .from('profiles')
         .select('user_id, display_name, created_at');
@@ -62,14 +62,15 @@ export const UserManagementTable = () => {
 
       let combinedData: UserAccount[] = [];
 
-      // Admin APIを試す
+      // Admin APIを試す（より安全な方法で）
       try {
-        const { data: authUsers, error: authError } = await supabase.auth.admin.listUsers();
+        console.log('Attempting to use Admin API...');
+        const { data: authData, error: authError } = await supabase.auth.admin.listUsers();
         
-        if (authUsers && !authError) {
-          console.log('Successfully got auth users:', authUsers.users?.length);
+        if (authData && authData.users && !authError) {
+          console.log('Successfully got auth users:', authData.users.length);
           // 実際のメールアドレスを使用してデータを結合
-          combinedData = authUsers.users?.map(authUser => {
+          combinedData = authData.users.map(authUser => {
             const accountStatus = accountStatusData?.find(s => s.user_id === authUser.id);
             const profile = profilesData?.find(p => p.user_id === authUser.id);
             
@@ -80,25 +81,24 @@ export const UserManagementTable = () => {
               is_approved: accountStatus?.is_approved ?? false,
               is_active: accountStatus?.is_active ?? false,
               subscription_status: accountStatus?.subscription_status || 'free',
-              created_at: authUser.created_at,
+              created_at: profile?.created_at || authUser.created_at,
               approved_at: accountStatus?.approved_at || null
             };
-          }) || [];
+          });
         } else {
-          throw new Error('Admin API failed');
+          throw new Error('Admin API returned no data or error');
         }
       } catch (adminError) {
-        console.log('Admin API failed, using fallback method:', adminError);
+        console.log('Admin API failed, using profiles-based approach:', adminError);
         
-        // フォールバック: profilesのuser_idを基に仮のメールアドレスを生成
+        // フォールバック: profilesのuser_idを基に処理
         combinedData = profilesData?.map(profile => {
           const accountStatus = accountStatusData?.find(s => s.user_id === profile.user_id);
-          // user_idの最初の8文字を使って見分けやすいメールアドレスを作成
           const shortUserId = profile.user_id.slice(0, 8);
           
           return {
             user_id: profile.user_id,
-            email: `user-${shortUserId}@example.com`,
+            email: `user-${shortUserId}@システム.ユーザー`,
             display_name: profile.display_name || `User ${shortUserId}`,
             is_approved: accountStatus?.is_approved ?? false,
             is_active: accountStatus?.is_active ?? false,
@@ -128,37 +128,36 @@ export const UserManagementTable = () => {
     setUpdating(userId);
     
     try {
-      const updateData: any = { [field]: value };
+      const currentUser = users.find(u => u.user_id === userId);
+      const updateData: any = {
+        user_id: userId,
+        subscription_status: currentUser?.subscription_status || 'free',
+      };
       
-      // 承認の場合は承認日時と承認者も記録
+      // 承認の場合の特別処理
       if (field === 'is_approved') {
+        updateData.is_approved = value;
         if (value) {
           updateData.approved_at = new Date().toISOString();
           updateData.approved_by = user?.id;
-          // 承認時は自動的にアクティブにする
+          // 承認時は必ずアクティブにする
           updateData.is_active = true;
         } else {
-          // 承認取り消しの場合
           updateData.approved_at = null;
           updateData.approved_by = null;
+          updateData.is_active = currentUser?.is_active ?? false;
         }
+      } else {
+        updateData.is_approved = currentUser?.is_approved ?? false;
+        updateData.is_active = value;
       }
 
       console.log('Update data being sent:', updateData);
 
-      // 現在のユーザーのステータスを取得
-      const currentUser = users.find(u => u.user_id === userId);
-      
       // upsertを使用して確実にデータを更新
       const { error } = await supabase
         .from('user_account_status')
-        .upsert({
-          user_id: userId,
-          is_approved: field === 'is_approved' ? value : (currentUser?.is_approved ?? false),
-          is_active: field === 'is_active' ? value : (field === 'is_approved' && value) ? true : (currentUser?.is_active ?? false),
-          subscription_status: currentUser?.subscription_status || 'free',
-          ...updateData
-        }, {
+        .upsert(updateData, {
           onConflict: 'user_id'
         });
 
@@ -174,7 +173,7 @@ export const UserManagementTable = () => {
         description: `ユーザーの${field === 'is_approved' ? '承認' : 'アクティブ'}状態を更新しました。`,
       });
 
-      // 即座にローカル状態を更新
+      // ローカル状態を即座に更新
       setUsers(prevUsers => 
         prevUsers.map(u => {
           if (u.user_id === userId) {
@@ -211,12 +210,13 @@ export const UserManagementTable = () => {
     setUpdating(userId);
     
     try {
+      const currentUser = users.find(u => u.user_id === userId);
       const { error } = await supabase
         .from('user_account_status')
         .upsert({
           user_id: userId,
-          is_approved: users.find(u => u.user_id === userId)?.is_approved ?? false,
-          is_active: users.find(u => u.user_id === userId)?.is_active ?? false,
+          is_approved: currentUser?.is_approved ?? false,
+          is_active: currentUser?.is_active ?? false,
           subscription_status: subscriptionStatus
         }, {
           onConflict: 'user_id'
@@ -229,7 +229,6 @@ export const UserManagementTable = () => {
         description: "課金ステータスを更新しました。",
       });
 
-      // 即座にローカル状態を更新
       setUsers(prevUsers => 
         prevUsers.map(u => 
           u.user_id === userId 
