@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -31,6 +32,7 @@ const Auth = () => {
     email: "",
     password: "",
     confirmPassword: "",
+    displayName: "", // 追加
   });
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -93,10 +95,19 @@ const Auth = () => {
       return;
     }
 
+    if (!signupForm.displayName.trim()) {
+      toast({
+        title: "入力エラー",
+        description: "ユーザー名を入力してください。",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsLoading(true);
 
     try {
-      const { error } = await signUp(signupForm.email, signupForm.password);
+      const { error } = await signUp(signupForm.email, signupForm.password, signupForm.displayName);
       
       if (error) {
         if (error.message.includes("User already registered")) {
@@ -198,6 +209,17 @@ const Auth = () => {
               </CardHeader>
               <CardContent>
                 <form onSubmit={handleSignup} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="signup-display-name">ユーザー名</Label>
+                    <Input
+                      id="signup-display-name"
+                      type="text"
+                      value={signupForm.displayName}
+                      onChange={(e) => setSignupForm(prev => ({ ...prev, displayName: e.target.value }))}
+                      placeholder="山田太郎"
+                      required
+                    />
+                  </div>
                   <div className="space-y-2">
                     <Label htmlFor="signup-email">メールアドレス</Label>
                     <Input
