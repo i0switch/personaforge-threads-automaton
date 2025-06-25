@@ -49,7 +49,10 @@ export const ProtectedAdminRoute = ({ children }: ProtectedAdminRouteProps) => {
           description: "管理者権限が必要です。",
           variant: "destructive",
         });
-        navigate("/");
+        // リダイレクト前に少し遅延を追加してトーストが表示されるのを確保
+        setTimeout(() => {
+          navigate("/");
+        }, 100);
         return;
       }
       
@@ -62,7 +65,9 @@ export const ProtectedAdminRoute = ({ children }: ProtectedAdminRouteProps) => {
         description: "権限確認に失敗しました。",
         variant: "destructive",
       });
-      navigate("/");
+      setTimeout(() => {
+        navigate("/");
+      }, 100);
     } finally {
       setCheckingAdmin(false);
     }
@@ -82,12 +87,38 @@ export const ProtectedAdminRoute = ({ children }: ProtectedAdminRouteProps) => {
 
   // ユーザーがいない（リダイレクト中）
   if (!user) {
-    return null;
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">リダイレクト中...</p>
+        </div>
+      </div>
+    );
   }
 
   // 管理者でない（リダイレクト中）
-  if (!isAdmin) {
-    return null;
+  if (isAdmin === false) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">リダイレクト中...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // 管理者チェックがまだ完了していない
+  if (isAdmin === null) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">権限を確認中...</p>
+        </div>
+      </div>
+    );
   }
 
   return <>{children}</>;
