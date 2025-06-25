@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -32,7 +31,7 @@ const Auth = () => {
     email: "",
     password: "",
     confirmPassword: "",
-    displayName: "", // 追加
+    displayName: "",
   });
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -149,8 +148,8 @@ const Auth = () => {
               <Bot className="h-8 w-8 text-primary-foreground" />
             </div>
           </div>
-          <h1 className="text-3xl font-bold text-foreground">AIThreads</h1>
-          <p className="text-muted-foreground">自動運用ツールで効率的なSNS管理</p>
+          <h1 className="text-3xl font-bold text-foreground">Threads-Genius AI</h1>
+          <p className="text-muted-foreground">Gemini搭載Threads自動運用ツール</p>
         </div>
 
         <Tabs defaultValue="login" className="w-full">
