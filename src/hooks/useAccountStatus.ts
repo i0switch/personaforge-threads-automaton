@@ -61,10 +61,35 @@ export const useAccountStatus = () => {
       }
     };
 
+    // 初回データ取得
     checkAccountStatus();
+
+    // リアルタイム更新のサブスクリプション設定
+    const channel = supabase
+      .channel('account-status-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'user_account_status',
+          filter: `user_id=eq.${user.id}`
+        },
+        (payload) => {
+          console.log('Real-time account status update:', payload);
+          if (mounted && payload.new) {
+            const newData = payload.new as { is_approved: boolean; is_active: boolean };
+            setIsApproved(newData.is_approved);
+            setIsActive(newData.is_active);
+            console.log('Account status updated via real-time:', newData);
+          }
+        }
+      )
+      .subscribe();
 
     return () => {
       mounted = false;
+      supabase.removeChannel(channel);
     };
   }, [user?.id]);
 

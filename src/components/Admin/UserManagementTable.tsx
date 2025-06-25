@@ -60,17 +60,28 @@ export const UserManagementTable = () => {
 
       console.log('Account status data:', accountStatusData);
 
+      // auth.usersから実際のメールアドレスを取得
+      const { data: { users: authUsers }, error: authError } = await supabase.auth.admin.listUsers();
+
+      if (authError) {
+        console.error('Auth users error:', authError);
+        // エラーの場合はプロフィールベースでデータを構築（フォールバック）
+      }
+
+      console.log('Auth users data:', authUsers);
+
       let combinedData: UserAccount[] = [];
 
       // プロフィールベースでデータを構築
       if (profilesData) {
         combinedData = profilesData.map(profile => {
           const accountStatus = accountStatusData?.find(s => s.user_id === profile.user_id);
+          const authUser = authUsers?.find(u => u.id === profile.user_id);
           const shortUserId = profile.user_id.slice(0, 8);
           
           return {
             user_id: profile.user_id,
-            email: `user-${shortUserId}@example.com`,
+            email: authUser?.email || `user-${shortUserId}@example.com`,
             display_name: profile.display_name || `User ${shortUserId}`,
             is_approved: accountStatus?.is_approved ?? false,
             is_active: accountStatus?.is_active ?? false,
