@@ -16,6 +16,8 @@ export const useAccountStatus = () => {
       return;
     }
 
+    let mounted = true;
+
     const checkAccountStatus = async () => {
       try {
         console.log('Checking account status for user:', user.id);
@@ -33,33 +35,42 @@ export const useAccountStatus = () => {
 
         console.log('Account status data:', data);
 
-        if (data) {
-          setIsApproved(data.is_approved);
-          setIsActive(data.is_active);
-        } else {
-          console.log('No account status record found, user is not approved');
-          setIsApproved(false);
-          setIsActive(false);
+        if (mounted) {
+          if (data) {
+            setIsApproved(data.is_approved);
+            setIsActive(data.is_active);
+            console.log('Account status updated:', { isApproved: data.is_approved, isActive: data.is_active });
+          } else {
+            console.log('No account status record found, user is not approved');
+            setIsApproved(false);
+            setIsActive(false);
+          }
         }
       } catch (error) {
         console.error('Error checking account status:', error);
-        setIsApproved(false);
-        setIsActive(false);
+        if (mounted) {
+          setIsApproved(false);
+          setIsActive(false);
+        }
       } finally {
-        setLoading(false);
+        if (mounted) {
+          setLoading(false);
+        }
       }
     };
 
-    checkAccountStatus();
-
     // Clean up existing channel before creating a new one
     if (channelRef.current) {
+      console.log('Cleaning up existing channel');
       supabase.removeChannel(channelRef.current);
       channelRef.current = null;
     }
 
+    checkAccountStatus();
+
     // Create a unique channel name to avoid conflicts
     const channelName = `account-status-${user.id}-${Date.now()}`;
+    console.log('Creating channel:', channelName);
     
     // リアルタイム更新を監視
     const channel = supabase
@@ -73,20 +84,25 @@ export const useAccountStatus = () => {
           filter: `user_id=eq.${user.id}`
         },
         (payload) => {
-          console.log('Account status changed:', payload);
-          if (payload.new && typeof payload.new === 'object') {
+          console.log('Real-time account status change:', payload);
+          if (mounted && payload.new && typeof payload.new === 'object') {
             const newData = payload.new as { is_approved: boolean; is_active: boolean };
+            console.log('Updating status from realtime:', newData);
             setIsApproved(newData.is_approved);
             setIsActive(newData.is_active);
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log('Channel subscription status:', status);
+      });
 
     // Store the channel reference
     channelRef.current = channel;
 
     return () => {
+      console.log('Cleaning up useAccountStatus effect');
+      mounted = false;
       // Properly unsubscribe from the channel
       if (channelRef.current) {
         supabase.removeChannel(channelRef.current);

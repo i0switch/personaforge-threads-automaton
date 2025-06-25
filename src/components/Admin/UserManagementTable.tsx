@@ -36,54 +36,17 @@ export const UserManagementTable = () => {
   const loadUsers = async () => {
     console.log('Loading users...');
     try {
-      // Supabase Admin APIを使用してauth.usersからユーザー情報を取得
-      const { data: authUsers, error: authError } = await supabase.auth.admin.listUsers();
-      
-      if (authError) {
-        console.error('Auth users error:', authError);
-        // Admin APIが使えない場合は、profilesテーブルから取得
-        const { data: profilesData, error: profilesError } = await supabase
-          .from('profiles')
-          .select('user_id, display_name, created_at');
+      // まずプロフィール情報を取得
+      const { data: profilesData, error: profilesError } = await supabase
+        .from('profiles')
+        .select('user_id, display_name, created_at');
 
-        if (profilesError) {
-          console.error('Profiles error:', profilesError);
-          throw profilesError;
-        }
-
-        // アカウント状態をすべて取得
-        const { data: accountStatusData, error: statusError } = await supabase
-          .from('user_account_status')
-          .select('user_id, is_approved, is_active, subscription_status, approved_at');
-
-        if (statusError) {
-          console.error('Account status error:', statusError);
-          throw statusError;
-        }
-
-        // データを結合（Admin APIが使えない場合のフォールバック）
-        const combinedData = profilesData?.map(profile => {
-          const accountStatus = accountStatusData?.find(s => s.user_id === profile.user_id);
-          const shortUserId = profile.user_id.slice(0, 8);
-          
-          return {
-            user_id: profile.user_id,
-            email: `${shortUserId}@example.com`, // プレースホルダー
-            display_name: profile.display_name || `User ${shortUserId}`,
-            is_approved: accountStatus?.is_approved ?? false,
-            is_active: accountStatus?.is_active ?? false,
-            subscription_status: accountStatus?.subscription_status || 'free',
-            created_at: profile.created_at,
-            approved_at: accountStatus?.approved_at || null
-          };
-        }) || [];
-
-        console.log('Fallback user data:', combinedData);
-        setUsers(combinedData);
-        return;
+      if (profilesError) {
+        console.error('Profiles error:', profilesError);
+        throw profilesError;
       }
 
-      console.log('Auth users data:', authUsers);
+      console.log('Profiles data:', profilesData);
 
       // アカウント状態を取得
       const { data: accountStatusData, error: statusError } = await supabase
@@ -95,37 +58,58 @@ export const UserManagementTable = () => {
         throw statusError;
       }
 
-      // プロフィール情報を取得
-      const { data: profilesData, error: profilesError } = await supabase
-        .from('profiles')
-        .select('user_id, display_name');
+      console.log('Account status data:', accountStatusData);
 
-      if (profilesError) {
-        console.error('Profiles error:', profilesError);
-        throw profilesError;
+      let combinedData: UserAccount[] = [];
+
+      // Admin APIを試す
+      try {
+        const { data: authUsers, error: authError } = await supabase.auth.admin.listUsers();
+        
+        if (authUsers && !authError) {
+          console.log('Successfully got auth users:', authUsers.users?.length);
+          // 実際のメールアドレスを使用してデータを結合
+          combinedData = authUsers.users?.map(authUser => {
+            const accountStatus = accountStatusData?.find(s => s.user_id === authUser.id);
+            const profile = profilesData?.find(p => p.user_id === authUser.id);
+            
+            return {
+              user_id: authUser.id,
+              email: authUser.email || 'メールアドレス不明',
+              display_name: profile?.display_name || authUser.user_metadata?.display_name || `User ${authUser.id.slice(0, 8)}`,
+              is_approved: accountStatus?.is_approved ?? false,
+              is_active: accountStatus?.is_active ?? false,
+              subscription_status: accountStatus?.subscription_status || 'free',
+              created_at: authUser.created_at,
+              approved_at: accountStatus?.approved_at || null
+            };
+          }) || [];
+        } else {
+          throw new Error('Admin API failed');
+        }
+      } catch (adminError) {
+        console.log('Admin API failed, using fallback method:', adminError);
+        
+        // フォールバック: profilesのuser_idを基に仮のメールアドレスを生成
+        combinedData = profilesData?.map(profile => {
+          const accountStatus = accountStatusData?.find(s => s.user_id === profile.user_id);
+          // user_idの最初の8文字を使って見分けやすいメールアドレスを作成
+          const shortUserId = profile.user_id.slice(0, 8);
+          
+          return {
+            user_id: profile.user_id,
+            email: `user-${shortUserId}@example.com`,
+            display_name: profile.display_name || `User ${shortUserId}`,
+            is_approved: accountStatus?.is_approved ?? false,
+            is_active: accountStatus?.is_active ?? false,
+            subscription_status: accountStatus?.subscription_status || 'free',
+            created_at: profile.created_at,
+            approved_at: accountStatus?.approved_at || null
+          };
+        }) || [];
       }
 
-      console.log('Account status data:', accountStatusData);
-      console.log('Profiles data:', profilesData);
-
-      // データを結合（実際のメールアドレスを使用）
-      const combinedData = authUsers.users?.map(authUser => {
-        const accountStatus = accountStatusData?.find(s => s.user_id === authUser.id);
-        const profile = profilesData?.find(p => p.user_id === authUser.id);
-        
-        return {
-          user_id: authUser.id,
-          email: authUser.email || 'メールアドレス不明',
-          display_name: profile?.display_name || authUser.user_metadata?.display_name || `User ${authUser.id.slice(0, 8)}`,
-          is_approved: accountStatus?.is_approved ?? false,
-          is_active: accountStatus?.is_active ?? false,
-          subscription_status: accountStatus?.subscription_status || 'free',
-          created_at: authUser.created_at,
-          approved_at: accountStatus?.approved_at || null
-        };
-      }) || [];
-
-      console.log('Combined user data:', combinedData);
+      console.log('Final combined user data:', combinedData);
       setUsers(combinedData);
     } catch (error) {
       console.error('Error loading users:', error);
@@ -162,14 +146,17 @@ export const UserManagementTable = () => {
 
       console.log('Update data being sent:', updateData);
 
+      // 現在のユーザーのステータスを取得
+      const currentUser = users.find(u => u.user_id === userId);
+      
       // upsertを使用して確実にデータを更新
       const { error } = await supabase
         .from('user_account_status')
         .upsert({
           user_id: userId,
-          is_approved: field === 'is_approved' ? value : users.find(u => u.user_id === userId)?.is_approved ?? false,
-          is_active: field === 'is_active' ? value : (field === 'is_approved' && value) ? true : users.find(u => u.user_id === userId)?.is_active ?? false,
-          subscription_status: users.find(u => u.user_id === userId)?.subscription_status || 'free',
+          is_approved: field === 'is_approved' ? value : (currentUser?.is_approved ?? false),
+          is_active: field === 'is_active' ? value : (field === 'is_approved' && value) ? true : (currentUser?.is_active ?? false),
+          subscription_status: currentUser?.subscription_status || 'free',
           ...updateData
         }, {
           onConflict: 'user_id'
@@ -206,9 +193,6 @@ export const UserManagementTable = () => {
           return u;
         })
       );
-
-      // バックグラウンドでデータを再読み込み
-      loadUsers();
 
     } catch (error) {
       console.error('Error updating user status:', error);
