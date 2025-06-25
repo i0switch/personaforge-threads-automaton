@@ -1,6 +1,12 @@
 
 import { supabase } from '@/integrations/supabase/client';
 import { isValidUUID, containsSqlInjection, sanitizeInput } from '@/lib/validation';
+import type { Database } from '@/integrations/supabase/types';
+
+// Database type helpers
+type PersonaInsert = Database['public']['Tables']['personas']['Insert'];
+type PostInsert = Database['public']['Tables']['posts']['Insert'];
+type AutoReplyInsert = Database['public']['Tables']['auto_replies']['Insert'];
 
 // API呼び出し前のセキュリティチェック
 export const securityMiddleware = {
@@ -102,7 +108,7 @@ export const secureQuery = {
       }
     },
     
-    insert: async (data: any, userId?: string) => {
+    insert: async (data: Partial<PersonaInsert>, userId?: string) => {
       try {
         if (userId && !securityMiddleware.validateUserId(userId)) {
           throw new Error('Invalid user ID');
@@ -114,7 +120,19 @@ export const secureQuery = {
           throw new Error('Required fields (name, user_id) are missing');
         }
         
-        return await supabase.from('personas').insert(sanitizedData);
+        // 型安全なデータ構造を作成
+        const insertData: PersonaInsert = {
+          name: sanitizedData.name,
+          user_id: sanitizedData.user_id,
+          age: sanitizedData.age || undefined,
+          personality: sanitizedData.personality || undefined,
+          expertise: sanitizedData.expertise || undefined,
+          tone_of_voice: sanitizedData.tone_of_voice || undefined,
+          avatar_url: sanitizedData.avatar_url || undefined,
+          is_active: sanitizedData.is_active || false
+        };
+        
+        return await supabase.from('personas').insert(insertData);
       } catch (error) {
         await securityMiddleware.logSecurityEvent('insert_error', {
           table: 'personas',
@@ -159,7 +177,7 @@ export const secureQuery = {
       }
     },
     
-    insert: async (data: any, userId?: string) => {
+    insert: async (data: Partial<PostInsert>, userId?: string) => {
       try {
         if (userId && !securityMiddleware.validateUserId(userId)) {
           throw new Error('Invalid user ID');
@@ -171,7 +189,24 @@ export const secureQuery = {
           throw new Error('Required fields (content, user_id) are missing');
         }
         
-        return await supabase.from('posts').insert(sanitizedData);
+        // 型安全なデータ構造を作成
+        const insertData: PostInsert = {
+          content: sanitizedData.content,
+          user_id: sanitizedData.user_id,
+          persona_id: sanitizedData.persona_id || undefined,
+          hashtags: sanitizedData.hashtags || undefined,
+          images: sanitizedData.images || undefined,
+          platform: sanitizedData.platform || undefined,
+          scheduled_for: sanitizedData.scheduled_for || undefined,
+          status: sanitizedData.status || 'draft',
+          priority: sanitizedData.priority || 0,
+          auto_schedule: sanitizedData.auto_schedule || false,
+          max_retries: sanitizedData.max_retries || 3,
+          retry_count: sanitizedData.retry_count || 0,
+          preferred_time_slots: sanitizedData.preferred_time_slots || undefined
+        };
+        
+        return await supabase.from('posts').insert(insertData);
       } catch (error) {
         await securityMiddleware.logSecurityEvent('insert_error', {
           table: 'posts',
@@ -216,7 +251,7 @@ export const secureQuery = {
       }
     },
     
-    insert: async (data: any, userId?: string) => {
+    insert: async (data: Partial<AutoReplyInsert>, userId?: string) => {
       try {
         if (userId && !securityMiddleware.validateUserId(userId)) {
           throw new Error('Invalid user ID');
@@ -228,7 +263,16 @@ export const secureQuery = {
           throw new Error('Required fields (response_template, user_id) are missing');
         }
         
-        return await supabase.from('auto_replies').insert(sanitizedData);
+        // 型安全なデータ構造を作成
+        const insertData: AutoReplyInsert = {
+          response_template: sanitizedData.response_template,
+          user_id: sanitizedData.user_id,
+          persona_id: sanitizedData.persona_id || undefined,
+          trigger_keywords: sanitizedData.trigger_keywords || undefined,
+          is_active: sanitizedData.is_active || true
+        };
+        
+        return await supabase.from('auto_replies').insert(insertData);
       } catch (error) {
         await securityMiddleware.logSecurityEvent('insert_error', {
           table: 'auto_replies',
