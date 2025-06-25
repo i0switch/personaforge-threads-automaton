@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -96,10 +97,10 @@ const Index = () => {
       <div className="max-w-6xl mx-auto space-y-6">
         <div className="text-center space-y-4">
           <h1 className="text-4xl font-bold text-foreground">
-            AI SNS Assistant
+            Threads-Genius AI
           </h1>
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-            AIを活用してSNSの投稿作成、スケジュール管理、自動返信を効率化しましょう
+            Gemini搭載Threads自動運用ツール
           </p>
         </div>
 
@@ -180,7 +181,7 @@ const Index = () => {
           <CardHeader>
             <CardTitle>はじめに</CardTitle>
             <CardDescription>
-              AI SNS Assistantを最大限活用するための手順
+              Threads-Genius AIを最大限活用するための手順
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
