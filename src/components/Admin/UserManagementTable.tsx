@@ -20,11 +20,6 @@ interface UserAccount {
   approved_at: string | null;
 }
 
-interface AuthUser {
-  id: string;
-  email?: string;
-}
-
 export const UserManagementTable = () => {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -65,34 +60,18 @@ export const UserManagementTable = () => {
 
       console.log('Account status data:', accountStatusData);
 
-      // auth.usersから実際のメールアドレスを取得
-      let authUsers: AuthUser[] = [];
-      try {
-        const { data: authData, error: authError } = await supabase.auth.admin.listUsers();
-        
-        if (authError) {
-          console.error('Auth users error:', authError);
-        } else if (authData?.users) {
-          authUsers = authData.users as AuthUser[];
-        }
-      } catch (error) {
-        console.error('Failed to fetch auth users:', error);
-      }
-
-      console.log('Auth users data:', authUsers);
-
       let combinedData: UserAccount[] = [];
 
-      // プロフィールベースでデータを構築
+      // プロフィールベースでデータを構築（メールアドレスは代替表示）
       if (profilesData) {
         combinedData = profilesData.map(profile => {
           const accountStatus = accountStatusData?.find(s => s.user_id === profile.user_id);
-          const authUser = authUsers?.find(u => u.id === profile.user_id);
           const shortUserId = profile.user_id.slice(0, 8);
           
           return {
             user_id: profile.user_id,
-            email: authUser?.email || `user-${shortUserId}@example.com`,
+            // メールアドレスはuser-{shortId}@internal.app形式で表示
+            email: `user-${shortUserId}@internal.app`,
             display_name: profile.display_name || `User ${shortUserId}`,
             is_approved: accountStatus?.is_approved ?? false,
             is_active: accountStatus?.is_active ?? false,
@@ -267,6 +246,7 @@ export const UserManagementTable = () => {
 
   return (
     <div className="space-y-4">
+      {/* Search and filter controls */}
       <div className="flex gap-4 items-center">
         <div className="relative flex-1">
           <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -291,12 +271,21 @@ export const UserManagementTable = () => {
         </Select>
       </div>
 
+      {/* Notice about email display */}
+      <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
+        <p className="text-sm text-blue-700">
+          <strong>注意:</strong> セキュリティ上の理由により、実際のメールアドレスは表示されません。
+          内部識別用のIDが代替表示されています。
+        </p>
+      </div>
+
+      {/* Users table */}
       <div className="border rounded-md">
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead>ユーザー名</TableHead>
-              <TableHead>メールアドレス</TableHead>
+              <TableHead>内部ID</TableHead>
               <TableHead>承認状態</TableHead>
               <TableHead>アクティブ状態</TableHead>
               <TableHead>課金ステータス</TableHead>
