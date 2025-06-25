@@ -82,57 +82,158 @@ export const securityMiddleware = {
   }
 };
 
-// セキュアなSupabaseクエリラッパー
+// 型安全なSupabaseクエリラッパー
 export const secureQuery = {
-  async select(table: string, query: any, userId?: string) {
-    try {
-      if (userId && !securityMiddleware.validateUserId(userId)) {
-        throw new Error('Invalid user ID');
+  async personas: {
+    select: async (query: any, userId?: string) => {
+      try {
+        if (userId && !securityMiddleware.validateUserId(userId)) {
+          throw new Error('Invalid user ID');
+        }
+        const sanitizedQuery = securityMiddleware.sanitizeQueryParams(query);
+        return await supabase.from('personas').select().match(sanitizedQuery);
+      } catch (error) {
+        await securityMiddleware.logSecurityEvent('query_error', {
+          table: 'personas',
+          query,
+          error: error instanceof Error ? error.message : 'Unknown error'
+        });
+        throw error;
       }
-
-      const sanitizedQuery = securityMiddleware.sanitizeQueryParams(query);
-      return await supabase.from(table).select().match(sanitizedQuery);
-    } catch (error) {
-      await securityMiddleware.logSecurityEvent('query_error', {
-        table,
-        query,
-        error: error instanceof Error ? error.message : 'Unknown error'
-      });
-      throw error;
+    },
+    
+    insert: async (data: any, userId?: string) => {
+      try {
+        if (userId && !securityMiddleware.validateUserId(userId)) {
+          throw new Error('Invalid user ID');
+        }
+        const sanitizedData = securityMiddleware.sanitizeQueryParams(data);
+        return await supabase.from('personas').insert(sanitizedData);
+      } catch (error) {
+        await securityMiddleware.logSecurityEvent('insert_error', {
+          table: 'personas',
+          error: error instanceof Error ? error.message : 'Unknown error'
+        });
+        throw error;
+      }
+    },
+    
+    update: async (data: any, userId?: string) => {
+      try {
+        if (userId && !securityMiddleware.validateUserId(userId)) {
+          throw new Error('Invalid user ID');
+        }
+        const sanitizedData = securityMiddleware.sanitizeQueryParams(data);
+        return await supabase.from('personas').update(sanitizedData);
+      } catch (error) {
+        await securityMiddleware.logSecurityEvent('update_error', {
+          table: 'personas',
+          error: error instanceof Error ? error.message : 'Unknown error'
+        });
+        throw error;
+      }
     }
   },
 
-  async insert(table: string, data: any, userId?: string) {
-    try {
-      if (userId && !securityMiddleware.validateUserId(userId)) {
-        throw new Error('Invalid user ID');
+  async posts: {
+    select: async (query: any, userId?: string) => {
+      try {
+        if (userId && !securityMiddleware.validateUserId(userId)) {
+          throw new Error('Invalid user ID');
+        }
+        const sanitizedQuery = securityMiddleware.sanitizeQueryParams(query);
+        return await supabase.from('posts').select().match(sanitizedQuery);
+      } catch (error) {
+        await securityMiddleware.logSecurityEvent('query_error', {
+          table: 'posts',
+          query,
+          error: error instanceof Error ? error.message : 'Unknown error'
+        });
+        throw error;
       }
-
-      const sanitizedData = securityMiddleware.sanitizeQueryParams(data);
-      return await supabase.from(table).insert(sanitizedData);
-    } catch (error) {
-      await securityMiddleware.logSecurityEvent('insert_error', {
-        table,
-        error: error instanceof Error ? error.message : 'Unknown error'
-      });
-      throw error;
+    },
+    
+    insert: async (data: any, userId?: string) => {
+      try {
+        if (userId && !securityMiddleware.validateUserId(userId)) {
+          throw new Error('Invalid user ID');
+        }
+        const sanitizedData = securityMiddleware.sanitizeQueryParams(data);
+        return await supabase.from('posts').insert(sanitizedData);
+      } catch (error) {
+        await securityMiddleware.logSecurityEvent('insert_error', {
+          table: 'posts',
+          error: error instanceof Error ? error.message : 'Unknown error'
+        });
+        throw error;
+      }
+    },
+    
+    update: async (data: any, userId?: string) => {
+      try {
+        if (userId && !securityMiddleware.validateUserId(userId)) {
+          throw new Error('Invalid user ID');
+        }
+        const sanitizedData = securityMiddleware.sanitizeQueryParams(data);
+        return await supabase.from('posts').update(sanitizedData);
+      } catch (error) {
+        await securityMiddleware.logSecurityEvent('update_error', {
+          table: 'posts',
+          error: error instanceof Error ? error.message : 'Unknown error'
+        });
+        throw error;
+      }
     }
   },
 
-  async update(table: string, data: any, userId?: string) {
-    try {
-      if (userId && !securityMiddleware.validateUserId(userId)) {
-        throw new Error('Invalid user ID');
+  async autoReplies: {
+    select: async (query: any, userId?: string) => {
+      try {
+        if (userId && !securityMiddleware.validateUserId(userId)) {
+          throw new Error('Invalid user ID');
+        }
+        const sanitizedQuery = securityMiddleware.sanitizeQueryParams(query);
+        return await supabase.from('auto_replies').select().match(sanitizedQuery);
+      } catch (error) {
+        await securityMiddleware.logSecurityEvent('query_error', {
+          table: 'auto_replies',
+          query,
+          error: error instanceof Error ? error.message : 'Unknown error'
+        });
+        throw error;
       }
-
-      const sanitizedData = securityMiddleware.sanitizeQueryParams(data);
-      return await supabase.from(table).update(sanitizedData);
-    } catch (error) {
-      await securityMiddleware.logSecurityEvent('update_error', {
-        table,
-        error: error instanceof Error ? error.message : 'Unknown error'
-      });
-      throw error;
+    },
+    
+    insert: async (data: any, userId?: string) => {
+      try {
+        if (userId && !securityMiddleware.validateUserId(userId)) {
+          throw new Error('Invalid user ID');
+        }
+        const sanitizedData = securityMiddleware.sanitizeQueryParams(data);
+        return await supabase.from('auto_replies').insert(sanitizedData);
+      } catch (error) {
+        await securityMiddleware.logSecurityEvent('insert_error', {
+          table: 'auto_replies',
+          error: error instanceof Error ? error.message : 'Unknown error'
+        });
+        throw error;
+      }
+    },
+    
+    update: async (data: any, userId?: string) => {
+      try {
+        if (userId && !securityMiddleware.validateUserId(userId)) {
+          throw new Error('Invalid user ID');
+        }
+        const sanitizedData = securityMiddleware.sanitizeQueryParams(data);
+        return await supabase.from('auto_replies').update(sanitizedData);
+      } catch (error) {
+        await securityMiddleware.logSecurityEvent('update_error', {
+          table: 'auto_replies',
+          error: error instanceof Error ? error.message : 'Unknown error'
+        });
+        throw error;
+      }
     }
   }
 };
