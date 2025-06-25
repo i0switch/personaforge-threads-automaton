@@ -84,7 +84,7 @@ export const securityMiddleware = {
 
 // 型安全なSupabaseクエリラッパー
 export const secureQuery = {
-  async personas: {
+  personas: {
     select: async (query: any, userId?: string) => {
       try {
         if (userId && !securityMiddleware.validateUserId(userId)) {
@@ -108,6 +108,12 @@ export const secureQuery = {
           throw new Error('Invalid user ID');
         }
         const sanitizedData = securityMiddleware.sanitizeQueryParams(data);
+        
+        // 必須フィールドの確認
+        if (!sanitizedData.name || !sanitizedData.user_id) {
+          throw new Error('Required fields (name, user_id) are missing');
+        }
+        
         return await supabase.from('personas').insert(sanitizedData);
       } catch (error) {
         await securityMiddleware.logSecurityEvent('insert_error', {
@@ -135,7 +141,7 @@ export const secureQuery = {
     }
   },
 
-  async posts: {
+  posts: {
     select: async (query: any, userId?: string) => {
       try {
         if (userId && !securityMiddleware.validateUserId(userId)) {
@@ -159,6 +165,12 @@ export const secureQuery = {
           throw new Error('Invalid user ID');
         }
         const sanitizedData = securityMiddleware.sanitizeQueryParams(data);
+        
+        // 必須フィールドの確認
+        if (!sanitizedData.content || !sanitizedData.user_id) {
+          throw new Error('Required fields (content, user_id) are missing');
+        }
+        
         return await supabase.from('posts').insert(sanitizedData);
       } catch (error) {
         await securityMiddleware.logSecurityEvent('insert_error', {
@@ -186,7 +198,7 @@ export const secureQuery = {
     }
   },
 
-  async autoReplies: {
+  autoReplies: {
     select: async (query: any, userId?: string) => {
       try {
         if (userId && !securityMiddleware.validateUserId(userId)) {
@@ -210,6 +222,12 @@ export const secureQuery = {
           throw new Error('Invalid user ID');
         }
         const sanitizedData = securityMiddleware.sanitizeQueryParams(data);
+        
+        // 必須フィールドの確認
+        if (!sanitizedData.response_template || !sanitizedData.user_id) {
+          throw new Error('Required fields (response_template, user_id) are missing');
+        }
+        
         return await supabase.from('auto_replies').insert(sanitizedData);
       } catch (error) {
         await securityMiddleware.logSecurityEvent('insert_error', {
