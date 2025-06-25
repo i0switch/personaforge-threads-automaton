@@ -60,25 +60,17 @@ export const UserManagementTable = () => {
 
       console.log('Account status data:', accountStatusData);
 
-      // サービスロールキーを使ってauth.usersからメール情報を取得を試行
+      // メール情報を取得（auth.admin.listUsersを試行）
       let authUsers: any[] = [];
       try {
-        // まず現在のセッションのアクセストークンでauth.admin.listUsersを試行
         const { data: authResponse, error: authError } = await supabase.auth.admin.listUsers();
         if (authError) {
           console.error('Auth admin error:', authError);
-          // auth.admin権限がない場合は、rpcを使用してサーバーサイドで取得を試行
-          const { data: rpcResponse, error: rpcError } = await supabase.rpc('get_user_emails');
-          if (rpcError) {
-            console.error('RPC get_user_emails error:', rpcError);
-            // 両方失敗した場合はダミーメールを生成
-            authUsers = profilesData?.map(profile => ({
-              id: profile.user_id,
-              email: `user-${profile.user_id.slice(0, 8)}@example.com`
-            })) || [];
-          } else {
-            authUsers = rpcResponse || [];
-          }
+          // auth.admin権限がない場合はダミーメールを生成
+          authUsers = profilesData?.map(profile => ({
+            id: profile.user_id,
+            email: `user-${profile.user_id.slice(0, 8)}@example.com`
+          })) || [];
         } else {
           authUsers = authResponse?.users || [];
           console.log('Auth users retrieved successfully:', authUsers.length);
@@ -144,7 +136,7 @@ export const UserManagementTable = () => {
 
       console.log('Update data:', updateData);
 
-      // 既存のレコードを確認してupsert
+      // upsertを使用して既存レコードを更新または新規作成
       const { error: upsertError } = await supabase
         .from('user_account_status')
         .upsert({
