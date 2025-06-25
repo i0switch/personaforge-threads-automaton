@@ -13,6 +13,8 @@ import { validatePassword } from "@/utils/passwordValidation";
 import { Bot, Eye, EyeOff } from "lucide-react";
 
 const Auth = () => {
+  console.log('Auth component rendered'); // デバッグ用ログ追加
+  
   const navigate = useNavigate();
   const { toast } = useToast();
   const { signIn, signUp, user } = useAuth();
@@ -25,6 +27,7 @@ const Auth = () => {
   // Redirect if already logged in
   useEffect(() => {
     if (user) {
+      console.log('User is logged in, redirecting to home');
       navigate("/");
     }
   }, [user, navigate]);
@@ -54,6 +57,7 @@ const Auth = () => {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log('Login attempt');
     
     if (isLockedOut) {
       toast({
@@ -70,11 +74,12 @@ const Auth = () => {
       const { error } = await signIn(loginForm.email, loginForm.password);
       
       if (error) {
+        console.error('Login error:', error);
         setFailedAttempts(prev => prev + 1);
         
         // Lock account after 5 failed attempts
         if (failedAttempts >= 4) {
-          const lockDuration = Math.min(300, 60 * Math.pow(2, failedAttempts - 4)); // 1分から5分まで
+          const lockDuration = Math.min(300, 60 * Math.pow(2, failedAttempts - 4));
           setLockoutTime(new Date(Date.now() + lockDuration * 1000));
           toast({
             title: "アカウントロック",
@@ -106,6 +111,7 @@ const Auth = () => {
         navigate("/");
       }
     } catch (error) {
+      console.error('Unexpected login error:', error);
       toast({
         title: "エラー",
         description: "予期しないエラーが発生しました。",
@@ -118,6 +124,7 @@ const Auth = () => {
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log('Signup attempt');
     
     if (signupForm.password !== signupForm.confirmPassword) {
       toast({
@@ -154,6 +161,7 @@ const Auth = () => {
       const { error } = await signUp(signupForm.email, signupForm.password, signupForm.displayName);
       
       if (error) {
+        console.error('Signup error:', error);
         if (error.message.includes("User already registered")) {
           toast({
             title: "サインアップエラー",
@@ -174,6 +182,7 @@ const Auth = () => {
         });
       }
     } catch (error) {
+      console.error('Unexpected signup error:', error);
       toast({
         title: "エラー",
         description: "予期しないエラーが発生しました。",
@@ -183,6 +192,8 @@ const Auth = () => {
       setIsLoading(false);
     }
   };
+
+  console.log('Rendering auth page content');
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-6">
@@ -343,7 +354,7 @@ const Auth = () => {
                         variant="ghost"
                         size="sm"
                         className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                        onClick={() => setShowPassword(!showPassword)}
                       >
                         {showConfirmPassword ? (
                           <EyeOff className="h-4 w-4" />

@@ -23,21 +23,22 @@ export const useAuth = () => {
 };
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
+  console.log('AuthProvider initialized'); // デバッグ用ログ追加
+  
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let mounted = true;
+    console.log('Setting up auth state listener'); // デバッグ用ログ追加
 
     // Set up auth state listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (!mounted) return;
         
-        if (process.env.NODE_ENV === 'development') {
-          console.log('Auth state change:', event, session?.user?.id);
-        }
+        console.log('Auth state change:', event, session?.user?.id); // デバッグ用ログ追加
         
         setSession(session);
         setUser(session?.user ?? null);
@@ -50,6 +51,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     // Check for existing session
     const initializeAuth = async () => {
       try {
+        console.log('Checking for existing session'); // デバッグ用ログ追加
         const { data: { session }, error } = await supabase.auth.getSession();
         if (error) {
           console.error('Error getting session:', error);
@@ -57,6 +59,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         }
         
         if (mounted) {
+          console.log('Found existing session:', !!session); // デバッグ用ログ追加
           setSession(session);
           setUser(session?.user ?? null);
           setLoading(false);
@@ -72,6 +75,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     initializeAuth();
 
     return () => {
+      console.log('Cleaning up auth listener'); // デバッグ用ログ追加
       mounted = false;
       subscription.unsubscribe();
     };
@@ -79,6 +83,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const signUp = async (email: string, password: string, displayName?: string) => {
     try {
+      console.log('Attempting signup for:', email); // デバッグ用ログ追加
       const redirectUrl = `${window.location.origin}/`;
       const { error } = await supabase.auth.signUp({
         email,
@@ -90,26 +95,32 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           }
         }
       });
+      console.log('Signup result:', error ? 'error' : 'success'); // デバッグ用ログ追加
       return { error };
     } catch (error) {
+      console.error('Signup error:', error); // デバッグ用ログ追加
       return { error };
     }
   };
 
   const signIn = async (email: string, password: string) => {
     try {
+      console.log('Attempting signin for:', email); // デバッグ用ログ追加
       const { error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
+      console.log('Signin result:', error ? 'error' : 'success'); // デバッグ用ログ追加
       return { error };
     } catch (error) {
+      console.error('Signin error:', error); // デバッグ用ログ追加
       return { error };
     }
   };
 
   const signOut = async () => {
     try {
+      console.log('Attempting signout'); // デバッグ用ログ追加
       const { error } = await supabase.auth.signOut();
       if (error) {
         // Handle specific error cases
@@ -143,6 +154,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     signOut,
     loading,
   };
+
+  console.log('AuthProvider rendering with user:', !!user, 'loading:', loading); // デバッグ用ログ追加
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
