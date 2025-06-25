@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,7 +16,8 @@ import {
   Edit,
   Zap,
   ExternalLink,
-  CheckCircle
+  CheckCircle,
+  Crown
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAccountStatus } from "@/hooks/useAccountStatus";
@@ -179,73 +181,106 @@ const Index = () => {
           })}
         </div>
 
-        <Card className="border-purple-200 bg-gradient-to-r from-purple-50 to-blue-50">
+        <Card className="border-red-200 bg-gradient-to-r from-red-50 to-pink-50">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-purple-800">
-              <Zap className="h-5 w-5" />
-              次元を超越したドスケベライティング革命
+            <CardTitle className="flex items-center gap-2 text-red-800">
+              <Crown className="h-5 w-5" />
+              バズった裏垢女子ポストを大量学習済み
             </CardTitle>
-            <CardDescription className="text-purple-700">
-              AIでアダルトマネタイズを極限まで加速させる禁断の方法
+            <CardDescription className="text-red-700 font-medium">
+              やばいGPTsができました - アダアフィ垢バズポスト自動生成GPTs
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="bg-white/60 rounded-lg p-4 border border-red-100">
+              <div className="flex items-start gap-3 mb-4">
+                <div className="text-2xl">👱</div>
+                <div className="flex-1">
+                  <p className="text-gray-800 mb-2">
+                    <strong>アダアフィってめっちゃ稼げるよね</strong>
+                  </p>
+                  <p className="text-gray-700 text-sm">
+                    そうなんだよね、でもさ...
+                  </p>
+                </div>
+                <div className="text-2xl">🧔</div>
+              </div>
+            </div>
+
             <div className="space-y-3">
-              <div className="bg-white/60 rounded-lg p-4 border border-purple-100">
-                <h3 className="font-bold text-lg text-gray-800 mb-2">
-                  「エロが書けないAI」はもう時代遅れ。
-                </h3>
-                <p className="text-gray-700 mb-3">
-                  AIで"売れるドスケベ文章"を量産可能に<br/>
-                  <br/>
-                  これまでAIはエロ系コンテンツを弾く仕様だった。<br/>
-                  しかし、ある手法を使えば<br/>
-                  <strong>その壁を超えたドスケベライティング</strong>が実現可能に！
-                </p>
+              <h3 className="font-bold text-lg text-gray-800">
+                こんなお悩みありませんか？
+              </h3>
+              
+              <div className="space-y-2">
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <p className="text-gray-700 text-sm">
+                    ■ アダアフィやってみたいけど上手にポストが作れずインプが😭
+                  </p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <p className="text-gray-700 text-sm">
+                    ■ 毎日継続してポスト作成できず結局利益が出ずに諦めてしまった
+                  </p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <p className="text-gray-700 text-sm">
+                    ■ そもそもターゲットに刺さるポストが作れない😡
+                  </p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <p className="text-gray-700 text-sm">
+                    ■ 生成AIでポスト作成を試みるもうまく生成できない、プロンプトも難しくて結局挫折🙇‍♂️
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-gradient-to-r from-yellow-100 to-orange-100 rounded-lg p-4 border border-orange-200">
+              <h4 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                <span className="text-xl">💎</span>
+                そんなあなたへ
+              </h4>
+              
+              <div className="space-y-3 mb-4">
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4 text-green-600" />
+                  <span className="text-sm text-gray-700">
+                    <strong>複雑なプロンプトは一切不要！</strong><br/>
+                    超簡単な指示でバズるポストを大量生成
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4 text-green-600" />
+                  <span className="text-sm text-gray-700">
+                    半年以上かけてリサーチした大量のバズポストをGPTsに学習済み
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4 text-green-600" />
+                  <span className="text-sm text-gray-700">
+                    完全脳死で作業しても勝手にクオリティの高いポストを自動生成
+                  </span>
+                </div>
               </div>
               
-              <div className="bg-gradient-to-r from-yellow-100 to-orange-100 rounded-lg p-4 border border-orange-200">
-                <h4 className="font-semibold text-gray-800 mb-3">
-                  AIがエロを書けない時代は終わった。
-                </h4>
-                <p className="text-gray-700 text-sm mb-3">
-                  ついに、"制限を超えた文章革命"がここに誕生。
-                </p>
-                
-                <div className="space-y-2 mb-3">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle className="h-4 w-4 text-green-600" />
-                    <span className="text-sm text-gray-700">売れるドスケベライティングをAIで爆速生成</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <CheckCircle className="h-4 w-4 text-green-600" />
-                    <span className="text-sm text-gray-700">心理学×FOMOを駆使して購買意欲を最大化</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <CheckCircle className="h-4 w-4 text-green-600" />
-                    <span className="text-sm text-gray-700">今ならまだ誰も知らない、先行者利益を独占！</span>
-                  </div>
-                </div>
-                
-                <p className="text-purple-700 font-medium">
-                  あなたがこの情報を手に入れた瞬間、<br/>
-                  アダアフィの新時代を先取りする側に立つことになる👇
-                </p>
-              </div>
+              <p className="text-red-700 font-medium text-center">
+                バズるポストが簡単に作れる秘密の方法👇
+              </p>
             </div>
             
             <Button 
-              className="w-full bg-purple-600 hover:bg-purple-700 text-white"
+              className="w-full bg-red-600 hover:bg-red-700 text-white"
               asChild
             >
               <a 
-                href="https://deeps.me/u/mountain_cb/a/ChatGPTHack" 
+                href="https://deeps.me/u/mountain_cb/a/bazzpostGPTs" 
                 target="_blank" 
                 rel="noopener noreferrer"
                 className="flex items-center justify-center gap-2"
               >
                 <ExternalLink className="h-4 w-4" />
-                禁断の手法を今すぐ確認する
+                やばいGPTsの詳細を確認する
               </a>
             </Button>
           </CardContent>
