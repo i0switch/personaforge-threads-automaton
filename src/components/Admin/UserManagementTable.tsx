@@ -20,6 +20,11 @@ interface UserAccount {
   approved_at: string | null;
 }
 
+interface AuthUser {
+  id: string;
+  email?: string;
+}
+
 export const UserManagementTable = () => {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -61,11 +66,17 @@ export const UserManagementTable = () => {
       console.log('Account status data:', accountStatusData);
 
       // auth.usersから実際のメールアドレスを取得
-      const { data: { users: authUsers }, error: authError } = await supabase.auth.admin.listUsers();
-
-      if (authError) {
-        console.error('Auth users error:', authError);
-        // エラーの場合はプロフィールベースでデータを構築（フォールバック）
+      let authUsers: AuthUser[] = [];
+      try {
+        const { data: authData, error: authError } = await supabase.auth.admin.listUsers();
+        
+        if (authError) {
+          console.error('Auth users error:', authError);
+        } else if (authData?.users) {
+          authUsers = authData.users as AuthUser[];
+        }
+      } catch (error) {
+        console.error('Failed to fetch auth users:', error);
       }
 
       console.log('Auth users data:', authUsers);
