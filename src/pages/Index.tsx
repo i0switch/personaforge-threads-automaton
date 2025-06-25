@@ -1,4 +1,5 @@
 
+
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -179,37 +180,14 @@ const Index = () => {
 
         <Card>
           <CardHeader>
-            <CardTitle>はじめに</CardTitle>
+            <CardTitle>広告スペース</CardTitle>
             <CardDescription>
-              Threads-Genius AIを最大限活用するための手順
+              こちらにあなたのコンテンツの広告を配置できます
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <h3 className="font-semibold">1. ペルソナを設定</h3>
-                <p className="text-sm text-muted-foreground">
-                  まずはAIアシスタントの性格や専門分野を設定しましょう。既存のペルソナがある場合は編集も可能です。
-                </p>
-              </div>
-              <div className="space-y-2">
-                <h3 className="font-semibold">2. 投稿を作成</h3>
-                <p className="text-sm text-muted-foreground">
-                  AIを使って魅力的な投稿コンテンツを生成します
-                </p>
-              </div>
-              <div className="space-y-2">
-                <h3 className="font-semibold">3. スケジュール設定</h3>
-                <p className="text-sm text-muted-foreground">
-                  最適なタイミングで投稿を自動化しましょう
-                </p>
-              </div>
-              <div className="space-y-2">
-                <h3 className="font-semibold">4. 自動返信を活用</h3>
-                <p className="text-sm text-muted-foreground">
-                  コメントへの返信を自動化してエンゲージメントを向上
-                </p>
-              </div>
+            <div className="text-center py-8 text-muted-foreground">
+              広告コンテンツをここに配置してください
             </div>
           </CardContent>
         </Card>
@@ -219,3 +197,4 @@ const Index = () => {
 };
 
 export default Index;
+
