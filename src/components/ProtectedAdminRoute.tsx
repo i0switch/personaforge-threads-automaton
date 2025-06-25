@@ -15,18 +15,22 @@ export const ProtectedAdminRoute = ({ children }: ProtectedAdminRouteProps) => {
   const { toast } = useToast();
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
   const [checkingAdmin, setCheckingAdmin] = useState(true);
+  const [hasChecked, setHasChecked] = useState(false);
 
   // デバッグ用のログ
   console.log('ProtectedAdminRoute render:', {
     user: user ? user.id : 'null',
     authLoading,
     isAdmin,
-    checkingAdmin
+    checkingAdmin,
+    hasChecked
   });
 
   useEffect(() => {
-    checkAdminAccess();
-  }, [user, authLoading]);
+    if (!authLoading && !hasChecked) {
+      checkAdminAccess();
+    }
+  }, [user, authLoading, hasChecked]);
 
   const checkAdminAccess = async () => {
     console.log('checkAdminAccess called:', { authLoading, user: user ? user.id : 'null' });
@@ -38,6 +42,8 @@ export const ProtectedAdminRoute = ({ children }: ProtectedAdminRouteProps) => {
     
     if (!user) {
       console.log('No user found, redirecting to auth');
+      setHasChecked(true);
+      setCheckingAdmin(false);
       navigate("/auth");
       return;
     }
@@ -54,6 +60,7 @@ export const ProtectedAdminRoute = ({ children }: ProtectedAdminRouteProps) => {
       }
       
       console.log('Admin check result:', data);
+      setHasChecked(true);
       
       if (!data) {
         console.log('User is not admin, showing error and redirecting');
@@ -67,7 +74,7 @@ export const ProtectedAdminRoute = ({ children }: ProtectedAdminRouteProps) => {
         setTimeout(() => {
           console.log('Redirecting non-admin user to home');
           navigate("/");
-        }, 1500); // 遅延を少し長くしてトーストが確実に表示されるようにする
+        }, 1500);
         return;
       }
       
@@ -75,6 +82,7 @@ export const ProtectedAdminRoute = ({ children }: ProtectedAdminRouteProps) => {
       setIsAdmin(true);
     } catch (error) {
       console.error('Error checking admin access:', error);
+      setHasChecked(true);
       setIsAdmin(false);
       toast({
         title: "エラー",
@@ -105,7 +113,7 @@ export const ProtectedAdminRoute = ({ children }: ProtectedAdminRouteProps) => {
   }
 
   // 管理者チェック中の場合
-  if (checkingAdmin) {
+  if (checkingAdmin && !hasChecked) {
     console.log('Showing admin check loading screen');
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -131,7 +139,7 @@ export const ProtectedAdminRoute = ({ children }: ProtectedAdminRouteProps) => {
   }
 
   // 管理者でない（リダイレクト中）
-  if (isAdmin === false) {
+  if (hasChecked && isAdmin === false) {
     console.log('Showing non-admin redirect screen');
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -144,8 +152,8 @@ export const ProtectedAdminRoute = ({ children }: ProtectedAdminRouteProps) => {
   }
 
   // 管理者チェックがまだ完了していない
-  if (isAdmin === null) {
-    console.log('isAdmin is null, showing loading screen');
+  if (!hasChecked || isAdmin === null) {
+    console.log('Admin check not completed, showing loading screen');
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">

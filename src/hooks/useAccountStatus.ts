@@ -18,6 +18,7 @@ export const useAccountStatus = () => {
     }
 
     let mounted = true;
+    let channel: any = null;
 
     const checkAccountStatus = async () => {
       try {
@@ -64,9 +65,10 @@ export const useAccountStatus = () => {
     // 初回データ取得
     checkAccountStatus();
 
-    // リアルタイム更新のサブスクリプション設定
-    const channel = supabase
-      .channel('account-status-changes')
+    // リアルタイム更新のサブスクリプション設定（重複を防ぐ）
+    const channelName = `account-status-${user.id}`;
+    channel = supabase
+      .channel(channelName)
       .on(
         'postgres_changes',
         {
@@ -89,9 +91,12 @@ export const useAccountStatus = () => {
 
     return () => {
       mounted = false;
-      supabase.removeChannel(channel);
+      if (channel) {
+        console.log('Cleaning up account status subscription');
+        supabase.removeChannel(channel);
+      }
     };
-  }, [user?.id]);
+  }, [user?.id]); // user?.idの依存関係を明確にする
 
   return { isApproved, isActive, loading };
 };
