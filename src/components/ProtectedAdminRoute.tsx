@@ -1,5 +1,5 @@
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -13,24 +13,32 @@ export const ProtectedAdminRoute = ({ children }: ProtectedAdminRouteProps) => {
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
-  const [checkingAdmin, setCheckingAdmin] = useState(true);
-  const [hasChecked, setHasChecked] = useState(false);
+  const [adminCheckState, setAdminCheckState] = useState<'loading' | 'admin' | 'not-admin' | 'error'>('loading');
+  const mountedRef = useRef(true);
+  const hasCheckedRef = useRef(false);
 
-  // デバッグ用のログ
   console.log('ProtectedAdminRoute render:', {
     user: user ? user.id : 'null',
     authLoading,
-    isAdmin,
-    checkingAdmin,
-    hasChecked
+    adminCheckState,
+    hasChecked: hasCheckedRef.current
   });
 
   useEffect(() => {
-    if (!authLoading && !hasChecked) {
-      checkAdminAccess();
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    // 認証がロード中または既にチェック済みの場合は何もしない
+    if (authLoading || hasCheckedRef.current) {
+      return;
     }
-  }, [user, authLoading, hasChecked]);
+
+    checkAdminAccess();
+  }, [user, authLoading]);
 
   const checkAdminAccess = async () => {
     console.log('checkAdminAccess called:', { authLoading, user: user ? user.id : 'null' });
@@ -40,16 +48,22 @@ export const ProtectedAdminRoute = ({ children }: ProtectedAdminRouteProps) => {
       return;
     }
     
+    // ユーザーがいない場合は認証ページへリダイレクト
     if (!user) {
       console.log('No user found, redirecting to auth');
-      setHasChecked(true);
-      setCheckingAdmin(false);
-      navigate("/auth");
+      hasCheckedRef.current = true;
+      if (mountedRef.current) {
+        setAdminCheckState('not-admin');
+        setTimeout(() => {
+          if (mountedRef.current) {
+            navigate("/auth");
+          }
+        }, 100);
+      }
       return;
     }
 
     try {
-      setCheckingAdmin(true);
       console.log('Checking admin access for user:', user.id);
       
       const { data, error } = await supabase.rpc('is_admin', { _user_id: user.id });
@@ -60,46 +74,53 @@ export const ProtectedAdminRoute = ({ children }: ProtectedAdminRouteProps) => {
       }
       
       console.log('Admin check result:', data);
-      setHasChecked(true);
+      hasCheckedRef.current = true;
+      
+      if (!mountedRef.current) return;
       
       if (!data) {
         console.log('User is not admin, showing error and redirecting');
-        setIsAdmin(false);
+        setAdminCheckState('not-admin');
         toast({
           title: "アクセス拒否",
           description: "管理者権限が必要です。",
           variant: "destructive",
         });
-        // リダイレクト前に少し遅延を追加してトーストが表示されるのを確保
+        
         setTimeout(() => {
-          console.log('Redirecting non-admin user to home');
-          navigate("/");
+          if (mountedRef.current) {
+            console.log('Redirecting non-admin user to home');
+            navigate("/");
+          }
         }, 1500);
         return;
       }
       
       console.log('User is admin, allowing access');
-      setIsAdmin(true);
+      setAdminCheckState('admin');
     } catch (error) {
       console.error('Error checking admin access:', error);
-      setHasChecked(true);
-      setIsAdmin(false);
+      hasCheckedRef.current = true;
+      
+      if (!mountedRef.current) return;
+      
+      setAdminCheckState('error');
       toast({
         title: "エラー",
         description: "権限確認に失敗しました。",
         variant: "destructive",
       });
+      
       setTimeout(() => {
-        console.log('Redirecting due to error');
-        navigate("/");
+        if (mountedRef.current) {
+          console.log('Redirecting due to error');
+          navigate("/");
+        }
       }, 1500);
-    } finally {
-      console.log('Setting checkingAdmin to false');
-      setCheckingAdmin(false);
     }
   };
 
-  // 認証が読み込み中の場合
+  // 認証がロード中の場合
   if (authLoading) {
     console.log('Showing auth loading screen');
     return (
@@ -113,7 +134,7 @@ export const ProtectedAdminRoute = ({ children }: ProtectedAdminRouteProps) => {
   }
 
   // 管理者チェック中の場合
-  if (checkingAdmin && !hasChecked) {
+  if (adminCheckState === 'loading') {
     console.log('Showing admin check loading screen');
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -125,45 +146,24 @@ export const ProtectedAdminRoute = ({ children }: ProtectedAdminRouteProps) => {
     );
   }
 
-  // ユーザーがいない（リダイレクト中）
-  if (!user) {
-    console.log('Showing no user redirect screen');
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-muted-foreground">リダイレクト中...</p>
-        </div>
-      </div>
-    );
+  // 管理者チェック完了・管理者の場合のみ子コンポーネントを表示
+  if (adminCheckState === 'admin') {
+    console.log('Rendering children - user is admin');
+    return <>{children}</>;
   }
 
-  // 管理者でない（リダイレクト中）
-  if (hasChecked && isAdmin === false) {
-    console.log('Showing non-admin redirect screen');
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-muted-foreground">アクセスが拒否されました。リダイレクト中...</p>
-        </div>
+  // その他の場合（リダイレクト中、エラー等）はローディング表示
+  console.log('Showing redirect/error loading screen');
+  return (
+    <div className="min-h-screen bg-background flex items-center justify-center">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+        <p className="text-muted-foreground">
+          {adminCheckState === 'not-admin' ? 'アクセスが拒否されました。リダイレクト中...' : 
+           adminCheckState === 'error' ? 'エラーが発生しました。リダイレクト中...' : 
+           'リダイレクト中...'}
+        </p>
       </div>
-    );
-  }
-
-  // 管理者チェックがまだ完了していない
-  if (!hasChecked || isAdmin === null) {
-    console.log('Admin check not completed, showing loading screen');
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-muted-foreground">権限を確認中...</p>
-        </div>
-      </div>
-    );
-  }
-
-  console.log('Rendering children - user is admin');
-  return <>{children}</>;
+    </div>
+  );
 };
