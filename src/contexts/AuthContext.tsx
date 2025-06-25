@@ -28,70 +28,110 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let mounted = true;
+
     // Set up auth state listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        console.log('Auth state change:', event, session?.user?.id);
+      async (event, session) => {
+        if (!mounted) return;
+        
+        if (process.env.NODE_ENV === 'development') {
+          console.log('Auth state change:', event, session?.user?.id);
+        }
+        
         setSession(session);
         setUser(session?.user ?? null);
+        
+        if (!loading) return; // Only set loading to false on initial load
         setLoading(false);
       }
     );
 
     // Check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
+    const initializeAuth = async () => {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (error) {
+          console.error('Error getting session:', error);
+          return;
+        }
+        
+        if (mounted) {
+          setSession(session);
+          setUser(session?.user ?? null);
+          setLoading(false);
+        }
+      } catch (error) {
+        console.error('Auth initialization error:', error);
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    };
 
-    return () => subscription.unsubscribe();
+    initializeAuth();
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   const signUp = async (email: string, password: string, displayName?: string) => {
-    const redirectUrl = `${window.location.origin}/`;
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: redirectUrl,
-        data: {
-          display_name: displayName
+    try {
+      const redirectUrl = `${window.location.origin}/`;
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: redirectUrl,
+          data: {
+            display_name: displayName
+          }
         }
-      }
-    });
-    return { error };
+      });
+      return { error };
+    } catch (error) {
+      return { error };
+    }
   };
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-    return { error };
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      return { error };
+    } catch (error) {
+      return { error };
+    }
   };
 
   const signOut = async () => {
     try {
-      console.log('Signing out user...');
       const { error } = await supabase.auth.signOut();
       if (error) {
-        console.error('Sign out error:', error);
-        // セッションが見つからない場合でも、ローカル状態をクリア
-        if (error.message.includes('session_not_found') || error.message.includes('Session not found')) {
-          console.log('Session not found, clearing local state');
+        // Handle specific error cases
+        if (error.message.includes('session_not_found') || 
+            error.message.includes('Session not found')) {
+          // Session already invalid, just clear local state
           setSession(null);
           setUser(null);
           return;
         }
         throw error;
       }
-      console.log('Sign out successful');
-    } catch (error) {
-      console.error('Unexpected sign out error:', error);
-      // エラーが発生しても、ローカル状態をクリア
+      
+      // Clear local state on successful sign out
       setSession(null);
       setUser(null);
+    } catch (error) {
+      console.error('Sign out error:', error);
+      // On any error, clear local state to prevent inconsistent state
+      setSession(null);
+      setUser(null);
+      throw error;
     }
   };
 
