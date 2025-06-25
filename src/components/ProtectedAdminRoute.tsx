@@ -15,70 +15,123 @@ export const ProtectedAdminRoute = ({ children }: ProtectedAdminRouteProps) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
-  const [adminCheckState, setAdminCheckState] = useState<'loading' | 'admin' | 'not-admin' | 'error'>('loading');
+  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
 
   useEffect(() => {
     let mounted = true;
 
     const checkAdminAccess = async () => {
-      // Wait for auth to complete
+      // 認証完了まで待機
       if (authLoading) return;
       
-      // Redirect to auth if no user
+      // ユーザーがいない場合は認証ページへ
       if (!user) {
         if (mounted) {
-          setAdminCheckState('not-admin');
           navigate("/auth", { replace: true });
         }
         return;
       }
 
       try {
+        // 管理者権限チェック
         const { data, error } = await supabase.rpc('is_admin', { _user_id: user.id });
         
         if (!mounted) return;
         
         if (error) {
           console.error('Admin check error:', error);
-          setAdminCheckState('error');
+          
+          // セキュリティログに記録
+          await supabase
+            .from('activity_logs')
+            .insert({
+              user_id: user.id,
+              action_type: 'admin_check_failed',
+              description: 'Failed to verify admin privileges',
+              metadata: { error: error.message, ip: 'unknown' }
+            });
+
           toast({
             title: "エラー",
             description: "権限確認に失敗しました。",
             variant: "destructive",
           });
+          
           setTimeout(() => navigate("/", { replace: true }), 2000);
           return;
         }
         
         if (!data) {
-          setAdminCheckState('not-admin');
+          // 不正なアクセス試行をログに記録
+          await supabase
+            .from('activity_logs')
+            .insert({
+              user_id: user.id,
+              action_type: 'unauthorized_admin_access',
+              description: 'Attempted to access admin area without privileges',
+              metadata: { 
+                path: location.pathname, 
+                timestamp: new Date().toISOString(),
+                user_agent: navigator.userAgent
+              }
+            });
+
+          setIsAdmin(false);
           toast({
             title: "アクセス拒否",
             description: "管理者権限が必要です。",
             variant: "destructive",
           });
+          
           setTimeout(() => navigate("/", { replace: true }), 2000);
           return;
         }
         
-        setAdminCheckState('admin');
+        // 管理者アクセスをログに記録
+        await supabase
+          .from('activity_logs')
+          .insert({
+            user_id: user.id,
+            action_type: 'admin_access_granted',
+            description: 'Successfully accessed admin area',
+            metadata: { 
+              path: location.pathname,
+              timestamp: new Date().toISOString()
+            }
+          });
+
+        setIsAdmin(true);
       } catch (error) {
         if (!mounted) return;
         
         console.error('Unexpected admin check error:', error);
-        setAdminCheckState('error');
+        
+        // 予期しないエラーをログに記録
+        await supabase
+          .from('activity_logs')
+          .insert({
+            user_id: user?.id || 'unknown',
+            action_type: 'admin_check_error',
+            description: 'Unexpected error during admin check',
+            metadata: { 
+              error: error instanceof Error ? error.message : 'Unknown error',
+              stack: error instanceof Error ? error.stack : undefined
+            }
+          });
+
         toast({
           title: "エラー",
           description: "権限確認中に予期しないエラーが発生しました。",
           variant: "destructive",
         });
+        
         setTimeout(() => navigate("/", { replace: true }), 2000);
       }
     };
 
-    // Reset state when location changes
+    // 場所が変更されたらリセット
     if (location.pathname.includes('/admin')) {
-      setAdminCheckState('loading');
+      setIsAdmin(null);
       checkAdminAccess();
     }
 
@@ -87,21 +140,16 @@ export const ProtectedAdminRoute = ({ children }: ProtectedAdminRouteProps) => {
     };
   }, [user, authLoading, navigate, toast, location.pathname]);
 
-  // Show loading while checking auth or admin status
-  if (authLoading || adminCheckState === 'loading') {
+  // 認証中または管理者チェック中
+  if (authLoading || isAdmin === null) {
     return <LoadingSpinner message="権限を確認中..." />;
   }
 
-  // Show children only if user is confirmed admin
-  if (adminCheckState === 'admin') {
+  // 管理者の場合のみ子コンポーネントを表示
+  if (isAdmin) {
     return <>{children}</>;
   }
 
-  // Show loading for redirect states
-  const redirectMessage = 
-    adminCheckState === 'not-admin' ? 'アクセスが拒否されました。リダイレクト中...' : 
-    adminCheckState === 'error' ? 'エラーが発生しました。リダイレクト中...' : 
-    'リダイレクト中...';
-
-  return <LoadingSpinner message={redirectMessage} />;
+  // リダイレクト中
+  return <LoadingSpinner message="リダイレクト中..." />;
 };

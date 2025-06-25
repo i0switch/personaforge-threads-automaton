@@ -5,11 +5,12 @@ import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Shield, AlertTriangle, Info } from "lucide-react";
+import { Shield, AlertTriangle, Info, Clock } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { securityAudit } from "@/utils/securityAudit";
+import { SecurityEventMonitor } from "./SecurityEventMonitor";
 
 export const SecuritySettings = () => {
   const { user } = useAuth();
@@ -18,20 +19,29 @@ export const SecuritySettings = () => {
     anomalyDetection: true,
     activityLogging: true,
     securityAlerts: true,
-    autoSecurityScan: false
+    autoSecurityScan: false,
+    sessionTimeout: true,
+    strongPasswordPolicy: true
   });
   const [loading, setLoading] = useState(false);
   const [lastScanResult, setLastScanResult] = useState<any>(null);
+  const [nextScanTime, setNextScanTime] = useState<Date | null>(null);
 
   useEffect(() => {
     loadSecuritySettings();
+    
+    // 次回自動スキャン時間を設定
+    if (settings.autoSecurityScan) {
+      const nextScan = new Date();
+      nextScan.setHours(nextScan.getHours() + 24);
+      setNextScanTime(nextScan);
+    }
   }, [user]);
 
   const loadSecuritySettings = async () => {
     if (!user) return;
 
     try {
-      // セキュリティ設定を読み込み（プロファイルから）
       const { data: profile } = await supabase
         .from('profiles')
         .select('*')
@@ -60,14 +70,27 @@ export const SecuritySettings = () => {
         .insert({
           user_id: user?.id,
           action_type: 'security_setting_changed',
-          description: `${key} setting changed to ${value}`,
-          metadata: { setting: key, value, timestamp: new Date().toISOString() }
+          description: `Security setting '${key}' changed to ${value}`,
+          metadata: { 
+            setting: key, 
+            value, 
+            timestamp: new Date().toISOString(),
+            user_agent: navigator.userAgent,
+            ip: 'unknown' // 実際の実装では適切なIPを取得
+          }
         });
 
       toast({
         title: "設定を更新しました",
-        description: `セキュリティ設定「${key}」を変更しました。`,
+        description: `セキュリティ設定「${getSettingDisplayName(key)}」を変更しました。`,
       });
+
+      // 自動スキャンが有効になった場合、次回スキャン時間を設定
+      if (key === 'autoSecurityScan' && value) {
+        const nextScan = new Date();
+        nextScan.setHours(nextScan.getHours() + 24);
+        setNextScanTime(nextScan);
+      }
     } catch (error) {
       console.error('Error updating security setting:', error);
       toast({
@@ -78,6 +101,18 @@ export const SecuritySettings = () => {
     }
   };
 
+  const getSettingDisplayName = (key: string): string => {
+    const displayNames: Record<string, string> = {
+      'anomalyDetection': '異常活動検知',
+      'activityLogging': '活動ログ記録',
+      'securityAlerts': 'セキュリティアラート',
+      'autoSecurityScan': '自動セキュリティスキャン',
+      'sessionTimeout': 'セッションタイムアウト',
+      'strongPasswordPolicy': '強力なパスワードポリシー'
+    };
+    return displayNames[key] || key;
+  };
+
   const runSecurityScan = async () => {
     if (!user) return;
 
@@ -86,12 +121,41 @@ export const SecuritySettings = () => {
       const result = await securityAudit.performSecurityScan(user.id);
       setLastScanResult(result);
 
+      // スキャン実行をログに記録
+      await supabase
+        .from('activity_logs')
+        .insert({
+          user_id: user.id,
+          action_type: 'security_scan_executed',
+          description: 'Manual security scan executed',
+          metadata: {
+            vulnerabilities: result.vulnerabilities,
+            timestamp: new Date().toISOString()
+          }
+        });
+
+      const totalIssues = result.vulnerabilities.high + result.vulnerabilities.medium + result.vulnerabilities.low;
+      
       toast({
         title: "セキュリティスキャン完了",
-        description: `スキャンが完了しました。${result.vulnerabilities.high + result.vulnerabilities.medium + result.vulnerabilities.low}件の問題が検出されました。`,
+        description: `スキャンが完了しました。${totalIssues}件の問題が検出されました。`,
+        variant: totalIssues > 0 ? "destructive" : "default"
       });
     } catch (error) {
       console.error('Security scan error:', error);
+      
+      await supabase
+        .from('activity_logs')
+        .insert({
+          user_id: user?.id,
+          action_type: 'security_scan_failed',
+          description: 'Security scan failed',
+          metadata: {
+            error: error instanceof Error ? error.message : 'Unknown error',
+            timestamp: new Date().toISOString()
+          }
+        });
+
       toast({
         title: "エラー",
         description: "セキュリティスキャンに失敗しました。",
@@ -182,7 +246,7 @@ export const SecuritySettings = () => {
               <div className="space-y-1">
                 <Label htmlFor="auto-scan">自動セキュリティスキャン</Label>
                 <p className="text-sm text-muted-foreground">
-                  定期的にセキュリティスキャンを自動実行します
+                  定期的にセキュリティスキャンを自動実行します（24時間間隔）
                 </p>
               </div>
               <Switch
@@ -191,10 +255,38 @@ export const SecuritySettings = () => {
                 onCheckedChange={(checked) => updateSetting('autoSecurityScan', checked)}
               />
             </div>
+
+            <div className="flex items-center justify-between">
+              <div className="space-y-1">
+                <Label htmlFor="session-timeout">セッションタイムアウト</Label>
+                <p className="text-sm text-muted-foreground">
+                  一定時間非アクティブ後に自動ログアウトします
+                </p>
+              </div>
+              <Switch
+                id="session-timeout"
+                checked={settings.sessionTimeout}
+                onCheckedChange={(checked) => updateSetting('sessionTimeout', checked)}
+              />
+            </div>
+
+            <div className="flex items-center justify-between">
+              <div className="space-y-1">
+                <Label htmlFor="strong-password">強力なパスワードポリシー</Label>
+                <p className="text-sm text-muted-foreground">
+                  パスワードの複雑性要件を強化します
+                </p>
+              </div>
+              <Switch
+                id="strong-password"
+                checked={settings.strongPasswordPolicy}
+                onCheckedChange={(checked) => updateSetting('strongPasswordPolicy', checked)}
+              />
+            </div>
           </div>
 
           <div className="pt-4 border-t">
-            <div className="flex gap-3">
+            <div className="flex gap-3 mb-4">
               <Button onClick={runSecurityScan} disabled={loading}>
                 {loading ? (
                   <>
@@ -212,6 +304,13 @@ export const SecuritySettings = () => {
                 設定確認
               </Button>
             </div>
+
+            {nextScanTime && settings.autoSecurityScan && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Clock className="h-4 w-4" />
+                次回自動スキャン: {nextScanTime.toLocaleString('ja-JP')}
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -258,6 +357,8 @@ export const SecuritySettings = () => {
           </CardContent>
         </Card>
       )}
+
+      <SecurityEventMonitor />
 
       <Alert>
         <AlertTriangle className="h-4 w-4" />

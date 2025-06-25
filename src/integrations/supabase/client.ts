@@ -3,25 +3,45 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
-// Supabase configuration from environment variables
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "https://tqcgbsnoiarnawnppwia.supabase.co";
-const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRxY2dic25vaWFybmF3bnBwd2lhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk5MTUxODEsImV4cCI6MjA2NTQ5MTE4MX0.5_mXobtncEbIHyigC_EqP-z1cr7AWYepR7L2CZwjBvI";
+// Environment variable validation
+const validateEnvironment = () => {
+  const requiredVars = {
+    VITE_SUPABASE_URL: import.meta.env.VITE_SUPABASE_URL,
+    VITE_SUPABASE_ANON_KEY: import.meta.env.VITE_SUPABASE_ANON_KEY,
+  };
 
-// Validate required environment variables
-if (!SUPABASE_URL) {
-  throw new Error('Missing required environment variable: VITE_SUPABASE_URL');
-}
+  const missing = Object.entries(requiredVars)
+    .filter(([_, value]) => !value)
+    .map(([key]) => key);
 
-if (!SUPABASE_PUBLISHABLE_KEY) {
-  throw new Error('Missing required environment variable: VITE_SUPABASE_ANON_KEY');
-}
+  if (missing.length > 0) {
+    throw new Error(
+      `Missing required environment variables: ${missing.join(', ')}\n` +
+      'Please check your environment configuration.'
+    );
+  }
+
+  return requiredVars;
+};
+
+// Validate and get environment variables
+const env = validateEnvironment();
 
 // Configure Supabase client with proper auth settings
-export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
-  auth: {
-    storage: localStorage,
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: true
+export const supabase = createClient<Database>(
+  env.VITE_SUPABASE_URL,
+  env.VITE_SUPABASE_ANON_KEY,
+  {
+    auth: {
+      storage: localStorage,
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true
+    }
   }
-});
+);
+
+// Log configuration status (development only)
+if (import.meta.env.DEV) {
+  console.log('Supabase client configured successfully');
+}

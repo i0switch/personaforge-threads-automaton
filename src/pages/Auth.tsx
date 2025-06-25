@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,13 +8,19 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
-import { Bot } from "lucide-react";
+import { PasswordStrengthIndicator } from "@/components/PasswordStrengthIndicator";
+import { validatePassword } from "@/utils/passwordValidation";
+import { Bot, Eye, EyeOff } from "lucide-react";
 
 const Auth = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { signIn, signUp, user } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [failedAttempts, setFailedAttempts] = useState(0);
+  const [lockoutTime, setLockoutTime] = useState<Date | null>(null);
 
   // Redirect if already logged in
   useEffect(() => {
@@ -21,6 +28,14 @@ const Auth = () => {
       navigate("/");
     }
   }, [user, navigate]);
+
+  // Check lockout status
+  useEffect(() => {
+    if (lockoutTime && new Date() > lockoutTime) {
+      setLockoutTime(null);
+      setFailedAttempts(0);
+    }
+  }, [lockoutTime]);
 
   const [loginForm, setLoginForm] = useState({
     email: "",
@@ -34,28 +49,56 @@ const Auth = () => {
     displayName: "",
   });
 
+  const isLockedOut = lockoutTime && new Date() < lockoutTime;
+  const lockoutRemaining = lockoutTime ? Math.ceil((lockoutTime.getTime() - new Date().getTime()) / 1000) : 0;
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (isLockedOut) {
+      toast({
+        title: "アカウントロック中",
+        description: `${lockoutRemaining}秒後に再試行してください。`,
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsLoading(true);
 
     try {
       const { error } = await signIn(loginForm.email, loginForm.password);
       
       if (error) {
-        if (error.message.includes("Invalid login credentials")) {
+        setFailedAttempts(prev => prev + 1);
+        
+        // Lock account after 5 failed attempts
+        if (failedAttempts >= 4) {
+          const lockDuration = Math.min(300, 60 * Math.pow(2, failedAttempts - 4)); // 1分から5分まで
+          setLockoutTime(new Date(Date.now() + lockDuration * 1000));
           toast({
-            title: "ログインエラー",
-            description: "メールアドレスまたはパスワードが正しくありません。",
+            title: "アカウントロック",
+            description: `ログイン試行回数が上限に達しました。${lockDuration}秒後に再試行してください。`,
             variant: "destructive",
           });
         } else {
-          toast({
-            title: "ログインエラー", 
-            description: error.message,
-            variant: "destructive",
-          });
+          if (error.message.includes("Invalid login credentials")) {
+            toast({
+              title: "ログインエラー",
+              description: `メールアドレスまたはパスワードが正しくありません。残り試行回数: ${5 - failedAttempts - 1}回`,
+              variant: "destructive",
+            });
+          } else {
+            toast({
+              title: "ログインエラー", 
+              description: error.message,
+              variant: "destructive",
+            });
+          }
         }
       } else {
+        setFailedAttempts(0);
+        setLockoutTime(null);
         toast({
           title: "ログイン成功",
           description: "正常にログインしました。",
@@ -85,10 +128,12 @@ const Auth = () => {
       return;
     }
 
-    if (signupForm.password.length < 6) {
+    // Enhanced password validation
+    const passwordValidation = validatePassword(signupForm.password);
+    if (!passwordValidation.isValid) {
       toast({
         title: "パスワードエラー",
-        description: "パスワードは6文字以上で入力してください。",
+        description: passwordValidation.errors[0],
         variant: "destructive",
       });
       return;
@@ -152,6 +197,13 @@ const Auth = () => {
           <p className="text-muted-foreground">Gemini搭載Threads自動運用ツール</p>
         </div>
 
+        {isLockedOut && (
+          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-center">
+            <p className="text-red-800 font-medium">アカウントがロックされています</p>
+            <p className="text-red-600 text-sm">{lockoutRemaining}秒後に再試行可能</p>
+          </div>
+        )}
+
         <Tabs defaultValue="login" className="w-full">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="login">ログイン</TabsTrigger>
@@ -177,20 +229,38 @@ const Auth = () => {
                       onChange={(e) => setLoginForm(prev => ({ ...prev, email: e.target.value }))}
                       placeholder="your@email.com"
                       required
+                      disabled={isLockedOut}
                     />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="login-password">パスワード</Label>
-                    <Input
-                      id="login-password"
-                      type="password"
-                      value={loginForm.password}
-                      onChange={(e) => setLoginForm(prev => ({ ...prev, password: e.target.value }))}
-                      placeholder="パスワード"
-                      required
-                    />
+                    <div className="relative">
+                      <Input
+                        id="login-password"
+                        type={showPassword ? "text" : "password"}
+                        value={loginForm.password}
+                        onChange={(e) => setLoginForm(prev => ({ ...prev, password: e.target.value }))}
+                        placeholder="パスワード"
+                        required
+                        disabled={isLockedOut}
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                        onClick={() => setShowPassword(!showPassword)}
+                        disabled={isLockedOut}
+                      >
+                        {showPassword ? (
+                          <EyeOff className="h-4 w-4" />
+                        ) : (
+                          <Eye className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </div>
                   </div>
-                  <Button type="submit" className="w-full" disabled={isLoading}>
+                  <Button type="submit" className="w-full" disabled={isLoading || isLockedOut}>
                     {isLoading ? "ログイン中..." : "ログイン"}
                   </Button>
                 </form>
@@ -232,25 +302,56 @@ const Auth = () => {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="signup-password">パスワード</Label>
-                    <Input
-                      id="signup-password"
-                      type="password"
-                      value={signupForm.password}
-                      onChange={(e) => setSignupForm(prev => ({ ...prev, password: e.target.value }))}
-                      placeholder="パスワード（6文字以上）"
-                      required
-                    />
+                    <div className="relative">
+                      <Input
+                        id="signup-password"
+                        type={showPassword ? "text" : "password"}
+                        value={signupForm.password}
+                        onChange={(e) => setSignupForm(prev => ({ ...prev, password: e.target.value }))}
+                        placeholder="パスワード（8文字以上、複雑性要件）"
+                        required
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                        onClick={() => setShowPassword(!showPassword)}
+                      >
+                        {showPassword ? (
+                          <EyeOff className="h-4 w-4" />
+                        ) : (
+                          <Eye className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </div>
+                    <PasswordStrengthIndicator password={signupForm.password} />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="signup-confirm">パスワード確認</Label>
-                    <Input
-                      id="signup-confirm"
-                      type="password"
-                      value={signupForm.confirmPassword}
-                      onChange={(e) => setSignupForm(prev => ({ ...prev, confirmPassword: e.target.value }))}
-                      placeholder="パスワードを再入力"
-                      required
-                    />
+                    <div className="relative">
+                      <Input
+                        id="signup-confirm"
+                        type={showConfirmPassword ? "text" : "password"}
+                        value={signupForm.confirmPassword}
+                        onChange={(e) => setSignupForm(prev => ({ ...prev, confirmPassword: e.target.value }))}
+                        placeholder="パスワードを再入力"
+                        required
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      >
+                        {showConfirmPassword ? (
+                          <EyeOff className="h-4 w-4" />
+                        ) : (
+                          <Eye className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </div>
                   </div>
                   <Button type="submit" className="w-full" disabled={isLoading}>
                     {isLoading ? "作成中..." : "アカウント作成"}
