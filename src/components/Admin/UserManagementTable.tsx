@@ -70,7 +70,7 @@ export const UserManagementTable = () => {
           
           return {
             user_id: profile.user_id,
-            email: `${shortUserId}@example.com`,
+            email: `user-${shortUserId}@example.com`,
             display_name: profile.display_name || `User ${shortUserId}`,
             is_approved: accountStatus?.is_approved ?? false,
             is_active: accountStatus?.is_active ?? false,
