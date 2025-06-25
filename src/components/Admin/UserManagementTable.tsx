@@ -60,40 +60,17 @@ export const UserManagementTable = () => {
 
       console.log('Account status data:', accountStatusData);
 
-      // Service Roleを使用してauth.usersから実際のメールアドレスを取得
-      const { data: { users: authUsers }, error: authError } = await supabase.auth.admin.listUsers();
-      
       let combinedData: UserAccount[] = [];
 
-      if (authUsers && !authError) {
-        console.log('Successfully got auth users:', authUsers.length);
-        // 実際のメールアドレスを使用してデータを結合
-        combinedData = authUsers.map(authUser => {
-          const accountStatus = accountStatusData?.find(s => s.user_id === authUser.id);
-          const profile = profilesData?.find(p => p.user_id === authUser.id);
-          
-          return {
-            user_id: authUser.id,
-            email: authUser.email || 'メールアドレス不明',
-            display_name: profile?.display_name || authUser.user_metadata?.display_name || `User ${authUser.id.slice(0, 8)}`,
-            is_approved: accountStatus?.is_approved ?? false,
-            is_active: accountStatus?.is_active ?? false,
-            subscription_status: accountStatus?.subscription_status || 'free',
-            created_at: profile?.created_at || authUser.created_at,
-            approved_at: accountStatus?.approved_at || null
-          };
-        });
-      } else {
-        console.log('Auth users query failed, using profiles-based approach:', authError);
-        
-        // フォールバック: profilesのuser_idを基に処理
-        combinedData = profilesData?.map(profile => {
+      // プロフィールベースでデータを構築
+      if (profilesData) {
+        combinedData = profilesData.map(profile => {
           const accountStatus = accountStatusData?.find(s => s.user_id === profile.user_id);
           const shortUserId = profile.user_id.slice(0, 8);
           
           return {
             user_id: profile.user_id,
-            email: `user-${shortUserId}@example.com`,
+            email: `${shortUserId}@example.com`,
             display_name: profile.display_name || `User ${shortUserId}`,
             is_approved: accountStatus?.is_approved ?? false,
             is_active: accountStatus?.is_active ?? false,
@@ -101,7 +78,7 @@ export const UserManagementTable = () => {
             created_at: profile.created_at,
             approved_at: accountStatus?.approved_at || null
           };
-        }) || [];
+        });
       }
 
       console.log('Final combined user data:', combinedData);
