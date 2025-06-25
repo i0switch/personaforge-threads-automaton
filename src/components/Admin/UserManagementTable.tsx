@@ -48,7 +48,7 @@ export const UserManagementTable = () => {
 
       console.log('Profiles data:', profilesData);
 
-      // アカウント状態を取得
+      // アカウント状態をすべて取得
       const { data: accountStatusData, error: statusError } = await supabase
         .from('user_account_status')
         .select('user_id, is_approved, is_active, subscription_status, approved_at');
@@ -60,38 +60,39 @@ export const UserManagementTable = () => {
 
       console.log('Account status data:', accountStatusData);
 
-      // メール情報を取得（auth.admin.listUsersを試行）
+      // auth.usersテーブルから実際のメールアドレスを取得しようと試行
       let authUsers: any[] = [];
+      let emailMap = new Map<string, string>();
+
       try {
+        // Service roleではなくanon keyでlistUsersを試行（これは失敗することが予想される）
         const { data: authResponse, error: authError } = await supabase.auth.admin.listUsers();
-        if (authError) {
-          console.error('Auth admin error:', authError);
-          // auth.admin権限がない場合はダミーメールを生成
-          authUsers = profilesData?.map(profile => ({
-            id: profile.user_id,
-            email: `user-${profile.user_id.slice(0, 8)}@example.com`
-          })) || [];
+        
+        if (authResponse?.users) {
+          authUsers = authResponse.users;
+          console.log('Successfully retrieved auth users:', authUsers.length);
+          
+          // メールアドレスのマップを作成
+          authUsers.forEach(authUser => {
+            emailMap.set(authUser.id, authUser.email);
+          });
         } else {
-          authUsers = authResponse?.users || [];
-          console.log('Auth users retrieved successfully:', authUsers.length);
+          console.log('Auth admin access not available, will use placeholder emails');
         }
       } catch (error) {
-        console.error('Auth access error:', error);
-        // エラーの場合もダミーメールを生成
-        authUsers = profilesData?.map(profile => ({
-          id: profile.user_id,
-          email: `user-${profile.user_id.slice(0, 8)}@example.com`
-        })) || [];
+        console.log('Auth admin access failed:', error);
       }
 
       // データを結合
       const combinedData = profilesData?.map(profile => {
-        const authUser = authUsers.find(u => u.id === profile.user_id);
         const accountStatus = accountStatusData?.find(s => s.user_id === profile.user_id);
+        
+        // 実際のメールアドレスがあればそれを使用、なければプレースホルダー
+        const email = emailMap.get(profile.user_id) || `user-${profile.user_id.slice(0, 8)}@placeholder.local`;
         
         return {
           user_id: profile.user_id,
-          email: authUser?.email || `user-${profile.user_id.slice(0, 8)}@example.com`,
+          email: email,
           display_name: profile.display_name || 'Unknown User',
           is_approved: accountStatus?.is_approved ?? false,
           is_active: accountStatus?.is_active ?? false,
@@ -123,32 +124,60 @@ export const UserManagementTable = () => {
       const updateData: any = { [field]: value };
       
       // 承認の場合は承認日時と承認者も記録
-      if (field === 'is_approved' && value) {
-        updateData.approved_at = new Date().toISOString();
-        updateData.approved_by = user?.id;
-        // 承認時は自動的にアクティブにする
-        updateData.is_active = true;
-      } else if (field === 'is_approved' && !value) {
-        // 承認取り消しの場合は承認日時をクリア
-        updateData.approved_at = null;
-        updateData.approved_by = null;
+      if (field === 'is_approved') {
+        if (value) {
+          updateData.approved_at = new Date().toISOString();
+          updateData.approved_by = user?.id;
+          // 承認時は自動的にアクティブにする
+          updateData.is_active = true;
+        } else {
+          // 承認取り消しの場合
+          updateData.approved_at = null;
+          updateData.approved_by = null;
+        }
       }
 
-      console.log('Update data:', updateData);
+      console.log('Update data being sent:', updateData);
 
-      // upsertを使用して既存レコードを更新または新規作成
-      const { error: upsertError } = await supabase
+      // まず既存のレコードがあるかチェック
+      const { data: existingRecord, error: checkError } = await supabase
         .from('user_account_status')
-        .upsert({
-          user_id: userId,
-          ...updateData
-        }, {
-          onConflict: 'user_id'
-        });
+        .select('*')
+        .eq('user_id', userId)
+        .single();
 
-      if (upsertError) {
-        console.error('Upsert error:', upsertError);
-        throw upsertError;
+      if (checkError && checkError.code !== 'PGRST116') {
+        console.error('Error checking existing record:', checkError);
+        throw checkError;
+      }
+
+      if (existingRecord) {
+        // 既存レコードを更新
+        const { error: updateError } = await supabase
+          .from('user_account_status')
+          .update(updateData)
+          .eq('user_id', userId);
+
+        if (updateError) {
+          console.error('Update error:', updateError);
+          throw updateError;
+        }
+      } else {
+        // 新規レコードを作成
+        const { error: insertError } = await supabase
+          .from('user_account_status')
+          .insert({
+            user_id: userId,
+            is_approved: field === 'is_approved' ? value : false,
+            is_active: field === 'is_active' ? value : false,
+            subscription_status: 'free',
+            ...updateData
+          });
+
+        if (insertError) {
+          console.error('Insert error:', insertError);
+          throw insertError;
+        }
       }
 
       console.log('Status updated successfully');
@@ -177,16 +206,36 @@ export const UserManagementTable = () => {
     setUpdating(userId);
     
     try {
-      const { error: upsertError } = await supabase
+      // まず既存のレコードがあるかチェック
+      const { data: existingRecord, error: checkError } = await supabase
         .from('user_account_status')
-        .upsert({
-          user_id: userId,
-          subscription_status: subscriptionStatus
-        }, {
-          onConflict: 'user_id'
-        });
+        .select('*')
+        .eq('user_id', userId)
+        .single();
 
-      if (upsertError) throw upsertError;
+      if (checkError && checkError.code !== 'PGRST116') {
+        throw checkError;
+      }
+
+      if (existingRecord) {
+        const { error: updateError } = await supabase
+          .from('user_account_status')
+          .update({ subscription_status: subscriptionStatus })
+          .eq('user_id', userId);
+
+        if (updateError) throw updateError;
+      } else {
+        const { error: insertError } = await supabase
+          .from('user_account_status')
+          .insert({
+            user_id: userId,
+            is_approved: false,
+            is_active: false,  
+            subscription_status: subscriptionStatus
+          });
+
+        if (insertError) throw insertError;
+      }
 
       toast({
         title: "成功",
