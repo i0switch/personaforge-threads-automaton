@@ -1,293 +1,271 @@
 
 import { useState, useEffect } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
+import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Shield, AlertTriangle, Info } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
-import { Shield, AlertTriangle, Save } from "lucide-react";
-
-interface SecurityConfig {
-  rateLimitEnabled: boolean;
-  rateLimitRequests: number;
-  rateLimitWindow: number;
-  auditLogEnabled: boolean;
-  alertsEnabled: boolean;
-  alertEmail: string;
-  intrusionDetectionEnabled: boolean;
-  suspiciousActivityThreshold: number;
-}
+import { securityAudit } from "@/utils/securityAudit";
 
 export const SecuritySettings = () => {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [config, setConfig] = useState<SecurityConfig>({
-    rateLimitEnabled: true,
-    rateLimitRequests: 100,
-    rateLimitWindow: 60,
-    auditLogEnabled: true,
-    alertsEnabled: true,
-    alertEmail: '',
-    intrusionDetectionEnabled: true,
-    suspiciousActivityThreshold: 10
+  const [settings, setSettings] = useState({
+    anomalyDetection: true,
+    activityLogging: true,
+    securityAlerts: true,
+    autoSecurityScan: false
   });
-  const [saving, setSaving] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [lastScanResult, setLastScanResult] = useState<any>(null);
 
   useEffect(() => {
-    if (user) {
-      loadSecurityConfig();
-    }
+    loadSecuritySettings();
   }, [user]);
 
-  const loadSecurityConfig = async () => {
+  const loadSecuritySettings = async () => {
+    if (!user) return;
+
     try {
-      // プロファイルから設定を読み込み
+      // セキュリティ設定を読み込み（プロファイルから）
       const { data: profile } = await supabase
         .from('profiles')
         .select('*')
-        .eq('user_id', user?.id)
+        .eq('user_id', user.id)
         .single();
 
       if (profile) {
-        setConfig(prev => ({
+        // 既存の設定があれば反映
+        setSettings(prev => ({
           ...prev,
-          alertEmail: profile.display_name || ''
+          // プロファイルから設定を読み込む場合の処理
         }));
       }
     } catch (error) {
-      console.error('Failed to load security config:', error);
+      console.error('Error loading security settings:', error);
+    }
+  };
+
+  const updateSetting = async (key: string, value: boolean) => {
+    setSettings(prev => ({ ...prev, [key]: value }));
+    
+    try {
+      // 設定変更をログに記録
+      await supabase
+        .from('activity_logs')
+        .insert({
+          user_id: user?.id,
+          action_type: 'security_setting_changed',
+          description: `${key} setting changed to ${value}`,
+          metadata: { setting: key, value, timestamp: new Date().toISOString() }
+        });
+
+      toast({
+        title: "設定を更新しました",
+        description: `セキュリティ設定「${key}」を変更しました。`,
+      });
+    } catch (error) {
+      console.error('Error updating security setting:', error);
+      toast({
+        title: "エラー",
+        description: "設定の更新に失敗しました。",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const runSecurityScan = async () => {
+    if (!user) return;
+
+    setLoading(true);
+    try {
+      const result = await securityAudit.performSecurityScan(user.id);
+      setLastScanResult(result);
+
+      toast({
+        title: "セキュリティスキャン完了",
+        description: `スキャンが完了しました。${result.vulnerabilities.high + result.vulnerabilities.medium + result.vulnerabilities.low}件の問題が検出されました。`,
+      });
+    } catch (error) {
+      console.error('Security scan error:', error);
+      toast({
+        title: "エラー",
+        description: "セキュリティスキャンに失敗しました。",
+        variant: "destructive",
+      });
     } finally {
       setLoading(false);
     }
   };
 
-  const saveSecurityConfig = async () => {
+  const validateCurrentSettings = async () => {
     if (!user) return;
 
-    setSaving(true);
     try {
-      // configオブジェクトをJSON互換形式に変換
-      const configData = {
-        rateLimitEnabled: config.rateLimitEnabled,
-        rateLimitRequests: config.rateLimitRequests,
-        rateLimitWindow: config.rateLimitWindow,
-        auditLogEnabled: config.auditLogEnabled,
-        alertsEnabled: config.alertsEnabled,
-        alertEmail: config.alertEmail,
-        intrusionDetectionEnabled: config.intrusionDetectionEnabled,
-        suspiciousActivityThreshold: config.suspiciousActivityThreshold,
-        timestamp: new Date().toISOString()
-      };
-
-      // 設定をactivity_logsに保存
-      await supabase
-        .from('activity_logs')
-        .insert({
-          user_id: user.id,
-          action_type: 'security_settings_updated',
-          description: 'セキュリティ設定が更新されました',
-          metadata: configData
+      const issues = await securityAudit.validateSecuritySettings(user.id);
+      
+      if (issues.length === 0) {
+        toast({
+          title: "設定確認完了",
+          description: "セキュリティ設定に問題は見つかりませんでした。",
         });
-
-      toast({
-        title: "成功",
-        description: "セキュリティ設定が保存されました",
-      });
+      } else {
+        toast({
+          title: "設定の確認",
+          description: `${issues.length}件の改善点が見つかりました。`,
+          variant: "destructive",
+        });
+      }
     } catch (error) {
-      console.error('Failed to save security config:', error);
-      toast({
-        title: "エラー",
-        description: "設定の保存に失敗しました",
-        variant: "destructive",
-      });
-    } finally {
-      setSaving(false);
+      console.error('Settings validation error:', error);
     }
   };
 
-  const handleConfigChange = (key: keyof SecurityConfig, value: any) => {
-    setConfig(prev => ({
-      ...prev,
-      [key]: value
-    }));
-  };
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center p-8">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold flex items-center gap-2">
-            <Shield className="h-6 w-6" />
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Shield className="h-5 w-5" />
             セキュリティ設定
-          </h2>
-          <p className="text-muted-foreground">
-            システムのセキュリティ機能を設定
-          </p>
-        </div>
-        <Button onClick={saveSecurityConfig} disabled={saving}>
-          <Save className="h-4 w-4 mr-2" />
-          {saving ? '保存中...' : '設定を保存'}
-        </Button>
-      </div>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="space-y-1">
+                <Label htmlFor="anomaly-detection">異常活動検知</Label>
+                <p className="text-sm text-muted-foreground">
+                  短時間での大量リクエストや失敗した認証試行を検知します
+                </p>
+              </div>
+              <Switch
+                id="anomaly-detection"
+                checked={settings.anomalyDetection}
+                onCheckedChange={(checked) => updateSetting('anomalyDetection', checked)}
+              />
+            </div>
+
+            <div className="flex items-center justify-between">
+              <div className="space-y-1">
+                <Label htmlFor="activity-logging">活動ログ記録</Label>
+                <p className="text-sm text-muted-foreground">
+                  重要な操作をログに記録してセキュリティ監査に使用します
+                </p>
+              </div>
+              <Switch
+                id="activity-logging"
+                checked={settings.activityLogging}
+                onCheckedChange={(checked) => updateSetting('activityLogging', checked)}
+              />
+            </div>
+
+            <div className="flex items-center justify-between">
+              <div className="space-y-1">
+                <Label htmlFor="security-alerts">セキュリティアラート</Label>
+                <p className="text-sm text-muted-foreground">
+                  セキュリティ上の問題が検出された時に通知を受け取ります
+                </p>
+              </div>
+              <Switch
+                id="security-alerts"
+                checked={settings.securityAlerts}
+                onCheckedChange={(checked) => updateSetting('securityAlerts', checked)}
+              />
+            </div>
+
+            <div className="flex items-center justify-between">
+              <div className="space-y-1">
+                <Label htmlFor="auto-scan">自動セキュリティスキャン</Label>
+                <p className="text-sm text-muted-foreground">
+                  定期的にセキュリティスキャンを自動実行します
+                </p>
+              </div>
+              <Switch
+                id="auto-scan"
+                checked={settings.autoSecurityScan}
+                onCheckedChange={(checked) => updateSetting('autoSecurityScan', checked)}
+              />
+            </div>
+          </div>
+
+          <div className="pt-4 border-t">
+            <div className="flex gap-3">
+              <Button onClick={runSecurityScan} disabled={loading}>
+                {loading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    スキャン中...
+                  </>
+                ) : (
+                  <>
+                    <Shield className="h-4 w-4 mr-2" />
+                    セキュリティスキャン実行
+                  </>
+                )}
+              </Button>
+              <Button variant="outline" onClick={validateCurrentSettings}>
+                設定確認
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {lastScanResult && (
+        <Card>
+          <CardHeader>
+            <CardTitle>最新スキャン結果</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-3 gap-4 mb-4">
+              <div className="text-center p-3 bg-red-50 rounded-lg">
+                <div className="text-xl font-bold text-red-600">
+                  {lastScanResult.vulnerabilities.high}
+                </div>
+                <div className="text-sm text-red-600">重要</div>
+              </div>
+              <div className="text-center p-3 bg-yellow-50 rounded-lg">
+                <div className="text-xl font-bold text-yellow-600">
+                  {lastScanResult.vulnerabilities.medium}
+                </div>
+                <div className="text-sm text-yellow-600">中程度</div>
+              </div>
+              <div className="text-center p-3 bg-gray-50 rounded-lg">
+                <div className="text-xl font-bold text-gray-600">
+                  {lastScanResult.vulnerabilities.low}
+                </div>
+                <div className="text-sm text-gray-600">軽微</div>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              {lastScanResult.recommendations.map((rec: string, index: number) => (
+                <Alert key={index}>
+                  <Info className="h-4 w-4" />
+                  <AlertDescription>{rec}</AlertDescription>
+                </Alert>
+              ))}
+            </div>
+
+            <p className="text-xs text-muted-foreground mt-4">
+              最終スキャン: {new Date(lastScanResult.lastScan).toLocaleString('ja-JP')}
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       <Alert>
         <AlertTriangle className="h-4 w-4" />
         <AlertDescription>
-          セキュリティ設定の変更は慎重に行ってください。不適切な設定はシステムの動作に影響を与える可能性があります。
+          <strong>重要:</strong> データベース関数のセキュリティ強化が完了しています。
+          OTP設定と漏洩パスワード保護については、Supabaseダッシュボードで手動設定が必要です。
         </AlertDescription>
       </Alert>
-
-      <div className="grid gap-6 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>レート制限</CardTitle>
-            <CardDescription>
-              APIリクエストの頻度を制限してDDoS攻撃を防ぎます
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center space-x-2">
-              <Switch
-                id="rate-limit"
-                checked={config.rateLimitEnabled}
-                onCheckedChange={(checked) => handleConfigChange('rateLimitEnabled', checked)}
-              />
-              <Label htmlFor="rate-limit">レート制限を有効にする</Label>
-            </div>
-            
-            {config.rateLimitEnabled && (
-              <>
-                <div className="space-y-2">
-                  <Label htmlFor="rate-requests">最大リクエスト数</Label>
-                  <Input
-                    id="rate-requests"
-                    type="number"
-                    value={config.rateLimitRequests}
-                    onChange={(e) => handleConfigChange('rateLimitRequests', parseInt(e.target.value))}
-                    min="1"
-                    max="1000"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="rate-window">時間枠（秒）</Label>
-                  <Input
-                    id="rate-window"
-                    type="number"
-                    value={config.rateLimitWindow}
-                    onChange={(e) => handleConfigChange('rateLimitWindow', parseInt(e.target.value))}
-                    min="1"
-                    max="3600"
-                  />
-                </div>
-              </>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>監査ログ</CardTitle>
-            <CardDescription>
-              システムの活動を記録・監視します
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center space-x-2">
-              <Switch
-                id="audit-log"
-                checked={config.auditLogEnabled}
-                onCheckedChange={(checked) => handleConfigChange('auditLogEnabled', checked)}
-              />
-              <Label htmlFor="audit-log">監査ログを有効にする</Label>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>セキュリティアラート</CardTitle>
-            <CardDescription>
-              セキュリティイベントの通知設定
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center space-x-2">
-              <Switch
-                id="alerts"
-                checked={config.alertsEnabled}
-                onCheckedChange={(checked) => handleConfigChange('alertsEnabled', checked)}
-              />
-              <Label htmlFor="alerts">アラートを有効にする</Label>
-            </div>
-            
-            {config.alertsEnabled && (
-              <div className="space-y-2">
-                <Label htmlFor="alert-email">通知先メールアドレス</Label>
-                <Input
-                  id="alert-email"
-                  type="email"
-                  value={config.alertEmail}
-                  onChange={(e) => handleConfigChange('alertEmail', e.target.value)}
-                  placeholder="alerts@example.com"
-                />
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>侵入検知</CardTitle>
-            <CardDescription>
-              不審な活動を自動検知します
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center space-x-2">
-              <Switch
-                id="intrusion-detection"
-                checked={config.intrusionDetectionEnabled}
-                onCheckedChange={(checked) => handleConfigChange('intrusionDetectionEnabled', checked)}
-              />
-              <Label htmlFor="intrusion-detection">侵入検知を有効にする</Label>
-            </div>
-            
-            {config.intrusionDetectionEnabled && (
-              <div className="space-y-2">
-                <Label htmlFor="suspicious-threshold">不審な活動の閾値</Label>
-                <Select
-                  value={config.suspiciousActivityThreshold.toString()}
-                  onValueChange={(value) => handleConfigChange('suspiciousActivityThreshold', parseInt(value))}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="5">5回の失敗試行</SelectItem>
-                    <SelectItem value="10">10回の失敗試行</SelectItem>
-                    <SelectItem value="15">15回の失敗試行</SelectItem>
-                    <SelectItem value="20">20回の失敗試行</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
     </div>
   );
 };
