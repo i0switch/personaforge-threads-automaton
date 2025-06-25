@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -61,27 +60,35 @@ export const UserManagementTable = () => {
 
       console.log('Account status data:', accountStatusData);
 
-      // auth.usersからemail情報を取得（管理者権限が必要）
+      // サービスロールキーを使ってauth.usersからメール情報を取得を試行
       let authUsers: any[] = [];
       try {
+        // まず現在のセッションのアクセストークンでauth.admin.listUsersを試行
         const { data: authResponse, error: authError } = await supabase.auth.admin.listUsers();
         if (authError) {
           console.error('Auth admin error:', authError);
-          // auth.admin権限がない場合は、ダミーのメールアドレスを生成
-          authUsers = profilesData?.map(profile => ({
-            id: profile.user_id,
-            email: `user-${profile.user_id.slice(0, 8)}@hidden.com`
-          })) || [];
+          // auth.admin権限がない場合は、rpcを使用してサーバーサイドで取得を試行
+          const { data: rpcResponse, error: rpcError } = await supabase.rpc('get_user_emails');
+          if (rpcError) {
+            console.error('RPC get_user_emails error:', rpcError);
+            // 両方失敗した場合はダミーメールを生成
+            authUsers = profilesData?.map(profile => ({
+              id: profile.user_id,
+              email: `user-${profile.user_id.slice(0, 8)}@example.com`
+            })) || [];
+          } else {
+            authUsers = rpcResponse || [];
+          }
         } else {
           authUsers = authResponse?.users || [];
-          console.log('Auth users:', authUsers);
+          console.log('Auth users retrieved successfully:', authUsers.length);
         }
       } catch (error) {
-        console.error('Auth admin access error:', error);
+        console.error('Auth access error:', error);
         // エラーの場合もダミーメールを生成
         authUsers = profilesData?.map(profile => ({
           id: profile.user_id,
-          email: `user-${profile.user_id.slice(0, 8)}@hidden.com`
+          email: `user-${profile.user_id.slice(0, 8)}@example.com`
         })) || [];
       }
 
@@ -92,7 +99,7 @@ export const UserManagementTable = () => {
         
         return {
           user_id: profile.user_id,
-          email: authUser?.email || `user-${profile.user_id.slice(0, 8)}@unknown.com`,
+          email: authUser?.email || `user-${profile.user_id.slice(0, 8)}@example.com`,
           display_name: profile.display_name || 'Unknown User',
           is_approved: accountStatus?.is_approved ?? false,
           is_active: accountStatus?.is_active ?? false,
@@ -135,47 +142,24 @@ export const UserManagementTable = () => {
         updateData.approved_by = null;
       }
 
-      // 既存のレコードを確認
-      const { data: existingStatus, error: checkError } = await supabase
+      console.log('Update data:', updateData);
+
+      // 既存のレコードを確認してupsert
+      const { error: upsertError } = await supabase
         .from('user_account_status')
-        .select('id, user_id')
-        .eq('user_id', userId)
-        .maybeSingle();
+        .upsert({
+          user_id: userId,
+          ...updateData
+        }, {
+          onConflict: 'user_id'
+        });
 
-      if (checkError) {
-        console.error('Check error:', checkError);
-        throw checkError;
+      if (upsertError) {
+        console.error('Upsert error:', upsertError);
+        throw upsertError;
       }
 
-      console.log('Existing status:', existingStatus);
-
-      if (!existingStatus) {
-        // レコードが存在しない場合は新規作成
-        const { error: insertError } = await supabase
-          .from('user_account_status')
-          .insert({
-            user_id: userId,
-            ...updateData
-          });
-
-        if (insertError) {
-          console.error('Insert error:', insertError);
-          throw insertError;
-        }
-        console.log('New status record created');
-      } else {
-        // レコードが存在する場合は更新
-        const { error: updateError } = await supabase
-          .from('user_account_status')
-          .update(updateData)
-          .eq('user_id', userId);
-
-        if (updateError) {
-          console.error('Update error:', updateError);
-          throw updateError;
-        }
-        console.log('Status record updated');
-      }
+      console.log('Status updated successfully');
 
       toast({
         title: "成功",
@@ -201,32 +185,16 @@ export const UserManagementTable = () => {
     setUpdating(userId);
     
     try {
-      // 既存のレコードを確認
-      const { data: existingStatus } = await supabase
+      const { error: upsertError } = await supabase
         .from('user_account_status')
-        .select('id')
-        .eq('user_id', userId)
-        .maybeSingle();
+        .upsert({
+          user_id: userId,
+          subscription_status: subscriptionStatus
+        }, {
+          onConflict: 'user_id'
+        });
 
-      if (!existingStatus) {
-        // レコードが存在しない場合は新規作成
-        const { error: insertError } = await supabase
-          .from('user_account_status')
-          .insert({
-            user_id: userId,
-            subscription_status: subscriptionStatus
-          });
-
-        if (insertError) throw insertError;
-      } else {
-        // レコードが存在する場合は更新
-        const { error: updateError } = await supabase
-          .from('user_account_status')
-          .update({ subscription_status: subscriptionStatus })
-          .eq('user_id', userId);
-
-        if (updateError) throw updateError;
-      }
+      if (upsertError) throw upsertError;
 
       toast({
         title: "成功",
