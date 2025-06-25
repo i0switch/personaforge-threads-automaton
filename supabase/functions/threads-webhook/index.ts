@@ -91,8 +91,13 @@ async function processReplyData(replyData: any, supabase: any): Promise<void> {
 
   // 各ペルソナに対してリプライレコードを保存
   for (const persona of personas) {
-    // 自分自身からの返信をスキップ（ハードコードされた'mido_renai'を削除）
-    if (sanitizedData.reply_author_username === persona.name) {
+    // 自分自身からの返信をスキップ（改善版）
+    const isSelf = 
+      sanitizedData.reply_author_username === persona.name ||
+      sanitizedData.reply_author_id === persona.user_id;
+    
+    if (isSelf) {
+      console.log(`Skipping self-reply from persona ${persona.name}`);
       continue;
     }
 

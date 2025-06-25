@@ -125,6 +125,18 @@ async function checkRepliesForPost(persona: any, postId: string): Promise<number
       for (const thread of data.data) {
         // リプライかどうかを判定
         if (thread.reply_to_id) {
+          // --- CRITICAL FIX: Self-reply filter ---
+          // 自分自身のリプライをスキップ
+          const isSelf = 
+            thread.username === persona.name ||
+            thread.owner_id === persona.user_id ||
+            thread.author_id === persona.user_id;
+          
+          if (isSelf) {
+            console.log(`Skipping self-reply ${thread.id} from persona ${persona.name}`);
+            continue;
+          }
+
           // すでに保存されているかチェック
           const { data: existingReply } = await supabase
             .from('thread_replies')
