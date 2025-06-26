@@ -179,34 +179,6 @@ const PersonaSetup = () => {
     }
   };
 
-  useEffect(() => {
-    if (user) {
-      loadPersonas();
-    }
-  }, [user]);
-
-  const loadPersonas = async () => {
-    try {
-      const { data, error } = await supabase
-        .from("personas")
-        .select("*")
-        .eq("user_id", user?.id)
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
-      setPersonas(data || []);
-    } catch (error) {
-      console.error("Error loading personas:", error);
-      toast({
-        title: "エラー",
-        description: "ペルソナの読み込みに失敗しました。",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleEdit = async (persona: Persona) => {
     console.log("Editing persona:", persona.id, "Has secret:", !!persona.threads_app_secret);
     setEditingPersona(persona);
