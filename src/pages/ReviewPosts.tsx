@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,6 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
 import { ja } from "date-fns/locale";
+import { ImageGenerationSection } from "@/components/ReviewPosts/ImageGenerationSection";
 import type { Database } from "@/integrations/supabase/types";
 
 type Persona = Database['public']['Tables']['personas']['Row'];
@@ -30,25 +32,78 @@ const ReviewPosts = () => {
   const [posts, setPosts] = useState<Post[]>([]);
   const [persona, setPersona] = useState<Persona | null>(null);
   const [isScheduling, setIsScheduling] = useState(false);
+  const [showImageGeneration, setShowImageGeneration] = useState(false);
 
   useEffect(() => {
-    const state = location.state as ReviewPostsState;
-    if (state) {
-      setPosts(state.posts);
-      setPersona(state.persona);
-    } else {
+    try {
+      const state = location.state as ReviewPostsState;
+      if (state) {
+        setPosts(state.posts);
+        setPersona(state.persona);
+      } else {
+        navigate("/create-posts");
+      }
+    } catch (error) {
+      console.error('Error loading review posts state:', error);
+      toast({
+        title: "エラー",
+        description: "投稿データの読み込みに失敗しました。",
+        variant: "destructive",
+      });
       navigate("/create-posts");
     }
-  }, [location.state, navigate]);
+  }, [location.state, navigate, toast]);
 
   const updatePost = (index: number, content: string) => {
-    const updatedPosts = [...posts];
-    updatedPosts[index] = { ...updatedPosts[index], content };
-    setPosts(updatedPosts);
+    try {
+      const updatedPosts = [...posts];
+      updatedPosts[index] = { ...updatedPosts[index], content };
+      setPosts(updatedPosts);
+    } catch (error) {
+      console.error('Error updating post:', error);
+      toast({
+        title: "エラー",
+        description: "投稿の更新に失敗しました。",
+        variant: "destructive",
+      });
+    }
   };
 
   const deletePost = (index: number) => {
-    setPosts(posts.filter((_, i) => i !== index));
+    try {
+      setPosts(posts.filter((_, i) => i !== index));
+      toast({
+        title: "投稿を削除しました",
+        description: "投稿が削除されました。",
+      });
+    } catch (error) {
+      console.error('Error deleting post:', error);
+      toast({
+        title: "エラー",
+        description: "投稿の削除に失敗しました。",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const updatePostImages = (postIndex: number, images: string[]) => {
+    try {
+      const updatedPosts = [...posts];
+      updatedPosts[postIndex] = { ...updatedPosts[postIndex], images };
+      setPosts(updatedPosts);
+      
+      toast({
+        title: "成功",
+        description: "画像を投稿に追加しました。",
+      });
+    } catch (error) {
+      console.error('Error updating post images:', error);
+      toast({
+        title: "エラー",
+        description: "画像の追加に失敗しました。",
+        variant: "destructive",
+      });
+    }
   };
 
   const scheduleAllPosts = async () => {
@@ -145,6 +200,29 @@ const ReviewPosts = () => {
           </CardHeader>
         </Card>
 
+        {/* 画像生成セクション */}
+        <div className="space-y-4">
+          <Button
+            variant="outline"
+            onClick={() => setShowImageGeneration(!showImageGeneration)}
+            className="w-full"
+          >
+            <ImageIcon className="h-4 w-4 mr-2" />
+            {showImageGeneration ? '画像生成を閉じる' : '投稿用画像を生成'}
+          </Button>
+          
+          {showImageGeneration && (
+            <ImageGenerationSection
+              onImagesGenerated={(images) => {
+                // Default to adding to first post if no specific post is selected
+                if (posts.length > 0) {
+                  updatePostImages(0, images);
+                }
+              }}
+            />
+          )}
+        </div>
+
         {/* 投稿一覧 */}
         <div className="space-y-4">
           {posts.map((post, index) => (
@@ -207,7 +285,7 @@ const ReviewPosts = () => {
           ))}
         </div>
 
-        {/* アクションボタン - 画像生成ボタンを削除 */}
+        {/* アクションボタン */}
         <div className="flex gap-4">
           <Button 
             onClick={scheduleAllPosts} 
