@@ -1,4 +1,5 @@
-import { useState } from "react";
+
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -50,7 +51,7 @@ const CreatePosts = () => {
   const [generationProgress, setGenerationProgress] = useState(0);
   const [isCopied, setIsCopied] = useState(false);
 
-  useState(() => {
+  useEffect(() => {
     if (user) {
       loadPersonas();
     }
@@ -90,21 +91,9 @@ const CreatePosts = () => {
     setSelectedTopics(selectedTopics.filter((topic) => topic !== topicToRemove));
   };
 
-  const handleDateSelect = (date: Date | undefined) => {
-    if (date) {
-      const isDateSelected = selectedDates.some(selectedDate =>
-        isSameDay(selectedDate, date)
-      );
-
-      if (isDateSelected) {
-        // If the date is already selected, remove it from the array
-        setSelectedDates(prevSelectedDates =>
-          prevSelectedDates.filter(selectedDate => !isSameDay(selectedDate, date))
-        );
-      } else {
-        // If the date is not selected, add it to the array
-        setSelectedDates(prevSelectedDates => [...prevSelectedDates, date]);
-      }
+  const handleDateSelect = (dates: Date[] | undefined) => {
+    if (dates) {
+      setSelectedDates(dates);
     }
   };
 
@@ -197,7 +186,7 @@ const CreatePosts = () => {
         throw new Error(result.error || '投稿の生成に失敗しました');
       }
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error generating posts:', error);
       toast({
         title: "エラー",
@@ -252,7 +241,7 @@ const CreatePosts = () => {
                 ) : (
                   personas.map((persona) => (
                     <SelectItem key={persona.id} value={persona.id}>
-                      {persona.display_name}
+                      {persona.name}
                     </SelectItem>
                   ))
                 )}
