@@ -183,90 +183,41 @@ const CreatePosts = () => {
         throw error;
       }
 
-      // より詳細なエラーハンドリング
-      if (data?.needsApiKey) {
-        toast({
-          title: "APIキーが必要です",
-          description: "設定画面でGemini APIキーを設定してください。",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      if (data?.success) {
-        if (data.posts && data.posts.length > 0) {
-          // 生成された投稿をセット
-          setGeneratedPosts(data.posts);
-          
-          // Generate image prompts for each post based on content
-          const prompts: Record<string, string> = {};
-          for (const post of data.posts) {
-            if (post && post.id && post.content) {
-              try {
-                const imagePrompt = await generateImagePromptFromContent(post.content);
-                prompts[post.id] = imagePrompt;
-              } catch (error) {
-                console.error('Failed to generate image prompt for post:', post.id, error);
-                // Fallback to a default selfie prompt
-                prompts[post.id] = "selfie photo, smiling woman, casual outfit, natural lighting, morning time, cozy atmosphere";
-              }
+      if (data?.success && data?.posts && data.posts.length > 0) {
+        // 生成された投稿をセット
+        setGeneratedPosts(data.posts);
+        
+        // Generate image prompts for each post based on content
+        const prompts: Record<string, string> = {};
+        for (const post of data.posts) {
+          if (post && post.id && post.content) {
+            try {
+              const imagePrompt = await generateImagePromptFromContent(post.content);
+              prompts[post.id] = imagePrompt;
+            } catch (error) {
+              console.error('Failed to generate image prompt for post:', post.id, error);
+              // Fallback to a default selfie prompt
+              prompts[post.id] = "selfie photo, smiling woman, casual outfit, natural lighting, morning time, cozy atmosphere";
             }
           }
-          setImagePrompts(prompts);
-          
-          // ステップ2（生成・編集）に進む
-          setCurrentStep(2);
-
-          // 成功とエラーの両方を表示
-          let message = `${data.posts.length}件の投稿を生成しました。`;
-          if (data.failed_count > 0) {
-            message += ` ${data.failed_count}件の投稿生成に失敗しました。`;
-          }
-
-          toast({
-            title: data.failed_count > 0 ? "一部成功" : "成功",
-            description: message,
-            variant: data.failed_count > 0 ? "default" : "default",
-          });
-        } else {
-          // 投稿が1件も生成されなかった場合
-          let errorMessage = "投稿を生成できませんでした。";
-          
-          if (data.failures && data.failures.length > 0) {
-            const firstError = data.failures[0].error;
-            if (firstError.includes('429') || firstError.includes('Too Many Requests')) {
-              errorMessage += " APIの利用制限に達しています。しばらく時間をおいてから再試行してください。";
-            } else if (firstError.includes('API key')) {
-              errorMessage += " APIキーの設定を確認してください。";
-            }
-          }
-          
-          throw new Error(errorMessage);
         }
+        setImagePrompts(prompts);
+        
+        // ステップ2（生成・編集）に進む
+        setCurrentStep(2);
+
+        toast({
+          title: "成功",
+          description: `${data.posts.length}件の投稿を生成しました。`,
+        });
       } else {
-        throw new Error(data?.error || '投稿の生成に失敗しました');
+        throw new Error('投稿の生成に失敗しました');
       }
     } catch (error) {
       console.error('Error generating posts:', error);
-      
-      let errorMessage = "投稿の生成に失敗しました。";
-      
-      // エラーメッセージをより具体的に
-      if (error.message) {
-        if (error.message.includes('429') || error.message.includes('Too Many Requests')) {
-          errorMessage = "APIの利用制限に達しています。しばらく時間をおいてから再試行してください。";
-        } else if (error.message.includes('API key')) {
-          errorMessage = "APIキーの設定に問題があります。設定画面で確認してください。";
-        } else if (error.message.includes('network') || error.message.includes('fetch')) {
-          errorMessage = "ネットワークエラーが発生しました。インターネット接続を確認してください。";
-        } else {
-          errorMessage = error.message;
-        }
-      }
-      
       toast({
         title: "エラー",
-        description: errorMessage,
+        description: "投稿の生成に失敗しました。詳細はコンソールを確認してください。",
         variant: "destructive",
       });
     } finally {
