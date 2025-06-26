@@ -1,3 +1,4 @@
+
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
@@ -338,12 +339,31 @@ async function processReplyData(replyData: any, personaId: string | null): Promi
   
   if (persona.ai_auto_reply_enabled) {
     console.log('AI auto reply is enabled for this persona');
+    
+    // Try to get original post content from Threads API
+    let originalPostContent = '';
+    if (sanitizedData.original_post_id && persona.threads_access_token) {
+      console.log('Attempting to fetch original post content from Threads API...');
+      try {
+        const originalPostResponse = await fetch(`https://graph.threads.net/v1.0/${sanitizedData.original_post_id}?fields=text&access_token=${persona.threads_access_token}`);
+        if (originalPostResponse.ok) {
+          const originalPostData = await originalPostResponse.json();
+          originalPostContent = originalPostData.text || '';
+          console.log('Original post content fetched:', originalPostContent);
+        } else {
+          console.log('Failed to fetch original post content, using empty string');
+        }
+      } catch (fetchError) {
+        console.error('Error fetching original post content:', fetchError);
+      }
+    }
+    
     try {
       console.log('Calling threads-auto-reply function...');
       
       // パラメータが正しく渡されているか確認
       const functionParams = {
-        postContent: '', // 元投稿の内容（必要に応じて取得）
+        postContent: originalPostContent,
         replyContent: sanitizedData.reply_text,
         replyId: sanitizedData.reply_id,
         personaId: personaId,

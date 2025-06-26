@@ -1,4 +1,3 @@
-
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
@@ -46,7 +45,7 @@ serve(async (req) => {
     }
 
     console.log('Parameters validated:', {
-      postContent: postContent ? 'present' : 'empty',
+      postContent: postContent ? `"${postContent.substring(0, 50)}..."` : '(empty)',
       replyContent: replyContent?.substring(0, 50) + '...',
       replyId,
       personaId,
@@ -72,12 +71,9 @@ serve(async (req) => {
       throw new Error('Threads access token not configured for this persona');
     }
 
-    // 元の投稿内容を取得する（もし可能であれば）
-    let originalPostContent = postContent || '';
-    if (!originalPostContent) {
-      // 投稿内容を取得する試み（必要に応じて実装）
-      console.log('No original post content provided, using empty string');
-    }
+    // 元の投稿内容の確認とログ出力
+    const originalPostContent = postContent || '';
+    console.log('Original post content being used:', originalPostContent ? `"${originalPostContent}"` : '(empty)');
 
     // ペルソナのサンプル投稿を準備
     const styleGuide = [
@@ -97,8 +93,10 @@ serve(async (req) => {
       `* **口調・スタイルガイド**: ${styleGuide}`,
       '---',
       '## 返信タスクの背景',
-      '以下の「元の投稿」に対して、あるユーザーから「受信リプライ」が届きました。',
-      `* **元の投稿**: ${originalPostContent || '(本文なし)'}`,
+      originalPostContent ? 
+        `以下の「あなたの投稿」に対して、あるユーザーから「受信リプライ」が届きました。` :
+        `あるユーザーから「受信リプライ」が届きました。（元の投稿内容は取得できませんでした）`,
+      originalPostContent ? `* **あなたの投稿**: ${originalPostContent}` : '',
       `* **受信リプライ**: ${replyContent}`,
       '---',
       '## あなたへの指示',
@@ -111,9 +109,9 @@ serve(async (req) => {
       '- **絵文字**: ペルソナのスタイルに合致する場合のみ、控えめに使用してください。',
       '- **禁止事項**: 署名や挨拶（「こんにちは」など）で始めないでください。ハッシュタグは使用しないでください。質問に質問で返すことは避けてください。',
       '- **出力形式**: 生成する返信文のみを出力してください。思考プロセスや言い訳、前置きは一切含めないでください。'
-    ].join('\n');
+    ].filter(Boolean).join('\n');
 
-    console.log('Calling Gemini API...');
+    console.log('Sending prompt to Gemini API:', prompt.substring(0, 200) + '...');
 
     const geminiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`, {
       method: 'POST',
