@@ -51,14 +51,22 @@ export const ApiSettingsTab = () => {
     
     setSaving(true);
     try {
-      const { error } = await supabase.functions.invoke('save-secret', {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('認証が必要です');
+
+      const response = await supabase.functions.invoke('save-secret', {
         body: {
-          secret_name: keyName,
-          secret_value: keyValue
-        }
+          keyName: keyName,
+          keyValue: keyValue
+        },
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
       });
 
-      if (error) throw error;
+      if (response.error) {
+        throw new Error(response.error.message || 'APIキーの保存に失敗しました');
+      }
 
       toast({
         title: "成功",
@@ -77,7 +85,7 @@ export const ApiSettingsTab = () => {
       console.error('Error saving API key:', error);
       toast({
         title: "エラー",
-        description: "APIキーの保存に失敗しました。",
+        description: error.message || "APIキーの保存に失敗しました。",
         variant: "destructive",
       });
     } finally {
