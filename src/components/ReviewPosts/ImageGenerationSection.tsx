@@ -15,7 +15,6 @@ export const ImageGenerationSection = ({ onImagesGenerated }: ImageGenerationSec
   const { toast } = useToast();
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedImages, setGeneratedImages] = useState<string[]>([]);
-  const [error, setError] = useState<string | null>(null);
   
   const {
     faceImage,
@@ -31,26 +30,12 @@ export const ImageGenerationSection = ({ onImagesGenerated }: ImageGenerationSec
     setAdditionalPrompt
   } = useImageGenerator();
 
-  console.log('ImageGenerationSection: Component state:', {
-    isGenerating,
-    generating,
-    generatedImages: generatedImages.length,
-    hasGeneratedImage: !!generatedImage,
-    error
-  });
-
   const handleGenerateForPosts = async () => {
-    console.log('ImageGenerationSection: Starting image generation');
-    setError(null);
-    
     try {
       setIsGenerating(true);
       await generateImage();
-      console.log('ImageGenerationSection: Image generation completed');
     } catch (error) {
-      console.error('ImageGenerationSection: Error generating image:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      setError(`画像生成に失敗しました: ${errorMessage}`);
+      console.error('Error generating image:', error);
       toast({
         title: "エラー",
         description: "画像生成に失敗しました。",
@@ -62,32 +47,15 @@ export const ImageGenerationSection = ({ onImagesGenerated }: ImageGenerationSec
   };
 
   const handleAddToPost = () => {
-    console.log('ImageGenerationSection: Adding image to post');
-    
     if (generatedImage) {
-      try {
-        const newImages = [...generatedImages, generatedImage];
-        setGeneratedImages(newImages);
-        onImagesGenerated(newImages);
-        
-        console.log('ImageGenerationSection: Image added successfully, total images:', newImages.length);
-        toast({
-          title: "成功",
-          description: "画像を投稿に追加しました。",
-        });
-        setError(null);
-      } catch (error) {
-        console.error('ImageGenerationSection: Error adding image to post:', error);
-        setError('画像の追加に失敗しました。');
-        toast({
-          title: "エラー",
-          description: "画像の追加に失敗しました。",
-          variant: "destructive",
-        });
-      }
-    } else {
-      console.log('ImageGenerationSection: No generated image to add');
-      setError('追加する画像がありません。');
+      const newImages = [...generatedImages, generatedImage];
+      setGeneratedImages(newImages);
+      onImagesGenerated(newImages);
+      
+      toast({
+        title: "成功",
+        description: "画像を投稿に追加しました。",
+      });
     }
   };
 
@@ -100,12 +68,6 @@ export const ImageGenerationSection = ({ onImagesGenerated }: ImageGenerationSec
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {error && (
-          <div className="p-3 bg-red-50 border border-red-200 rounded-md">
-            <p className="text-sm text-red-600">{error}</p>
-          </div>
-        )}
-        
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium mb-2">顔写真をアップロード</label>
