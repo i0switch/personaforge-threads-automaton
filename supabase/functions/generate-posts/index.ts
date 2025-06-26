@@ -16,6 +16,8 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 async function getUserApiKey(userId: string, keyName: string): Promise<string | null> {
   try {
+    console.log(`Retrieving API key for user ${userId} with key name ${keyName}`);
+    
     const { data, error } = await supabase
       .from('user_api_keys')
       .select('encrypted_key')
@@ -28,44 +30,45 @@ async function getUserApiKey(userId: string, keyName: string): Promise<string | 
       return null;
     }
 
-    // 復号化処理の改善
-    const ENCRYPTION_KEY = 'AIThreadsSecretKey2024ForAPIEncryption';
+    console.log('Found encrypted API key, attempting decryption...');
+
+    // 復号化処理
+    const ENCRYPTION_KEY = Deno.env.get('ENCRYPTION_KEY');
+    if (!ENCRYPTION_KEY) {
+      console.error('ENCRYPTION_KEY not found in environment');
+      return null;
+    }
     
     try {
-      const enc = new TextEncoder();
+      const encoder = new TextEncoder();
+      const decoder = new TextDecoder();
+      
+      // Base64デコード
+      const encryptedData = Uint8Array.from(atob(data.encrypted_key), c => c.charCodeAt(0));
+      
+      // IVと暗号化されたデータを分離
+      const iv = encryptedData.slice(0, 12);
+      const ciphertext = encryptedData.slice(12);
+
+      // 暗号化キーをCryptoKeyに変換
       const keyMaterial = await crypto.subtle.importKey(
         'raw',
-        enc.encode(ENCRYPTION_KEY),
-        { name: 'PBKDF2' },
+        encoder.encode(ENCRYPTION_KEY.padEnd(32, '0').slice(0, 32)),
+        { name: 'AES-GCM' },
         false,
-        ['deriveKey']
-      );
-      
-      const key = await crypto.subtle.deriveKey(
-        {
-          name: 'PBKDF2',
-          salt: enc.encode('salt'),
-          iterations: 100000,
-          hash: 'SHA-256',
-        },
-        keyMaterial,
-        { name: 'AES-GCM', length: 256 },
-        false,
-        ['encrypt', 'decrypt']
+        ['decrypt']
       );
 
-      const combined = Uint8Array.from(atob(data.encrypted_key), c => c.charCodeAt(0));
-      const iv = combined.slice(0, 12);
-      const encrypted = combined.slice(12);
-      
-      const decrypted = await crypto.subtle.decrypt(
+      // データを復号化
+      const decryptedData = await crypto.subtle.decrypt(
         { name: 'AES-GCM', iv: iv },
-        key,
-        encrypted
+        keyMaterial,
+        ciphertext
       );
-      
-      const dec = new TextDecoder();
-      return dec.decode(decrypted);
+
+      const decryptedKey = decoder.decode(decryptedData);
+      console.log('API key decryption successful');
+      return decryptedKey;
     } catch (decryptError) {
       console.error('Decryption failed:', decryptError);
       return null;
@@ -124,14 +127,22 @@ async function callGeminiWithRetry(prompt: string, apiKey: string, maxRetries = 
       });
 
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Gemini API error ${response.status}: ${errorText}`);
+        
         if (response.status === 429) {
           if (attempt < maxRetries) {
-            const waitTime = Math.pow(2, attempt) * 1000; // exponential backoff
+            const waitTime = Math.pow(2, attempt) * 1000;
             console.log(`Rate limited, waiting ${waitTime}ms before retry...`);
             await new Promise(resolve => setTimeout(resolve, waitTime));
             continue;
           }
         }
+        
+        if (response.status === 400) {
+          throw new Error(`Gemini API request error: ${errorText}`);
+        }
+        
         throw new Error(`Gemini API error: ${response.status} ${response.statusText}`);
       }
 
@@ -140,10 +151,10 @@ async function callGeminiWithRetry(prompt: string, apiKey: string, maxRetries = 
       return data;
 
     } catch (error) {
+      console.error(`Attempt ${attempt} failed:`, error);
       if (attempt === maxRetries) {
         throw error;
       }
-      console.log(`Attempt ${attempt} failed, retrying...`);
       await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
     }
   }
@@ -169,6 +180,8 @@ serve(async (req) => {
       throw new Error('Invalid authentication token');
     }
 
+    console.log(`User authenticated: ${user.id}`);
+
     const { 
       personaId, 
       topics, 
@@ -188,6 +201,8 @@ serve(async (req) => {
     if (!geminiApiKey) {
       throw new Error('Gemini API key is not configured. Please set your API key in Settings.');
     }
+
+    console.log(`Using ${userGeminiApiKey ? 'user' : 'fallback'} Gemini API key`);
 
     // Get persona details
     const { data: persona, error: personaError } = await supabase
@@ -259,7 +274,7 @@ serve(async (req) => {
 
       // Add delay between requests to avoid rate limiting
       if (i < timeSlots.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise(resolve => setTimeout(resolve, 3000)); // 3秒の間隔
       }
     }
 
