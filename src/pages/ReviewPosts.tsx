@@ -33,18 +33,26 @@ const ReviewPosts = () => {
   const [persona, setPersona] = useState<Persona | null>(null);
   const [isScheduling, setIsScheduling] = useState(false);
   const [showImageGeneration, setShowImageGeneration] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    console.log('ReviewPosts: Component mounted');
+    console.log('ReviewPosts: Location state:', location.state);
+    
     try {
       const state = location.state as ReviewPostsState;
-      if (state) {
+      if (state && state.posts && state.persona) {
+        console.log('ReviewPosts: Setting posts and persona from state');
         setPosts(state.posts);
         setPersona(state.persona);
+        setError(null);
       } else {
+        console.log('ReviewPosts: No valid state found, redirecting to create-posts');
         navigate("/create-posts");
       }
     } catch (error) {
-      console.error('Error loading review posts state:', error);
+      console.error('ReviewPosts: Error loading state:', error);
+      setError('投稿データの読み込みに失敗しました。');
       toast({
         title: "エラー",
         description: "投稿データの読み込みに失敗しました。",
@@ -56,11 +64,13 @@ const ReviewPosts = () => {
 
   const updatePost = (index: number, content: string) => {
     try {
+      console.log('ReviewPosts: Updating post', index, 'with content:', content);
       const updatedPosts = [...posts];
       updatedPosts[index] = { ...updatedPosts[index], content };
       setPosts(updatedPosts);
     } catch (error) {
-      console.error('Error updating post:', error);
+      console.error('ReviewPosts: Error updating post:', error);
+      setError('投稿の更新に失敗しました。');
       toast({
         title: "エラー",
         description: "投稿の更新に失敗しました。",
@@ -71,13 +81,15 @@ const ReviewPosts = () => {
 
   const deletePost = (index: number) => {
     try {
+      console.log('ReviewPosts: Deleting post at index:', index);
       setPosts(posts.filter((_, i) => i !== index));
       toast({
         title: "投稿を削除しました",
         description: "投稿が削除されました。",
       });
     } catch (error) {
-      console.error('Error deleting post:', error);
+      console.error('ReviewPosts: Error deleting post:', error);
+      setError('投稿の削除に失敗しました。');
       toast({
         title: "エラー",
         description: "投稿の削除に失敗しました。",
@@ -88,6 +100,7 @@ const ReviewPosts = () => {
 
   const updatePostImages = (postIndex: number, images: string[]) => {
     try {
+      console.log('ReviewPosts: Updating post images for post', postIndex, 'with images:', images);
       const updatedPosts = [...posts];
       updatedPosts[postIndex] = { ...updatedPosts[postIndex], images };
       setPosts(updatedPosts);
@@ -97,7 +110,8 @@ const ReviewPosts = () => {
         description: "画像を投稿に追加しました。",
       });
     } catch (error) {
-      console.error('Error updating post images:', error);
+      console.error('ReviewPosts: Error updating post images:', error);
+      setError('画像の追加に失敗しました。');
       toast({
         title: "エラー",
         description: "画像の追加に失敗しました。",
@@ -107,10 +121,17 @@ const ReviewPosts = () => {
   };
 
   const scheduleAllPosts = async () => {
-    if (posts.length === 0 || !persona) return;
+    if (posts.length === 0 || !persona) {
+      console.log('ReviewPosts: Cannot schedule - no posts or persona');
+      return;
+    }
 
     setIsScheduling(true);
+    setError(null);
+    
     try {
+      console.log('ReviewPosts: Starting to schedule posts:', posts.length);
+      
       const postsToUpdate = posts.map(post => ({
         id: post.id,
         content: post.content,
@@ -118,6 +139,7 @@ const ReviewPosts = () => {
       }));
 
       for (const post of postsToUpdate) {
+        console.log('ReviewPosts: Updating post:', post.id);
         const { error } = await supabase
           .from('posts')
           .update({ 
@@ -126,10 +148,14 @@ const ReviewPosts = () => {
           })
           .eq('id', post.id);
 
-        if (error) throw error;
+        if (error) {
+          console.error('ReviewPosts: Error updating post:', error);
+          throw error;
+        }
       }
 
       // Log activity
+      console.log('ReviewPosts: Logging activity');
       await supabase
         .from('activity_logs')
         .insert({
@@ -139,6 +165,7 @@ const ReviewPosts = () => {
           description: `${posts.length}件の投稿を予約しました`
         });
 
+      console.log('ReviewPosts: Posts scheduled successfully');
       toast({
         title: "成功",
         description: `${posts.length}件の投稿を予約しました。`,
@@ -146,7 +173,8 @@ const ReviewPosts = () => {
 
       navigate("/scheduled-posts");
     } catch (error) {
-      console.error('Error scheduling posts:', error);
+      console.error('ReviewPosts: Error scheduling posts:', error);
+      setError('投稿の予約に失敗しました。');
       toast({
         title: "エラー",
         description: "投稿の予約に失敗しました。",
@@ -157,6 +185,30 @@ const ReviewPosts = () => {
     }
   };
 
+  // Show error state
+  if (error) {
+    return (
+      <div className="min-h-screen bg-background p-6">
+        <div className="max-w-4xl mx-auto">
+          <div className="flex items-center justify-center py-12">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-red-600">エラーが発生しました</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground mb-4">{error}</p>
+                <Button onClick={() => navigate("/create-posts")}>
+                  投稿作成に戻る
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Show loading state
   if (!persona) {
     return (
       <div className="min-h-screen bg-background p-6">
@@ -169,6 +221,8 @@ const ReviewPosts = () => {
       </div>
     );
   }
+
+  console.log('ReviewPosts: Rendering component with persona:', persona.name, 'and posts:', posts.length);
 
   return (
     <div className="min-h-screen bg-background p-6">
@@ -214,6 +268,7 @@ const ReviewPosts = () => {
           {showImageGeneration && (
             <ImageGenerationSection
               onImagesGenerated={(images) => {
+                console.log('ReviewPosts: Images generated:', images);
                 // Default to adding to first post if no specific post is selected
                 if (posts.length > 0) {
                   updatePostImages(0, images);
@@ -270,7 +325,7 @@ const ReviewPosts = () => {
                             className="w-full max-w-md mx-auto rounded-lg border object-cover"
                             style={{ maxHeight: '300px' }}
                             onError={(e) => {
-                              console.error('Failed to load image:', imageUrl);
+                              console.error('ReviewPosts: Failed to load image:', imageUrl);
                               const target = e.target as HTMLImageElement;
                               target.style.display = 'none';
                             }}
