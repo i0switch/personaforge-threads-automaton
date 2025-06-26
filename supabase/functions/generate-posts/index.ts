@@ -10,7 +10,7 @@ const corsHeaders = {
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const fallbackGeminiApiKey = Deno.env.get('GEMINI_API_KEY'); // フォールバック用
+const fallbackGeminiApiKey = Deno.env.get('GEMINI_API_KEY');
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
@@ -24,54 +24,132 @@ async function getUserApiKey(userId: string, keyName: string): Promise<string | 
       .single();
 
     if (error || !data) {
+      console.log('No user API key found:', error?.message);
       return null;
     }
 
-    // 復号化処理
+    // 復号化処理の改善
     const ENCRYPTION_KEY = 'AIThreadsSecretKey2024ForAPIEncryption';
     
-    const enc = new TextEncoder();
-    const keyMaterial = await crypto.subtle.importKey(
-      'raw',
-      enc.encode(ENCRYPTION_KEY),
-      { name: 'PBKDF2' },
-      false,
-      ['deriveKey']
-    );
-    
-    const key = await crypto.subtle.deriveKey(
-      {
-        name: 'PBKDF2',
-        salt: enc.encode('salt'),
-        iterations: 100000,
-        hash: 'SHA-256',
-      },
-      keyMaterial,
-      { name: 'AES-GCM', length: 256 },
-      false,
-      ['encrypt', 'decrypt']
-    );
+    try {
+      const enc = new TextEncoder();
+      const keyMaterial = await crypto.subtle.importKey(
+        'raw',
+        enc.encode(ENCRYPTION_KEY),
+        { name: 'PBKDF2' },
+        false,
+        ['deriveKey']
+      );
+      
+      const key = await crypto.subtle.deriveKey(
+        {
+          name: 'PBKDF2',
+          salt: enc.encode('salt'),
+          iterations: 100000,
+          hash: 'SHA-256',
+        },
+        keyMaterial,
+        { name: 'AES-GCM', length: 256 },
+        false,
+        ['encrypt', 'decrypt']
+      );
 
-    const combined = Uint8Array.from(atob(data.encrypted_key), c => c.charCodeAt(0));
-    const iv = combined.slice(0, 12);
-    const encrypted = combined.slice(12);
-    
-    const decrypted = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv: iv },
-      key,
-      encrypted
-    );
-    
-    const dec = new TextDecoder();
-    return dec.decode(decrypted);
+      const combined = Uint8Array.from(atob(data.encrypted_key), c => c.charCodeAt(0));
+      const iv = combined.slice(0, 12);
+      const encrypted = combined.slice(12);
+      
+      const decrypted = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: iv },
+        key,
+        encrypted
+      );
+      
+      const dec = new TextDecoder();
+      return dec.decode(decrypted);
+    } catch (decryptError) {
+      console.error('Decryption failed:', decryptError);
+      return null;
+    }
   } catch (error) {
     console.error('Error retrieving user API key:', error);
     return null;
   }
 }
 
+async function callGeminiWithRetry(prompt: string, apiKey: string, maxRetries = 3): Promise<any> {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    console.log(`Gemini API call attempt ${attempt}/${maxRetries}`);
+    
+    try {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                {
+                  text: prompt
+                }
+              ]
+            }
+          ],
+          generationConfig: {
+            temperature: 0.9,
+            topK: 1,
+            topP: 1,
+            maxOutputTokens: 2048,
+          },
+          safetySettings: [
+            {
+              category: "HARM_CATEGORY_HARASSMENT",
+              threshold: "BLOCK_MEDIUM_AND_ABOVE"
+            },
+            {
+              category: "HARM_CATEGORY_HATE_SPEECH",
+              threshold: "BLOCK_MEDIUM_AND_ABOVE"
+            },
+            {
+              category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+              threshold: "BLOCK_MEDIUM_AND_ABOVE"
+            },
+            {
+              category: "HARM_CATEGORY_DANGEROUS_CONTENT",
+              threshold: "BLOCK_MEDIUM_AND_ABOVE"
+            }
+          ]
+        }),
+      });
+
+      if (!response.ok) {
+        if (response.status === 429) {
+          if (attempt < maxRetries) {
+            const waitTime = Math.pow(2, attempt) * 1000; // exponential backoff
+            console.log(`Rate limited, waiting ${waitTime}ms before retry...`);
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+            continue;
+          }
+        }
+        throw new Error(`Gemini API error: ${response.status} ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      console.log('Gemini API call successful');
+      return data;
+
+    } catch (error) {
+      if (attempt === maxRetries) {
+        throw error;
+      }
+      console.log(`Attempt ${attempt} failed, retrying...`);
+      await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+    }
+  }
+}
+
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -79,7 +157,6 @@ serve(async (req) => {
   try {
     console.log('Starting post generation...');
 
-    // JWT トークンから認証情報を取得
     const authHeader = req.headers.get('authorization');
     if (!authHeader) {
       throw new Error('Authorization header is required');
@@ -112,10 +189,6 @@ serve(async (req) => {
       throw new Error('Gemini API key is not configured. Please set your API key in Settings.');
     }
 
-    // Calculate total posts to generate
-    const postCount = selectedDates.length * selectedTimes.length;
-    console.log(`Generating ${postCount} posts for persona ${personaId} using ${userGeminiApiKey ? 'user' : 'fallback'} API key`);
-
     // Get persona details
     const { data: persona, error: personaError } = await supabase
       .from('personas')
@@ -132,72 +205,26 @@ serve(async (req) => {
 
     // Generate time slots from selected dates and times
     const timeSlots = generateTimeSlots(selectedDates, selectedTimes);
+    console.log(`Generated ${timeSlots.length} time slots`);
 
     const posts = [];
+    const failedPosts = [];
 
     for (let i = 0; i < timeSlots.length; i++) {
       console.log(`Generating post ${i + 1}/${timeSlots.length}`);
 
-      // Create prompt for Gemini with variety
-      const prompt = createPostPrompt(persona, topics, i + 1, timeSlots.length, customPrompt, timeSlots[i]);
-
       try {
-        // Call Gemini API
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${geminiApiKey}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            contents: [
-              {
-                parts: [
-                  {
-                    text: prompt
-                  }
-                ]
-              }
-            ],
-            generationConfig: {
-              temperature: 0.9,
-              topK: 1,
-              topP: 1,
-              maxOutputTokens: 2048,
-            },
-            safetySettings: [
-              {
-                category: "HARM_CATEGORY_HARASSMENT",
-                threshold: "BLOCK_MEDIUM_AND_ABOVE"
-              },
-              {
-                category: "HARM_CATEGORY_HATE_SPEECH",
-                threshold: "BLOCK_MEDIUM_AND_ABOVE"
-              },
-              {
-                category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-                threshold: "BLOCK_MEDIUM_AND_ABOVE"
-              },
-              {
-                category: "HARM_CATEGORY_DANGEROUS_CONTENT",
-                threshold: "BLOCK_MEDIUM_AND_ABOVE"
-              }
-            ]
-          }),
-        });
+        // Create prompt for Gemini with variety
+        const prompt = createPostPrompt(persona, topics, i + 1, timeSlots.length, customPrompt, timeSlots[i]);
 
-        if (!response.ok) {
-          throw new Error(`Gemini API error: ${response.status} ${response.statusText}`);
-        }
-
-        const data = await response.json();
+        // Call Gemini API with retry logic
+        const data = await callGeminiWithRetry(prompt, geminiApiKey);
 
         if (!data.candidates || !data.candidates[0] || !data.candidates[0].content) {
           throw new Error('Invalid response from Gemini API');
         }
 
         const generatedContent = data.candidates[0].content.parts[0].text;
-
-        // Use generated content as is, without hashtag extraction
         const content = generatedContent.trim();
         const hashtags: string[] = [];
 
@@ -218,7 +245,8 @@ serve(async (req) => {
 
         if (saveError) {
           console.error('Error saving post:', saveError);
-          throw saveError;
+          failedPosts.push({ index: i + 1, error: saveError.message });
+          continue;
         }
 
         console.log(`Post ${i + 1} saved with ID: ${savedPost.id}`);
@@ -226,22 +254,28 @@ serve(async (req) => {
 
       } catch (error) {
         console.error(`Error generating post ${i + 1}:`, error);
-        // Continue with next post instead of failing completely
-        continue;
+        failedPosts.push({ index: i + 1, error: error.message });
       }
 
-      // Add small delay to avoid rate limiting
-      await new Promise(resolve => setTimeout(resolve, 200));
+      // Add delay between requests to avoid rate limiting
+      if (i < timeSlots.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
     }
 
     console.log(`Successfully generated ${posts.length} posts`);
+    if (failedPosts.length > 0) {
+      console.log(`Failed to generate ${failedPosts.length} posts:`, failedPosts);
+    }
 
-        return new Response(
+    return new Response(
       JSON.stringify({ 
         posts,
         success: true,
         generated_count: posts.length,
-        requested_count: timeSlots.length
+        requested_count: timeSlots.length,
+        failed_count: failedPosts.length,
+        failures: failedPosts
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -374,10 +408,4 @@ function getTimeOfDay(scheduledTime?: string): string {
   if (hour >= 12 && hour < 17) return '昼';
   if (hour >= 17 && hour < 21) return '夕方';
   return '夜';
-}
-
-function extractHashtags(text: string): string[] {
-  const hashtagRegex = /#[^\s#]+/g;
-  const matches = text.match(hashtagRegex);
-  return matches ? matches.slice(0, 5) : [];
 }

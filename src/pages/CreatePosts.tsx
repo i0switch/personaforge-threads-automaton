@@ -183,41 +183,72 @@ const CreatePosts = () => {
         throw error;
       }
 
-      if (data?.success && data?.posts && data.posts.length > 0) {
-        // 生成された投稿をセット
-        setGeneratedPosts(data.posts);
-        
-        // Generate image prompts for each post based on content
-        const prompts: Record<string, string> = {};
-        for (const post of data.posts) {
-          if (post && post.id && post.content) {
-            try {
-              const imagePrompt = await generateImagePromptFromContent(post.content);
-              prompts[post.id] = imagePrompt;
-            } catch (error) {
-              console.error('Failed to generate image prompt for post:', post.id, error);
-              // Fallback to a default selfie prompt
-              prompts[post.id] = "selfie photo, smiling woman, casual outfit, natural lighting, morning time, cozy atmosphere";
+      if (data?.success && data?.posts) {
+        if (data.posts.length > 0) {
+          // 生成された投稿をセット
+          setGeneratedPosts(data.posts);
+          
+          // Generate image prompts for each post based on content
+          const prompts: Record<string, string> = {};
+          for (const post of data.posts) {
+            if (post && post.id && post.content) {
+              try {
+                const imagePrompt = await generateImagePromptFromContent(post.content);
+                prompts[post.id] = imagePrompt;
+              } catch (error) {
+                console.error('Failed to generate image prompt for post:', post.id, error);
+                // Fallback to a default selfie prompt
+                prompts[post.id] = "selfie photo, smiling woman, casual outfit, natural lighting, morning time, cozy atmosphere";
+              }
             }
           }
-        }
-        setImagePrompts(prompts);
-        
-        // ステップ2（生成・編集）に進む
-        setCurrentStep(2);
+          setImagePrompts(prompts);
+          
+          // ステップ2（生成・編集）に進む
+          setCurrentStep(2);
 
-        toast({
-          title: "成功",
-          description: `${data.posts.length}件の投稿を生成しました。`,
-        });
+          // 成功メッセージを改善
+          let message = `${data.posts.length}件の投稿を生成しました。`;
+          if (data.failed_count && data.failed_count > 0) {
+            message += ` (${data.failed_count}件の生成に失敗しました)`;
+          }
+
+          toast({
+            title: "成功",
+            description: message,
+          });
+        } else {
+          // 投稿が1件も生成されなかった場合
+          let errorMessage = '投稿の生成に失敗しました。';
+          if (data.failures && data.failures.length > 0) {
+            const firstError = data.failures[0];
+            if (firstError.error.includes('rate limit') || firstError.error.includes('429')) {
+              errorMessage = 'API制限により生成できませんでした。しばらく時間をおいて再試行してください。';
+            } else if (firstError.error.includes('API key')) {
+              errorMessage = 'APIキーの設定に問題があります。設定を確認してください。';
+            }
+          }
+          throw new Error(errorMessage);
+        }
       } else {
         throw new Error('投稿の生成に失敗しました');
       }
     } catch (error) {
       console.error('Error generating posts:', error);
+      
+      // エラーメッセージを改善
+      let errorMessage = "投稿の生成に失敗しました。";
+      if (error.message.includes('rate limit') || error.message.includes('429')) {
+        errorMessage = "API制限により生成できませんでした。しばらく時間をおいて再試行してください。";
+      } else if (error.message.includes('API key')) {
+        errorMessage = "APIキーの設定に問題があります。設定画面でAPIキーを確認してください。";
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
       toast({
         title: "エラー",
-        description: "投稿の生成に失敗しました。詳細はコンソールを確認してください。",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
