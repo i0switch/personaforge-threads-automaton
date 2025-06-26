@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -194,8 +193,8 @@ const Index = () => {
                 </div>
                 
                 {/* Content */}
-                <div className="relative z-10 h-full">
-                  <CardHeader className="pb-4">
+                <div className="relative z-10 h-full flex flex-col">
+                  <CardHeader className="pb-4 flex-grow">
                     <CardTitle className="flex items-center gap-4 text-xl">
                       <div className={`p-3 bg-gradient-to-r ${feature.color} rounded-xl shadow-md group-hover:scale-110 transition-transform duration-300`}>
                         <Icon className="h-7 w-7 text-white" />
@@ -215,7 +214,7 @@ const Index = () => {
                       {feature.description}
                     </CardDescription>
                   </CardHeader>
-                  <CardContent className="pt-0">
+                  <CardContent className="pt-0 mt-auto">
                     <Button 
                       variant="outline" 
                       className={`w-full h-12 border-2 font-semibold transition-all duration-300 ${
@@ -230,18 +229,16 @@ const Index = () => {
                       }}
                     >
                       {feature.disabled ? (
-                        <>
-                          <span>アクセス不可</span>
-                        </>
+                        <span>アクセス不可</span>
                       ) : (
                         feature.title === "ペルソナ設定" ? (
-                          <span className="flex items-center gap-2">
+                          <span className="flex items-center justify-center gap-2">
                             <Edit className="h-4 w-4" />
                             設定・編集
                             <Sparkles className="h-4 w-4" />
                           </span>
                         ) : (
-                          <span className="flex items-center gap-2">
+                          <span className="flex items-center justify-center gap-2">
                             開始する
                             <Rocket className="h-4 w-4" />
                           </span>
