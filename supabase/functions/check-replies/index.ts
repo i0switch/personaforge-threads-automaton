@@ -30,7 +30,8 @@ serve(async (req) => {
           id,
           name,
           user_id,
-          threads_access_token
+          threads_access_token,
+          threads_username
         )
       `)
       .eq('is_active', true);
@@ -125,10 +126,10 @@ async function checkRepliesForPost(persona: any, postId: string): Promise<number
       for (const thread of data.data) {
         // リプライかどうかを判定
         if (thread.reply_to_id) {
-          // --- CRITICAL FIX: Self-reply filter ---
-          // 自分自身のリプライをスキップ
+          // 自分自身のリプライをスキップ（強化版フィルタ）
           const isSelf = 
             thread.username === persona.name ||
+            thread.username === persona.threads_username ||
             thread.owner_id === persona.user_id ||
             thread.author_id === persona.user_id;
           

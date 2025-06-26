@@ -181,8 +181,12 @@ async function triggerAutoReply(replyData: any, supabase: any): Promise<void> {
   }
 }
 
-// ペルソナ用のリプライ処理関数
+// ペルソナ用のリプライ処理関数（デバッグ強化版）
 async function processReplyDataForPersona(replyData: any, supabase: any, personaId: string): Promise<void> {
+  console.log('=== PROCESSING REPLY FOR PERSONA ===');
+  console.log('Reply Data:', JSON.stringify(replyData, null, 2));
+  console.log('Persona ID:', personaId);
+
   const sanitizedData = {
     reply_id: sanitizeInput(replyData.id, 100),
     original_post_id: sanitizeInput(replyData.reply_to_id, 100),
@@ -192,13 +196,17 @@ async function processReplyDataForPersona(replyData: any, supabase: any, persona
     reply_timestamp: new Date(replyData.timestamp).toISOString()
   };
 
+  console.log('Sanitized Data:', JSON.stringify(sanitizedData, null, 2));
+
   // 指定されたペルソナの情報を取得
   const { data: persona, error: personaError } = await supabase
     .from('personas')
-    .select('id, name, user_id, threads_app_id')
+    .select('id, name, user_id, threads_app_id, threads_username')
     .eq('id', personaId)
     .eq('is_active', true)
     .single();
+
+  console.log('Persona Query Result:', { persona, error: personaError });
 
   if (personaError || !persona) {
     console.error('Error fetching persona:', personaError);
@@ -206,17 +214,41 @@ async function processReplyDataForPersona(replyData: any, supabase: any, persona
     return;
   }
 
-  // 自分自身からの返信をスキップ
+  // 自分自身からの返信をスキップ（複数条件での判定）
   const isSelf = 
     sanitizedData.reply_author_username === persona.name ||
+    sanitizedData.reply_author_username === persona.threads_username ||
     sanitizedData.reply_author_id === persona.user_id ||
     sanitizedData.reply_author_id === persona.threads_app_id;
   
+  console.log('Self-reply check:', {
+    reply_author_username: sanitizedData.reply_author_username,
+    reply_author_id: sanitizedData.reply_author_id,
+    persona_name: persona.name,
+    persona_threads_username: persona.threads_username,
+    persona_user_id: persona.user_id,
+    persona_threads_app_id: persona.threads_app_id,
+    is_self: isSelf
+  });
+
   if (isSelf) {
     console.log(`Skipping self-reply from persona ${persona.name}`);
     return;
   }
 
+  // 重複チェック
+  const { data: existingReply } = await supabase
+    .from('thread_replies')
+    .select('id')
+    .eq('reply_id', sanitizedData.reply_id)
+    .single();
+
+  if (existingReply) {
+    console.log('Reply already exists, skipping:', sanitizedData.reply_id);
+    return;
+  }
+
+  console.log('Inserting new reply to database...');
   const { error: insertError } = await supabase
     .from('thread_replies')
     .insert({
@@ -231,6 +263,8 @@ async function processReplyDataForPersona(replyData: any, supabase: any, persona
       error: insertError.message,
       persona_id: persona.id 
     });
+  } else {
+    console.log('Reply successfully inserted!');
   }
 }
 
@@ -327,6 +361,11 @@ serve(async (req) => {
       const signature = req.headers.get('x-hub-signature-256');
       const timestamp = req.headers.get('x-timestamp');
 
+      console.log('POST request received:');
+      console.log('Body length:', rawBody.length);
+      console.log('Signature present:', !!signature);
+      console.log('Timestamp present:', !!timestamp);
+
       // 署名検証（ペルソナ専用のapp_secretを使用）
       if (signature) {
         const { data: persona, error } = await supabase
@@ -373,17 +412,27 @@ serve(async (req) => {
       }
 
       const webhookData: WebhookPayload = JSON.parse(rawBody);
+      
+      console.log('Parsed webhook data:', JSON.stringify(webhookData, null, 2));
 
       if (webhookData.object === 'threads') {
+        console.log('Processing threads webhook...');
         for (const entry of webhookData.entry) {
+          console.log('Processing entry:', JSON.stringify(entry, null, 2));
           for (const change of entry.changes) {
+            console.log('Processing change:', JSON.stringify(change, null, 2));
             if (change.field === 'mentions' && change.value) {
+              console.log('Found mention, processing reply...');
               // ペルソナ指定で処理
               await processReplyDataForPersona(change.value, supabase, personaId);
               await triggerAutoReply(change.value, supabase);
+            } else {
+              console.log('Change field:', change.field, 'Value present:', !!change.value);
             }
           }
         }
+      } else {
+        console.log('Webhook object type:', webhookData.object);
       }
 
       logSecurityEvent('webhook_processed', { 
