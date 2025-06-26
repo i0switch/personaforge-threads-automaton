@@ -2,10 +2,10 @@
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { ArrowLeft, MessageSquare, Save, Loader2, Sparkles } from "lucide-react";
+import { ArrowLeft, MessageSquare, Save, Loader2, Sparkles, Plus, Trash2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -13,6 +13,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 
 type Persona = Database['public']['Tables']['personas']['Row'];
+type AutoReply = Database['public']['Tables']['auto_replies']['Row'];
 
 const AutoReply = () => {
   const navigate = useNavigate();
@@ -23,10 +24,15 @@ const AutoReply = () => {
   const [saving, setSaving] = useState(false);
   const [personas, setPersonas] = useState<Persona[]>([]);
   const [selectedPersona, setSelectedPersona] = useState<Persona | null>(null);
+  const [autoReplies, setAutoReplies] = useState<AutoReply[]>([]);
   const [generatingReply, setGeneratingReply] = useState(false);
   const [testPostContent, setTestPostContent] = useState("");
   const [testReplyContent, setTestReplyContent] = useState("");
   const [generatedReply, setGeneratedReply] = useState("");
+  
+  // キーワード返信フォーム用の状態
+  const [keywords, setKeywords] = useState("");
+  const [responseTemplate, setResponseTemplate] = useState("");
 
   useEffect(() => {
     loadData();
@@ -50,6 +56,16 @@ const AutoReply = () => {
         setSelectedPersona(personasData[0]);
       }
 
+      // Load auto replies
+      const { data: autoRepliesData, error: autoRepliesError } = await supabase
+        .from('auto_replies')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (autoRepliesError) throw autoRepliesError;
+      setAutoReplies(autoRepliesData || []);
+
     } catch (error) {
       console.error('Error loading data:', error);
       toast({
@@ -59,6 +75,77 @@ const AutoReply = () => {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const saveKeywordReply = async () => {
+    if (!selectedPersona || !keywords.trim() || !responseTemplate.trim()) {
+      toast({
+        title: "エラー",
+        description: "ペルソナ、キーワード、返信テンプレートをすべて入力してください。",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const keywordArray = keywords.split(',').map(k => k.trim()).filter(Boolean);
+      
+      const { error } = await supabase
+        .from('auto_replies')
+        .insert({
+          user_id: user!.id,
+          persona_id: selectedPersona.id,
+          trigger_keywords: keywordArray,
+          response_template: responseTemplate,
+          is_active: true
+        });
+
+      if (error) throw error;
+
+      toast({
+        title: "成功",
+        description: "キーワード返信が保存されました。",
+      });
+
+      setKeywords("");
+      setResponseTemplate("");
+      loadData();
+    } catch (error) {
+      console.error('Error saving keyword reply:', error);
+      toast({
+        title: "エラー",
+        description: "キーワード返信の保存に失敗しました。",
+        variant: "destructive",
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteAutoReply = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from('auto_replies')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+
+      toast({
+        title: "成功",
+        description: "キーワード返信を削除しました。",
+      });
+
+      loadData();
+    } catch (error) {
+      console.error('Error deleting auto reply:', error);
+      toast({
+        title: "エラー",
+        description: "キーワード返信の削除に失敗しました。",
+        variant: "destructive",
+      });
     }
   };
 
@@ -142,7 +229,7 @@ const AutoReply = () => {
           <div>
             <h1 className="text-3xl font-bold">自動返信設定</h1>
             <p className="text-muted-foreground">
-              自動返信のテストと設定は<Button variant="link" className="p-0 h-auto text-primary" onClick={() => navigate("/persona-setup")}>ペルソナ設定ページ</Button>で行えます
+              キーワード自動返信の設定とAI返信のテストができます
             </p>
           </div>
         </div>
@@ -183,6 +270,115 @@ const AutoReply = () => {
             </div>
           </CardContent>
         </Card>
+
+        {/* キーワード返信設定 */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Plus className="h-5 w-5" />
+              キーワード返信を追加
+            </CardTitle>
+            <CardDescription>
+              特定のキーワードに反応する自動返信を設定できます
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="space-y-2">
+              <Label>ペルソナ選択</Label>
+              <select 
+                className="w-full p-2 border rounded-md"
+                value={selectedPersona?.id || ""}
+                onChange={(e) => {
+                  const persona = personas.find(p => p.id === e.target.value);
+                  setSelectedPersona(persona || null);
+                }}
+              >
+                <option value="">ペルソナを選択してください</option>
+                {personas.map((persona) => (
+                  <option key={persona.id} value={persona.id}>
+                    {persona.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>トリガーキーワード（カンマ区切り）</Label>
+              <Input
+                value={keywords}
+                onChange={(e) => setKeywords(e.target.value)}
+                placeholder="例: ありがとう, 感謝, お疲れ様"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>返信テンプレート</Label>
+              <Textarea
+                value={responseTemplate}
+                onChange={(e) => setResponseTemplate(e.target.value)}
+                placeholder="キーワードが検出された時の返信内容を入力してください"
+                rows={3}
+              />
+            </div>
+
+            <Button 
+              onClick={saveKeywordReply} 
+              disabled={saving || !selectedPersona || !keywords || !responseTemplate}
+              className="w-full"
+            >
+              {saving ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  保存中...
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4 mr-2" />
+                  キーワード返信を保存
+                </>
+              )}
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* 登録済みキーワード返信一覧 */}
+        {autoReplies.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>登録済みキーワード返信</CardTitle>
+              <CardDescription>
+                現在設定されているキーワード返信の一覧
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {autoReplies.map((reply) => {
+                  const persona = personas.find(p => p.id === reply.persona_id);
+                  return (
+                    <div key={reply.id} className="border rounded-lg p-4">
+                      <div className="flex justify-between items-start mb-2">
+                        <div>
+                          <p className="font-medium">{persona?.name || '不明なペルソナ'}</p>
+                          <p className="text-sm text-muted-foreground">
+                            キーワード: {reply.trigger_keywords?.join(', ')}
+                          </p>
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => deleteAutoReply(reply.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      <p className="text-sm bg-muted p-2 rounded">{reply.response_template}</p>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* AI自動返信テスト */}
         <Card>
