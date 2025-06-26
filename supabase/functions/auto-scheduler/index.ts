@@ -21,7 +21,12 @@ serve(async (req) => {
   try {
     console.log('Starting auto-scheduler...');
 
-    // キューから処理待ちの投稿を取得
+    const now = new Date();
+    console.log('Current time:', now.toISOString());
+
+    // キューから処理待ちの投稿を取得（5分の猶予を設けて取得）
+    const fiveMinutesFromNow = new Date(now.getTime() + 5 * 60 * 1000);
+    
     const { data: queueItems, error: queueError } = await supabase
       .from('post_queue')
       .select(`
@@ -32,11 +37,12 @@ serve(async (req) => {
         )
       `)
       .eq('status', 'queued')
-      .lte('scheduled_for', new Date().toISOString())
+      .lte('scheduled_for', fiveMinutesFromNow.toISOString())
       .order('queue_position', { ascending: true })
-      .limit(5);
+      .limit(10);
 
     if (queueError) {
+      console.error('Queue query error:', queueError);
       throw queueError;
     }
 
@@ -44,7 +50,7 @@ serve(async (req) => {
 
     for (const queueItem of queueItems || []) {
       try {
-        console.log(`Processing post ${queueItem.post_id}`);
+        console.log(`Processing post ${queueItem.post_id}, scheduled for: ${queueItem.scheduled_for}`);
 
         // キューアイテムを処理中に更新
         await supabase
@@ -61,6 +67,7 @@ serve(async (req) => {
         });
 
         if (postError) {
+          console.error(`Threads post error for ${queueItem.post_id}:`, postError);
           throw postError;
         }
 
@@ -82,14 +89,16 @@ serve(async (req) => {
 
         if (newRetryCount <= maxRetries) {
           // リトライ回数内の場合は再スケジュール
-          const nextRetryTime = new Date();
-          nextRetryTime.setMinutes(nextRetryTime.getMinutes() + (newRetryCount * 15)); // 15分後にリトライ
+          const retryDelay = newRetryCount * 15; // 15分 * リトライ回数
+          const nextRetryTime = new Date(now.getTime() + retryDelay * 60 * 1000);
+
+          console.log(`Scheduling retry ${newRetryCount} for post ${queueItem.post_id} at ${nextRetryTime.toISOString()}`);
 
           await supabase
             .from('posts')
             .update({
               retry_count: newRetryCount,
-              last_retry_at: new Date().toISOString(),
+              last_retry_at: now.toISOString(),
               scheduled_for: nextRetryTime.toISOString()
             })
             .eq('id', queueItem.post_id);
@@ -110,7 +119,7 @@ serve(async (req) => {
             .update({
               status: 'failed',
               retry_count: newRetryCount,
-              last_retry_at: new Date().toISOString()
+              last_retry_at: now.toISOString()
             })
             .eq('id', queueItem.post_id);
 
@@ -128,7 +137,8 @@ serve(async (req) => {
       JSON.stringify({ 
         success: true,
         processed: queueItems?.length || 0,
-        message: 'Auto-scheduler completed successfully'
+        message: 'Auto-scheduler completed successfully',
+        timestamp: now.toISOString()
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -141,7 +151,8 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         error: error.message,
-        success: false 
+        success: false,
+        timestamp: new Date().toISOString()
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }, 

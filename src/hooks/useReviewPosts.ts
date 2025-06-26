@@ -12,6 +12,7 @@ type Post = Database['public']['Tables']['posts']['Row'];
 interface ReviewPostsState {
   posts: Post[];
   persona: Persona;
+  scheduledDateTime?: string; // 選択された日時を保持
 }
 
 export const useReviewPosts = () => {
@@ -22,6 +23,7 @@ export const useReviewPosts = () => {
   
   const [posts, setPosts] = useState<Post[]>([]);
   const [persona, setPersona] = useState<Persona | null>(null);
+  const [scheduledDateTime, setScheduledDateTime] = useState<string | null>(null);
   const [isScheduling, setIsScheduling] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -32,6 +34,13 @@ export const useReviewPosts = () => {
     if (state && state.posts && state.persona) {
       setPosts(state.posts);
       setPersona(state.persona);
+      
+      // 選択された日時があれば保持
+      if (state.scheduledDateTime) {
+        setScheduledDateTime(state.scheduledDateTime);
+        console.log('Scheduled DateTime from state:', state.scheduledDateTime);
+      }
+      
       setIsLoading(false);
     } else {
       console.log('No state found, redirecting to create-posts');
@@ -59,22 +68,53 @@ export const useReviewPosts = () => {
 
     setIsScheduling(true);
     try {
-      const postsToUpdate = posts.map(post => ({
-        id: post.id,
-        content: post.content,
-        status: 'scheduled' as const
-      }));
+      // 選択された日時があれば使用、なければデフォルト処理
+      let baseScheduleTime = scheduledDateTime ? new Date(scheduledDateTime) : new Date();
+      
+      // デフォルトのスケジュール時刻設定（日時が選択されていない場合）
+      if (!scheduledDateTime) {
+        baseScheduleTime.setHours(baseScheduleTime.getHours() + 1, 0, 0, 0);
+      }
 
-      for (const post of postsToUpdate) {
+      console.log('Base schedule time:', baseScheduleTime.toISOString());
+
+      for (let i = 0; i < posts.length; i++) {
+        const post = posts[i];
+        const postScheduleTime = new Date(baseScheduleTime);
+        
+        // 複数投稿の場合は30分間隔で配置
+        if (i > 0) {
+          postScheduleTime.setMinutes(postScheduleTime.getMinutes() + (i * 30));
+        }
+
+        console.log(`Scheduling post ${i + 1} for:`, postScheduleTime.toISOString());
+
         const { error } = await supabase
           .from('posts')
           .update({ 
             content: post.content,
-            status: post.status 
+            status: 'scheduled',
+            scheduled_for: postScheduleTime.toISOString()
           })
           .eq('id', post.id);
 
         if (error) throw error;
+
+        // キューにも追加
+        const { error: queueError } = await supabase
+          .from('post_queue')
+          .insert({
+            user_id: user!.id,
+            post_id: post.id,
+            scheduled_for: postScheduleTime.toISOString(),
+            queue_position: i,
+            status: 'queued'
+          });
+
+        if (queueError) {
+          console.error('Queue insertion error:', queueError);
+          // キューエラーは警告として扱い、処理を続行
+        }
       }
 
       // Log activity
@@ -110,6 +150,7 @@ export const useReviewPosts = () => {
   return {
     posts,
     persona,
+    scheduledDateTime,
     isScheduling,
     isLoading,
     updatePost,
