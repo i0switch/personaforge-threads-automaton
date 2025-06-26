@@ -1,4 +1,3 @@
-
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
@@ -341,14 +340,20 @@ async function processReplyData(replyData: any, personaId: string | null): Promi
     console.log('AI auto reply is enabled for this persona');
     try {
       console.log('Calling threads-auto-reply function...');
+      
+      // パラメータが正しく渡されているか確認
+      const functionParams = {
+        postContent: '', // 元投稿の内容（必要に応じて取得）
+        replyContent: sanitizedData.reply_text,
+        replyId: sanitizedData.reply_id,
+        personaId: personaId,
+        userId: persona.user_id
+      };
+      
+      console.log('Function parameters:', functionParams);
+      
       const { data: autoReplyResponse, error: autoReplyError } = await supabase.functions.invoke('threads-auto-reply', {
-        body: {
-          postContent: '', // 元投稿の内容（必要に応じて取得）
-          replyContent: sanitizedData.reply_text,
-          replyId: sanitizedData.reply_id,
-          personaId: personaId,
-          userId: persona.user_id
-        }
+        body: functionParams
       });
 
       if (autoReplyError) {
