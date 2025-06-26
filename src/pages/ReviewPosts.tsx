@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -30,16 +31,26 @@ const ReviewPosts = () => {
   const [posts, setPosts] = useState<Post[]>([]);
   const [persona, setPersona] = useState<Persona | null>(null);
   const [isScheduling, setIsScheduling] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const state = location.state as ReviewPostsState;
-    if (state) {
+    console.log('ReviewPosts state:', state);
+    
+    if (state && state.posts && state.persona) {
       setPosts(state.posts);
       setPersona(state.persona);
+      setIsLoading(false);
     } else {
+      console.log('No state found, redirecting to create-posts');
+      toast({
+        title: "エラー",
+        description: "投稿データが見つかりません。投稿作成画面に戻ります。",
+        variant: "destructive",
+      });
       navigate("/create-posts");
     }
-  }, [location.state, navigate]);
+  }, [location.state, navigate, toast]);
 
   const updatePost = (index: number, content: string) => {
     const updatedPosts = [...posts];
@@ -75,14 +86,16 @@ const ReviewPosts = () => {
       }
 
       // Log activity
-      await supabase
-        .from('activity_logs')
-        .insert({
-          user_id: user!.id,
-          persona_id: persona.id,
-          action_type: 'posts_scheduled',
-          description: `${posts.length}件の投稿を予約しました`
-        });
+      if (user) {
+        await supabase
+          .from('activity_logs')
+          .insert({
+            user_id: user.id,
+            persona_id: persona.id,
+            action_type: 'posts_scheduled',
+            description: `${posts.length}件の投稿を予約しました`
+          });
+      }
 
       toast({
         title: "成功",
@@ -102,13 +115,31 @@ const ReviewPosts = () => {
     }
   };
 
-  if (!persona) {
+  if (isLoading) {
     return (
       <div className="min-h-screen bg-background p-6">
         <div className="max-w-4xl mx-auto">
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-8 w-8 animate-spin mr-2" />
             <span>読み込み中...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!persona || posts.length === 0) {
+    return (
+      <div className="min-h-screen bg-background p-6">
+        <div className="max-w-4xl mx-auto">
+          <div className="flex items-center justify-center py-12">
+            <div className="text-center">
+              <p className="text-muted-foreground mb-4">投稿データが見つかりません。</p>
+              <Button onClick={() => navigate("/create-posts")}>
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                投稿作成に戻る
+              </Button>
+            </div>
           </div>
         </div>
       </div>
@@ -207,7 +238,7 @@ const ReviewPosts = () => {
           ))}
         </div>
 
-        {/* アクションボタン - 画像生成ボタンを削除 */}
+        {/* アクションボタン */}
         <div className="flex gap-4">
           <Button 
             onClick={scheduleAllPosts} 
