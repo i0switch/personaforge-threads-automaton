@@ -20,117 +20,89 @@ serve(async (req) => {
 
   try {
     console.log('Starting auto-scheduler...');
-    const now = new Date();
-    console.log('Current time:', now.toISOString());
 
-    // 予約時刻が過ぎた投稿を取得（より広い範囲で検索）
-    const { data: scheduledPosts, error: postsError } = await supabase
-      .from('posts')
+    // キューから処理待ちの投稿を取得
+    const { data: queueItems, error: queueError } = await supabase
+      .from('post_queue')
       .select(`
         *,
-        personas!inner(threads_access_token, name)
+        posts!inner(
+          *,
+          personas!inner(threads_access_token)
+        )
       `)
-      .eq('status', 'scheduled')
-      .not('scheduled_for', 'is', null)
-      .lte('scheduled_for', now.toISOString())
-      .order('scheduled_for', { ascending: true })
-      .limit(10);
+      .eq('status', 'queued')
+      .lte('scheduled_for', new Date().toISOString())
+      .order('queue_position', { ascending: true })
+      .limit(5);
 
-    if (postsError) {
-      console.error('Error fetching scheduled posts:', postsError);
-      throw postsError;
+    if (queueError) {
+      throw queueError;
     }
 
-    console.log(`Found ${scheduledPosts?.length || 0} posts to process`);
+    console.log(`Found ${queueItems?.length || 0} posts to process`);
 
-    if (!scheduledPosts || scheduledPosts.length === 0) {
-      return new Response(
-        JSON.stringify({ 
-          success: true,
-          processed: 0,
-          message: 'No posts to process'
-        }),
-        { 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 200 
-        }
-      );
-    }
-
-    let successCount = 0;
-    let failureCount = 0;
-
-    for (const post of scheduledPosts) {
+    for (const queueItem of queueItems || []) {
       try {
-        console.log(`Processing post ${post.id} scheduled for ${post.scheduled_for}`);
+        console.log(`Processing post ${queueItem.post_id}`);
 
-        // Threads APIアクセストークンの確認
-        if (!post.personas?.threads_access_token) {
-          console.error(`No Threads access token for post ${post.id}`);
-          
-          // ステータスを失敗に更新
-          await supabase
-            .from('posts')
-            .update({ 
-              status: 'failed',
-              retry_count: (post.retry_count || 0) + 1,
-              last_retry_at: now.toISOString()
-            })
-            .eq('id', post.id);
-          
-          failureCount++;
-          continue;
-        }
+        // キューアイテムを処理中に更新
+        await supabase
+          .from('post_queue')
+          .update({ status: 'processing' })
+          .eq('id', queueItem.id);
 
         // Threads投稿を実行
         const { error: postError } = await supabase.functions.invoke('threads-post', {
           body: {
-            postId: post.id,
-            userId: post.user_id
+            postId: queueItem.post_id,
+            userId: queueItem.user_id
           }
         });
 
         if (postError) {
-          console.error(`Error posting to Threads for post ${post.id}:`, postError);
           throw postError;
         }
 
-        console.log(`Successfully posted ${post.id} to Threads`);
-        successCount++;
-
-        // アクティビティログを記録
+        // 成功時はキューアイテムを完了状態に更新
         await supabase
-          .from('activity_logs')
-          .insert({
-            user_id: post.user_id,
-            persona_id: post.persona_id,
-            action_type: 'post_auto_published',
-            description: `投稿が自動的にThreadsに公開されました`
-          });
+          .from('post_queue')
+          .update({ status: 'completed' })
+          .eq('id', queueItem.id);
+
+        console.log(`Successfully posted ${queueItem.post_id}`);
 
       } catch (error) {
-        console.error(`Error processing post ${post.id}:`, error);
-        failureCount++;
+        console.error(`Error processing post ${queueItem.post_id}:`, error);
 
-        // リトライ処理
+        // 失敗時の処理
+        const post = queueItem.posts;
         const newRetryCount = (post.retry_count || 0) + 1;
         const maxRetries = post.max_retries || 3;
 
         if (newRetryCount <= maxRetries) {
-          // リトライ回数内の場合は再スケジュール（30分後）
-          const nextRetryTime = new Date(now);
-          nextRetryTime.setMinutes(nextRetryTime.getMinutes() + 30);
+          // リトライ回数内の場合は再スケジュール
+          const nextRetryTime = new Date();
+          nextRetryTime.setMinutes(nextRetryTime.getMinutes() + (newRetryCount * 15)); // 15分後にリトライ
 
           await supabase
             .from('posts')
             .update({
               retry_count: newRetryCount,
-              last_retry_at: now.toISOString(),
+              last_retry_at: new Date().toISOString(),
               scheduled_for: nextRetryTime.toISOString()
             })
-            .eq('id', post.id);
+            .eq('id', queueItem.post_id);
 
-          console.log(`Scheduled retry ${newRetryCount} for post ${post.id} at ${nextRetryTime.toISOString()}`);
+          await supabase
+            .from('post_queue')
+            .update({
+              status: 'queued',
+              scheduled_for: nextRetryTime.toISOString()
+            })
+            .eq('id', queueItem.id);
+
+          console.log(`Scheduled retry ${newRetryCount} for post ${queueItem.post_id}`);
         } else {
           // 最大リトライ回数を超えた場合は失敗状態に
           await supabase
@@ -138,23 +110,24 @@ serve(async (req) => {
             .update({
               status: 'failed',
               retry_count: newRetryCount,
-              last_retry_at: now.toISOString()
+              last_retry_at: new Date().toISOString()
             })
-            .eq('id', post.id);
+            .eq('id', queueItem.post_id);
 
-          console.log(`Post ${post.id} failed after ${maxRetries} retries`);
+          await supabase
+            .from('post_queue')
+            .update({ status: 'failed' })
+            .eq('id', queueItem.id);
+
+          console.log(`Post ${queueItem.post_id} failed after ${maxRetries} retries`);
         }
       }
     }
 
-    console.log(`Auto-scheduler completed: ${successCount} success, ${failureCount} failures`);
-
     return new Response(
       JSON.stringify({ 
         success: true,
-        processed: scheduledPosts.length,
-        successful: successCount,
-        failed: failureCount,
+        processed: queueItems?.length || 0,
         message: 'Auto-scheduler completed successfully'
       }),
       { 
