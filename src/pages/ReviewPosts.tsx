@@ -34,6 +34,7 @@ const ReviewPosts = () => {
   const [isScheduling, setIsScheduling] = useState(false);
   const [showImageGeneration, setShowImageGeneration] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [reviewedPosts, setReviewedPosts] = useState<string[]>([]);
 
   useEffect(() => {
     console.log('ReviewPosts: Component mounted, checking location state');
@@ -68,6 +69,37 @@ const ReviewPosts = () => {
       navigate("/create-posts");
     }
   }, [location.state, navigate, toast]);
+
+  // 画像生成が必要な投稿を計算
+  const postsNeedingImageGeneration = posts.filter(post => {
+    const hasUploaded = post.image_urls && post.image_urls.length > 0;
+    const hasGenerated = post.generated_images && post.generated_images.length > 0;
+    return !hasUploaded && !hasGenerated;
+  });
+
+  // レビューが必要な投稿を計算（画像生成済みでまだレビューされていない投稿）
+  const postsNeedingReview = posts.filter(post => {
+    const hasGenerated = post.generated_images && post.generated_images.length > 0;
+    const isReviewed = reviewedPosts.includes(post.id);
+    return hasGenerated && !isReviewed;
+  });
+
+  // すべての画像がレビュー済みかどうか
+  const allImagesReviewed = postsNeedingImageGeneration.length === 0 && postsNeedingReview.length === 0;
+
+  console.log('=== Current State Debug ===');
+  console.log('Posts needing image generation:', postsNeedingImageGeneration.length);
+  console.log('Posts needing review:', postsNeedingReview.map(p => p.id));
+  console.log('Reviewed posts:', reviewedPosts);
+  console.log('All images reviewed:', allImagesReviewed);
+
+  posts.forEach(post => {
+    const hasUploaded = post.image_urls && post.image_urls.length > 0;
+    const hasGenerated = post.generated_images && post.generated_images.length > 0;
+    const isReviewed = reviewedPosts.includes(post.id);
+    const needsReview = hasGenerated && !isReviewed;
+    console.log(`Post ${post.id}: hasUploaded=${hasUploaded}, hasGenerated=${hasGenerated}, isReviewed=${isReviewed}, needsReview=${needsReview}`);
+  });
 
   const updatePost = (index: number, content: string) => {
     try {
@@ -112,7 +144,7 @@ const ReviewPosts = () => {
     try {
       console.log('ReviewPosts: Updating post images for post', postIndex, 'with images:', images.length);
       const updatedPosts = [...posts];
-      updatedPosts[postIndex] = { ...updatedPosts[postIndex], images };
+      updatedPosts[postIndex] = { ...updatedPosts[postIndex], generated_images: images };
       setPosts(updatedPosts);
       
       toast({
@@ -129,6 +161,22 @@ const ReviewPosts = () => {
         variant: "destructive",
       });
     }
+  };
+
+  const approveGeneratedImage = (postId: string) => {
+    console.log('=== Approving generated image ===');
+    console.log('Post ID:', postId);
+    
+    setReviewedPosts(prev => {
+      const newReviewed = [...prev, postId];
+      console.log('After approval - Reviewed posts:', newReviewed);
+      return newReviewed;
+    });
+    
+    toast({
+      title: "承認完了",
+      description: "生成された画像を承認しました。",
+    });
   };
 
   const scheduleAllPosts = async () => {
@@ -195,15 +243,6 @@ const ReviewPosts = () => {
       setIsScheduling(false);
     }
   };
-
-  // Debug current state
-  console.log('ReviewPosts: Current render state:', {
-    hasPersona: !!persona,
-    postsCount: posts.length,
-    error,
-    showImageGeneration,
-    isScheduling
-  });
 
   // Show error state
   if (error && !persona) {
@@ -283,37 +322,115 @@ const ReviewPosts = () => {
             </CardTitle>
             <CardDescription>
               生成された投稿: {posts.length}件
+              {postsNeedingImageGeneration.length > 0 && (
+                <span className="block text-orange-600 mt-1">
+                  画像生成が必要な投稿: {postsNeedingImageGeneration.length}件
+                </span>
+              )}
+              {postsNeedingReview.length > 0 && (
+                <span className="block text-blue-600 mt-1">
+                  画像レビューが必要な投稿: {postsNeedingReview.length}件
+                </span>
+              )}
             </CardDescription>
           </CardHeader>
         </Card>
 
-        {/* 画像生成セクション */}
-        <div className="space-y-4">
-          <Button
-            variant="outline"
-            onClick={() => setShowImageGeneration(!showImageGeneration)}
-            className="w-full"
-          >
-            <ImageIcon className="h-4 w-4 mr-2" />
-            {showImageGeneration ? '画像生成を閉じる' : '投稿用画像を生成'}
-          </Button>
-          
-          {showImageGeneration && (
-            <ImageGenerationSection
-              onImagesGenerated={(images) => {
-                console.log('ReviewPosts: Images generated:', images.length);
-                // Default to adding to first post if no specific post is selected
-                if (posts.length > 0) {
-                  updatePostImages(0, images);
-                }
-              }}
-            />
-          )}
-        </div>
+        {/* 画像生成が必要な場合の表示 */}
+        {postsNeedingImageGeneration.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-orange-600">画像生成が必要です</CardTitle>
+              <CardDescription>
+                {postsNeedingImageGeneration.length}件の投稿に画像を生成してください
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button
+                variant="outline"
+                onClick={() => setShowImageGeneration(!showImageGeneration)}
+                className="w-full"
+              >
+                <ImageIcon className="h-4 w-4 mr-2" />
+                {showImageGeneration ? '画像生成を閉じる' : '投稿用画像を生成'}
+              </Button>
+              
+              {showImageGeneration && (
+                <div className="mt-4">
+                  <ImageGenerationSection
+                    onImagesGenerated={(images) => {
+                      console.log('ReviewPosts: Images generated:', images.length);
+                      // 最初の画像生成が必要な投稿に追加
+                      if (postsNeedingImageGeneration.length > 0) {
+                        const postIndex = posts.findIndex(p => p.id === postsNeedingImageGeneration[0].id);
+                        if (postIndex !== -1) {
+                          updatePostImages(postIndex, images);
+                        }
+                      }
+                    }}
+                  />
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
-        {/* 投稿一覧 */}
-        {posts.length > 0 ? (
+        {/* レビューが必要な投稿の表示 */}
+        {postsNeedingReview.length > 0 && (
           <div className="space-y-4">
+            <h2 className="text-xl font-semibold text-blue-600">画像レビューが必要な投稿</h2>
+            {postsNeedingReview.map((post, index) => (
+              <Card key={post.id}>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-lg">投稿レビュー</CardTitle>
+                    <Badge variant="outline" className="bg-blue-50">レビュー待ち</Badge>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="p-3 bg-gray-50 rounded">
+                    <p className="text-sm font-medium mb-2">投稿内容:</p>
+                    <p className="whitespace-pre-wrap">{post.content}</p>
+                  </div>
+                  
+                  {post.generated_images && post.generated_images.length > 0 && (
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium text-muted-foreground">生成された画像:</div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {post.generated_images.map((imageUrl, imageIndex) => (
+                          <div key={imageIndex} className="relative">
+                            <img
+                              src={imageUrl}
+                              alt={`生成画像 ${imageIndex + 1}`}
+                              className="w-full max-w-md mx-auto rounded-lg border object-cover"
+                              style={{ maxHeight: '300px' }}
+                              onError={(e) => {
+                                console.error('ReviewPosts: Failed to load image:', imageUrl);
+                                const target = e.target as HTMLImageElement;
+                                target.style.display = 'none';
+                              }}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                      <Button 
+                        onClick={() => approveGeneratedImage(post.id)}
+                        className="w-full"
+                      >
+                        この画像を承認する
+                      </Button>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+
+        {/* 通常の投稿一覧（すべての画像がレビュー済みの場合） */}
+        {allImagesReviewed && posts.length > 0 && (
+          <div className="space-y-4">
+            <h2 className="text-xl font-semibold">投稿一覧</h2>
             {posts.map((post, index) => (
               <Card key={post.id || index}>
                 <CardHeader>
@@ -347,15 +464,32 @@ const ReviewPosts = () => {
                   />
                   
                   {/* 画像プレビュー */}
-                  {post.images && post.images.length > 0 && (
+                  {((post.image_urls && post.image_urls.length > 0) || (post.generated_images && post.generated_images.length > 0)) && (
                     <div className="space-y-2">
                       <div className="text-sm font-medium text-muted-foreground">添付画像:</div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {post.images.map((imageUrl, imageIndex) => (
-                          <div key={imageIndex} className="relative">
+                        {/* アップロード画像 */}
+                        {post.image_urls && post.image_urls.map((imageUrl, imageIndex) => (
+                          <div key={`upload-${imageIndex}`} className="relative">
                             <img
                               src={imageUrl}
-                              alt={`投稿画像 ${imageIndex + 1}`}
+                              alt={`アップロード画像 ${imageIndex + 1}`}
+                              className="w-full max-w-md mx-auto rounded-lg border object-cover"
+                              style={{ maxHeight: '300px' }}
+                              onError={(e) => {
+                                console.error('ReviewPosts: Failed to load image:', imageUrl);
+                                const target = e.target as HTMLImageElement;
+                                target.style.display = 'none';
+                              }}
+                            />
+                          </div>
+                        ))}
+                        {/* 生成画像 */}
+                        {post.generated_images && post.generated_images.map((imageUrl, imageIndex) => (
+                          <div key={`generated-${imageIndex}`} className="relative">
+                            <img
+                              src={imageUrl}
+                              alt={`生成画像 ${imageIndex + 1}`}
                               className="w-full max-w-md mx-auto rounded-lg border object-cover"
                               style={{ maxHeight: '300px' }}
                               onError={(e) => {
@@ -373,7 +507,10 @@ const ReviewPosts = () => {
               </Card>
             ))}
           </div>
-        ) : (
+        )}
+
+        {/* 投稿がない場合 */}
+        {posts.length === 0 && (
           <Card>
             <CardContent className="p-8 text-center">
               <p className="text-muted-foreground">表示する投稿がありません。</p>
@@ -385,7 +522,7 @@ const ReviewPosts = () => {
         )}
 
         {/* アクションボタン */}
-        {posts.length > 0 && (
+        {allImagesReviewed && posts.length > 0 && (
           <div className="flex gap-4">
             <Button 
               onClick={scheduleAllPosts} 
