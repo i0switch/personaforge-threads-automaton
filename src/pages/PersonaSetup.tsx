@@ -20,6 +20,8 @@ interface Persona {
   is_active: boolean;
   threads_app_id?: string;
   threads_app_secret?: string;
+  threads_access_token?: string;
+  threads_username?: string;
   webhook_verify_token?: string;
   reply_mode?: string;
 }
@@ -75,6 +77,8 @@ const PersonaSetup = () => {
         tone_of_voice: formData.tone_of_voice,
         avatar_url: formData.avatar_url || null,
         threads_app_id: formData.threads_app_id || null,
+        threads_access_token: formData.threads_access_token || null,
+        threads_username: formData.threads_username || null,
         webhook_verify_token: formData.webhook_verify_token || null,
         reply_mode: formData.reply_mode || 'disabled',
         user_id: user.id

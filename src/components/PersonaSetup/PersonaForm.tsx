@@ -20,6 +20,8 @@ interface Persona {
   is_active: boolean;
   threads_app_id?: string;
   threads_app_secret?: string;
+  threads_access_token?: string;
+  threads_username?: string;
   webhook_verify_token?: string;
   reply_mode?: string;
 }
@@ -32,6 +34,7 @@ interface PersonaFormProps {
 
 export const PersonaForm = ({ editingPersona, onSubmit, onCancel }: PersonaFormProps) => {
   const [showAppSecret, setShowAppSecret] = useState(false);
+  const [showAccessToken, setShowAccessToken] = useState(false);
   const [showVerifyToken, setShowVerifyToken] = useState(false);
   const [formData, setFormData] = useState({
     name: editingPersona?.name || "",
@@ -42,6 +45,8 @@ export const PersonaForm = ({ editingPersona, onSubmit, onCancel }: PersonaFormP
     avatar_url: editingPersona?.avatar_url || "",
     threads_app_id: editingPersona?.threads_app_id || "",
     threads_app_secret: editingPersona?.threads_app_secret || "",
+    threads_access_token: editingPersona?.threads_access_token || "",
+    threads_username: editingPersona?.threads_username || "",
     webhook_verify_token: editingPersona?.webhook_verify_token || "",
     reply_mode: editingPersona?.reply_mode || "disabled"
   });
@@ -154,14 +159,29 @@ export const PersonaForm = ({ editingPersona, onSubmit, onCancel }: PersonaFormP
           <div className="border-t pt-6 space-y-4">
             <h3 className="text-lg font-semibold text-foreground">Threads API設定</h3>
             <div className="space-y-4">
-              <div>
-                <Label htmlFor="threads_app_id">Threads App ID</Label>
-                <Input
-                  id="threads_app_id"
-                  value={formData.threads_app_id}
-                  onChange={(e) => setFormData({ ...formData, threads_app_id: e.target.value })}
-                  className="mt-1"
-                />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="threads_app_id">Threads App ID</Label>
+                  <Input
+                    id="threads_app_id"
+                    value={formData.threads_app_id}
+                    onChange={(e) => setFormData({ ...formData, threads_app_id: e.target.value })}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="threads_username">Threads ユーザー名</Label>
+                  <Input
+                    id="threads_username"
+                    value={formData.threads_username}
+                    onChange={(e) => setFormData({ ...formData, threads_username: e.target.value })}
+                    placeholder="例: @your_username"
+                    className="mt-1"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    自分自身への返信を避けるために使用されます
+                  </p>
+                </div>
               </div>
 
               <div>
@@ -184,6 +204,31 @@ export const PersonaForm = ({ editingPersona, onSubmit, onCancel }: PersonaFormP
                     {showAppSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </Button>
                 </div>
+              </div>
+
+              <div>
+                <Label htmlFor="threads_access_token">Threads Access Token</Label>
+                <div className="relative mt-1">
+                  <Input
+                    id="threads_access_token"
+                    type={showAccessToken ? "text" : "password"}
+                    value={formData.threads_access_token}
+                    onChange={(e) => setFormData({ ...formData, threads_access_token: e.target.value })}
+                    className="pr-10"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="absolute right-0 top-0 h-full px-3"
+                    onClick={() => setShowAccessToken(!showAccessToken)}
+                  >
+                    {showAccessToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  投稿や返信に使用される実際のアクセストークン
+                </p>
               </div>
 
               <div>
