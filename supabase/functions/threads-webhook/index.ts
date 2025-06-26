@@ -292,17 +292,34 @@ async function processReplyDataForPersona(replyData: any, supabase: any, persona
   } else {
     console.log('Reply successfully inserted!');
     
-    // 自動返信の確認と実行
-    const { data: profile } = await supabase
+    // 自動返信の確認と実行（改善版）
+    console.log('Checking auto reply settings...');
+    const { data: profile, error: profileError } = await supabase
       .from('profiles')
-      .select('auto_reply_enabled')
+      .select('auto_reply_enabled, ai_auto_reply_enabled')
       .eq('user_id', persona.user_id)
       .single();
 
-    if (profile?.auto_reply_enabled) {
-      console.log('Auto reply enabled, triggering auto reply...');
+    console.log('Profile auto reply settings:', { 
+      profile, 
+      error: profileError,
+      auto_reply_enabled: profile?.auto_reply_enabled,
+      ai_auto_reply_enabled: profile?.ai_auto_reply_enabled
+    });
+
+    if (profile?.auto_reply_enabled || profile?.ai_auto_reply_enabled) {
+      console.log('Auto reply is enabled, triggering auto reply...');
+      console.log('Auto reply parameters:', {
+        postContent: '',
+        replyContent: text,
+        replyId: replyId,
+        personaId: persona.id,
+        userId: persona.user_id
+      });
+
       try {
-        await supabase.functions.invoke('threads-auto-reply', {
+        console.log('Calling threads-auto-reply function...');
+        const { data: autoReplyResult, error: autoReplyError } = await supabase.functions.invoke('threads-auto-reply', {
           body: {
             postContent: '',
             replyContent: text,
@@ -311,10 +328,37 @@ async function processReplyDataForPersona(replyData: any, supabase: any, persona
             userId: persona.user_id
           }
         });
-        console.log('Auto reply triggered successfully');
+
+        console.log('Auto reply function result:', { 
+          data: autoReplyResult, 
+          error: autoReplyError 
+        });
+
+        if (autoReplyError) {
+          console.error('Auto reply function error:', autoReplyError);
+          logSecurityEvent('auto_reply_failed', { 
+            error: autoReplyError.message,
+            persona_id: persona.id,
+            reply_id: replyId
+          });
+        } else {
+          console.log('Auto reply triggered successfully:', autoReplyResult);
+          logSecurityEvent('auto_reply_triggered', { 
+            persona_id: persona.id,
+            reply_id: replyId,
+            success: true
+          });
+        }
       } catch (autoReplyError) {
         console.error('Failed to trigger auto reply:', autoReplyError);
+        logSecurityEvent('auto_reply_exception', { 
+          error: autoReplyError.message,
+          persona_id: persona.id,
+          reply_id: replyId
+        });
       }
+    } else {
+      console.log('Auto reply is disabled for this user');
     }
   }
 }
