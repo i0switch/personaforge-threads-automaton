@@ -324,17 +324,22 @@ function generateTimeSlots(selectedDates: string[], selectedTimes: string[]): st
   const slots = [];
   
   for (const dateStr of selectedDates) {
+    // ISO文字列から正しく日付を解析
     const date = new Date(dateStr);
     
     for (const timeStr of selectedTimes) {
       const [hour, minute] = timeStr.split(':').map(Number);
-      const scheduledDate = new Date(date);
-      scheduledDate.setHours(hour, minute, 0, 0);
+      
+      // タイムゾーンを考慮してスケジュール日時を作成
+      const scheduledDate = new Date(date.getFullYear(), date.getMonth(), date.getDate(), hour, minute, 0, 0);
+      
+      console.log(`Creating scheduled time: ${dateStr} + ${timeStr} = ${scheduledDate.toISOString()}`);
       
       slots.push(scheduledDate.toISOString());
     }
   }
   
+  console.log('Generated time slots:', slots);
   return slots;
 }
 

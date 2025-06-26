@@ -146,6 +146,27 @@ const CreatePosts = () => {
     }
   };
 
+  const generateTimeSlots = (selectedDates: Date[], selectedTimes: string[]): string[] => {
+    const slots = [];
+    
+    for (const dateStr of selectedDates) {
+      // 日付を正しく処理するために、ローカルタイムゾーンで作成
+      const date = new Date(dateStr);
+      
+      for (const timeStr of selectedTimes) {
+        const [hour, minute] = timeStr.split(':').map(Number);
+        
+        // 新しいDateオブジェクトを作成してタイムゾーンを保持
+        const scheduledDate = new Date(date.getFullYear(), date.getMonth(), date.getDate(), hour, minute, 0, 0);
+        
+        // ISO文字列に変換（タイムゾーン情報を保持）
+        slots.push(scheduledDate.toISOString());
+      }
+    }
+    
+    return slots;
+  };
+
   const generatePosts = async () => {
     if (!selectedPersona || !topics.trim() || selectedDates.length === 0 || selectedTimes.length === 0) {
       toast({
@@ -158,11 +179,15 @@ const CreatePosts = () => {
 
     setIsGenerating(true);
     try {
+      // タイムスロットを正しく生成
+      const timeSlots = generateTimeSlots(selectedDates, selectedTimes);
+      
       console.log('Starting post generation with:', {
         personaId: selectedPersona,
         topics: topics.split('\n').filter(t => t.trim()),
         selectedDates: selectedDates.map(d => d.toISOString()),
         selectedTimes,
+        timeSlots, // デバッグ用
         customPrompt
       });
 
