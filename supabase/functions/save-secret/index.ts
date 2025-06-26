@@ -73,7 +73,7 @@ serve(async (req) => {
     combined.set(new Uint8Array(encryptedData), iv.length);
     const encryptedKey = btoa(String.fromCharCode(...combined));
 
-    // データベースに保存
+    // データベースに保存（upsertを使用して既存レコードを更新）
     const { error: dbError } = await supabaseClient
       .from('user_api_keys')
       .upsert({
@@ -81,6 +81,8 @@ serve(async (req) => {
         key_name: keyName,
         encrypted_key: encryptedKey,
         updated_at: new Date().toISOString()
+      }, {
+        onConflict: 'user_id,key_name'
       });
 
     if (dbError) {
@@ -92,6 +94,7 @@ serve(async (req) => {
       JSON.stringify({ 
         success: true, 
         message: 'APIキーが安全に保存されました',
+        encrypted_key: encryptedKey,
         keyName: keyName
       }),
       { 
