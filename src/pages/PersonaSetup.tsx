@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -92,8 +93,10 @@ const PersonaSetup = () => {
         user_id: user.id
       };
 
-      // threads_app_secretが入力されている場合は暗号化して保存
-      if (formData.threads_app_secret) {
+      // threads_app_secretが入力されている場合のみ暗号化して保存
+      if (formData.threads_app_secret && formData.threads_app_secret.trim() !== "") {
+        console.log("Encrypting threads_app_secret for persona:", editingPersona?.id || 'new');
+        
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) throw new Error('認証が必要です');
 
@@ -108,10 +111,15 @@ const PersonaSetup = () => {
         });
 
         if (response.error) {
+          console.error("Encryption error:", response.error);
           throw new Error(response.error.message || 'APIキーの暗号化に失敗しました');
         }
 
+        console.log("Encryption successful:", response.data);
         personaData.threads_app_secret = response.data.encrypted_key;
+      } else if (editingPersona && editingPersona.threads_app_secret) {
+        // 編集時で新しい値が入力されていない場合は既存の値を保持
+        personaData.threads_app_secret = editingPersona.threads_app_secret;
       }
 
       if (editingPersona) {
@@ -163,12 +171,15 @@ const PersonaSetup = () => {
   };
 
   const handleEdit = async (persona: Persona) => {
+    console.log("Editing persona:", persona.id, "Has secret:", !!persona.threads_app_secret);
     setEditingPersona(persona);
     
     // 暗号化されたthreads_app_secretを復号化
     let decryptedSecret = "";
     if (persona.threads_app_secret) {
       try {
+        console.log("Attempting to decrypt secret for persona:", persona.id);
+        
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) throw new Error('認証が必要です');
 
@@ -183,9 +194,16 @@ const PersonaSetup = () => {
 
         if (!response.error && response.data?.keyValue) {
           decryptedSecret = response.data.keyValue;
+          console.log("Successfully decrypted secret");
+        } else {
+          console.error("Failed to decrypt secret:", response.error);
+          // 復号化に失敗した場合はプレースホルダーを表示
+          decryptedSecret = "***設定済み***";
         }
       } catch (error) {
         console.error("Error retrieving secret:", error);
+        // エラーの場合もプレースホルダーを表示
+        decryptedSecret = "***設定済み***";
       }
     }
     
