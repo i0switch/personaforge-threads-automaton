@@ -151,6 +151,7 @@ export type Database = {
           is_active: boolean
           name: string
           personality: string | null
+          reply_mode: string | null
           threads_access_token: string | null
           threads_app_id: string | null
           threads_app_secret: string | null
@@ -168,6 +169,7 @@ export type Database = {
           is_active?: boolean
           name: string
           personality?: string | null
+          reply_mode?: string | null
           threads_access_token?: string | null
           threads_app_id?: string | null
           threads_app_secret?: string | null
@@ -185,6 +187,7 @@ export type Database = {
           is_active?: boolean
           name?: string
           personality?: string | null
+          reply_mode?: string | null
           threads_access_token?: string | null
           threads_app_id?: string | null
           threads_app_secret?: string | null

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -24,6 +25,7 @@ interface Persona {
   threads_app_id?: string;
   threads_app_secret?: string;
   webhook_verify_token?: string;
+  reply_mode?: string;
 }
 
 const PersonaSetup = () => {
@@ -45,7 +47,8 @@ const PersonaSetup = () => {
     tone_of_voice: "",
     threads_app_id: "",
     threads_app_secret: "",
-    webhook_verify_token: ""
+    webhook_verify_token: "",
+    reply_mode: "disabled"
   });
 
   useEffect(() => {
@@ -92,6 +95,7 @@ const PersonaSetup = () => {
         tone_of_voice: formData.tone_of_voice,
         threads_app_id: formData.threads_app_id || null,
         webhook_verify_token: formData.webhook_verify_token || null,
+        reply_mode: formData.reply_mode,
         user_id: user.id
       };
 
@@ -120,7 +124,6 @@ const PersonaSetup = () => {
         console.log("Encryption successful:", response.data);
         personaData.threads_app_secret = response.data.encrypted_key;
       } else if (editingPersona && editingPersona.threads_app_secret) {
-        // 編集時で新しい値が入力されていない場合は既存の値を保持
         personaData.threads_app_secret = editingPersona.threads_app_secret;
       }
 
@@ -157,7 +160,8 @@ const PersonaSetup = () => {
         tone_of_voice: "",
         threads_app_id: "",
         threads_app_secret: "",
-        webhook_verify_token: ""
+        webhook_verify_token: "",
+        reply_mode: "disabled"
       });
       setIsEditing(false);
       setEditingPersona(null);
@@ -199,12 +203,10 @@ const PersonaSetup = () => {
           console.log("Successfully decrypted secret");
         } else {
           console.error("Failed to decrypt secret:", response.error);
-          // 復号化に失敗した場合はプレースホルダーを表示
           decryptedSecret = "***設定済み***";
         }
       } catch (error) {
         console.error("Error retrieving secret:", error);
-        // エラーの場合もプレースホルダーを表示
         decryptedSecret = "***設定済み***";
       }
     }
@@ -217,7 +219,8 @@ const PersonaSetup = () => {
       tone_of_voice: persona.tone_of_voice || "",
       threads_app_id: persona.threads_app_id || "",
       threads_app_secret: decryptedSecret,
-      webhook_verify_token: persona.webhook_verify_token || ""
+      webhook_verify_token: persona.webhook_verify_token || "",
+      reply_mode: persona.reply_mode || "disabled"
     });
     setIsEditing(true);
   };
@@ -269,6 +272,17 @@ const PersonaSetup = () => {
         description: "ペルソナの状態変更に失敗しました。",
         variant: "destructive",
       });
+    }
+  };
+
+  const getReplyModeLabel = (mode: string) => {
+    switch (mode) {
+      case 'ai':
+        return { label: 'AI自動返信', variant: 'default' as const };
+      case 'keyword':
+        return { label: 'キーワード返信', variant: 'secondary' as const };
+      default:
+        return { label: '無効', variant: 'outline' as const };
     }
   };
 
@@ -376,6 +390,24 @@ const PersonaSetup = () => {
                       />
                     </div>
                   </div>
+
+                  {/* Auto Reply Mode Selection */}
+                  <div>
+                    <Label htmlFor="reply_mode">自動返信モード</Label>
+                    <Select value={formData.reply_mode} onValueChange={(value) => setFormData({ ...formData, reply_mode: value })}>
+                      <SelectTrigger className="mt-1">
+                        <SelectValue placeholder="自動返信モードを選択" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="disabled">無効</SelectItem>
+                        <SelectItem value="keyword">キーワード自動返信</SelectItem>
+                        <SelectItem value="ai">AI自動返信</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      キーワード: 特定のキーワードに反応して定型文を返信 / AI: 文脈を理解してAIが返信を生成
+                    </p>
+                  </div>
                 </div>
 
                 {/* API Settings Section */}
@@ -458,7 +490,8 @@ const PersonaSetup = () => {
                         tone_of_voice: "",
                         threads_app_id: "",
                         threads_app_secret: "",
-                        webhook_verify_token: ""
+                        webhook_verify_token: "",
+                        reply_mode: "disabled"
                       });
                     }}
                   >
@@ -484,91 +517,99 @@ const PersonaSetup = () => {
             </Card>
           ) : (
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {personas.map((persona) => (
-                <Card key={persona.id} className="hover:shadow-lg transition-shadow">
-                  <CardHeader className="pb-3">
-                    <div className="flex justify-between items-start gap-2">
-                      <div className="flex-1 min-w-0">
-                        <CardTitle className="text-lg truncate">{persona.name}</CardTitle>
-                        <CardDescription className="flex items-center gap-2 mt-1">
-                          {persona.age && `年齢: ${persona.age}`}
-                          <Badge variant={persona.is_active ? "default" : "secondary"} className="ml-auto">
-                            {persona.is_active ? "有効" : "無効"}
-                          </Badge>
-                        </CardDescription>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    {persona.personality && (
-                      <div>
-                        <p className="text-sm font-medium mb-1">性格:</p>
-                        <p className="text-sm text-muted-foreground line-clamp-3">{persona.personality}</p>
-                      </div>
-                    )}
-                    
-                    {persona.tone_of_voice && (
-                      <div>
-                        <p className="text-sm font-medium mb-1">トーン:</p>
-                        <p className="text-sm text-muted-foreground">{persona.tone_of_voice}</p>
-                      </div>
-                    )}
-
-                    {persona.expertise && persona.expertise.length > 0 && (
-                      <div>
-                        <p className="text-sm font-medium mb-2">専門分野:</p>
-                        <div className="flex flex-wrap gap-1">
-                          {persona.expertise.slice(0, 3).map((skill, index) => (
-                            <Badge key={index} variant="outline" className="text-xs">
-                              {skill}
-                            </Badge>
-                          ))}
-                          {persona.expertise.length > 3 && (
-                            <Badge variant="outline" className="text-xs">
-                              +{persona.expertise.length - 3}
-                            </Badge>
-                          )}
+              {personas.map((persona) => {
+                const replyModeInfo = getReplyModeLabel(persona.reply_mode || 'disabled');
+                return (
+                  <Card key={persona.id} className="hover:shadow-lg transition-shadow">
+                    <CardHeader className="pb-3">
+                      <div className="flex justify-between items-start gap-2">
+                        <div className="flex-1 min-w-0">
+                          <CardTitle className="text-lg truncate">{persona.name}</CardTitle>
+                          <CardDescription className="flex items-center gap-2 mt-1">
+                            {persona.age && `年齢: ${persona.age}`}
+                            <div className="flex gap-1 ml-auto">
+                              <Badge variant={persona.is_active ? "default" : "secondary"}>
+                                {persona.is_active ? "有効" : "無効"}
+                              </Badge>
+                              <Badge variant={replyModeInfo.variant}>
+                                {replyModeInfo.label}
+                              </Badge>
+                            </div>
+                          </CardDescription>
                         </div>
                       </div>
-                    )}
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      {persona.personality && (
+                        <div>
+                          <p className="text-sm font-medium mb-1">性格:</p>
+                          <p className="text-sm text-muted-foreground line-clamp-3">{persona.personality}</p>
+                        </div>
+                      )}
+                      
+                      {persona.tone_of_voice && (
+                        <div>
+                          <p className="text-sm font-medium mb-1">トーン:</p>
+                          <p className="text-sm text-muted-foreground">{persona.tone_of_voice}</p>
+                        </div>
+                      )}
 
-                    {persona.threads_app_id && (
-                      <div>
-                        <p className="text-sm font-medium mb-1">Threads App ID:</p>
-                        <p className="text-xs text-muted-foreground font-mono bg-muted px-2 py-1 rounded">
-                          {persona.threads_app_id}
-                        </p>
+                      {persona.expertise && persona.expertise.length > 0 && (
+                        <div>
+                          <p className="text-sm font-medium mb-2">専門分野:</p>
+                          <div className="flex flex-wrap gap-1">
+                            {persona.expertise.slice(0, 3).map((skill, index) => (
+                              <Badge key={index} variant="outline" className="text-xs">
+                                {skill}
+                              </Badge>
+                            ))}
+                            {persona.expertise.length > 3 && (
+                              <Badge variant="outline" className="text-xs">
+                                +{persona.expertise.length - 3}
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {persona.threads_app_id && (
+                        <div>
+                          <p className="text-sm font-medium mb-1">Threads App ID:</p>
+                          <p className="text-xs text-muted-foreground font-mono bg-muted px-2 py-1 rounded">
+                            {persona.threads_app_id}
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Action Buttons */}
+                      <div className="flex gap-2 pt-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => toggleActive(persona.id, persona.is_active)}
+                          className="flex-1"
+                        >
+                          {persona.is_active ? "無効化" : "有効化"}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleEdit(persona)}
+                        >
+                          編集
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleDelete(persona.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
-                    )}
-
-                    {/* Action Buttons */}
-                    <div className="flex gap-2 pt-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => toggleActive(persona.id, persona.is_active)}
-                        className="flex-1"
-                      >
-                        {persona.is_active ? "無効化" : "有効化"}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleEdit(persona)}
-                      >
-                        編集
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleDelete(persona.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
           )}
         </div>
