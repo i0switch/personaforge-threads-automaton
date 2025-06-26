@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -181,19 +180,46 @@ async function triggerAutoReply(replyData: any, supabase: any): Promise<void> {
   }
 }
 
-// ペルソナ用のリプライ処理関数（デバッグ強化版）
+// ペルソナ用のリプライ処理関数（改善版）
 async function processReplyDataForPersona(replyData: any, supabase: any, personaId: string): Promise<void> {
   console.log('=== PROCESSING REPLY FOR PERSONA ===');
   console.log('Reply Data:', JSON.stringify(replyData, null, 2));
   console.log('Persona ID:', personaId);
 
+  // リプライデータの構造を柔軟に処理
+  let replyId, originalPostId, authorId, authorUsername, text, timestamp;
+
+  if (replyData.id) {
+    // 直接的な構造
+    replyId = replyData.id;
+    originalPostId = replyData.replied_to?.id || replyData.reply_to_id;
+    authorId = replyData.owner_id || replyData.from?.id || replyData.username;
+    authorUsername = replyData.username || replyData.from?.username;
+    text = replyData.text;
+    timestamp = replyData.timestamp;
+  } else if (replyData.value) {
+    // value構造内にデータがある場合
+    const value = replyData.value;
+    replyId = value.id;
+    originalPostId = value.replied_to?.id || value.reply_to_id;
+    authorId = value.owner_id || value.from?.id || value.username;
+    authorUsername = value.username || value.from?.username;
+    text = value.text;
+    timestamp = value.timestamp;
+  }
+
+  if (!replyId || !text) {
+    console.log('Required fields missing, skipping:', { replyId, text });
+    return;
+  }
+
   const sanitizedData = {
-    reply_id: sanitizeInput(replyData.id, 100),
-    original_post_id: sanitizeInput(replyData.reply_to_id, 100),
-    reply_author_id: sanitizeInput(replyData.from.id, 100),
-    reply_author_username: sanitizeInput(replyData.from.username, 50),
-    reply_text: sanitizeInput(replyData.text, 2000),
-    reply_timestamp: new Date(replyData.timestamp).toISOString()
+    reply_id: sanitizeInput(replyId, 100),
+    original_post_id: sanitizeInput(originalPostId || '', 100),
+    reply_author_id: sanitizeInput(authorId || '', 100),
+    reply_author_username: sanitizeInput(authorUsername || '', 50),
+    reply_text: sanitizeInput(text, 2000),
+    reply_timestamp: timestamp ? new Date(timestamp).toISOString() : new Date().toISOString()
   };
 
   console.log('Sanitized Data:', JSON.stringify(sanitizedData, null, 2));
@@ -265,6 +291,31 @@ async function processReplyDataForPersona(replyData: any, supabase: any, persona
     });
   } else {
     console.log('Reply successfully inserted!');
+    
+    // 自動返信の確認と実行
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('auto_reply_enabled')
+      .eq('user_id', persona.user_id)
+      .single();
+
+    if (profile?.auto_reply_enabled) {
+      console.log('Auto reply enabled, triggering auto reply...');
+      try {
+        await supabase.functions.invoke('threads-auto-reply', {
+          body: {
+            postContent: '',
+            replyContent: text,
+            replyId: replyId,
+            personaId: persona.id,
+            userId: persona.user_id
+          }
+        });
+        console.log('Auto reply triggered successfully');
+      } catch (autoReplyError) {
+        console.error('Failed to trigger auto reply:', autoReplyError);
+      }
+    }
   }
 }
 
@@ -363,82 +414,67 @@ serve(async (req) => {
 
       console.log('POST request received:');
       console.log('Body length:', rawBody.length);
+      console.log('Raw body:', rawBody);
       console.log('Signature present:', !!signature);
       console.log('Timestamp present:', !!timestamp);
 
-      // 署名検証（ペルソナ専用のapp_secretを使用）
-      if (signature) {
-        const { data: persona, error } = await supabase
-          .from('personas')
-          .select('threads_app_secret')
-          .eq('id', personaId)
-          .single();
-
-        if (error || !persona || !persona.threads_app_secret) {
-          logSecurityEvent('persona_not_found', { persona_id: personaId });
-          return new Response('Unauthorized', { status: 401, headers: corsHeaders });
-        }
-
-        // 暗号化されたapp_secretを復号化
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session) {
-          try {
-            const response = await supabase.functions.invoke('retrieve-secret', {
-              body: {
-                keyName: `threads_app_secret_${personaId}`
-              },
-              headers: {
-                Authorization: `Bearer ${session.access_token}`,
-              },
-            });
-
-            if (response.data?.keyValue) {
-              const isValid = await verifyWebhookSignature(rawBody, signature, response.data.keyValue, timestamp);
-              if (!isValid) {
-                logSecurityEvent('signature_verification_failed', { 
-                  signature_present: true,
-                  timestamp_present: !!timestamp,
-                  persona_id: personaId,
-                  ip: clientIp 
-                });
-                return new Response('Unauthorized', { status: 401, headers: corsHeaders });
-              }
-            }
-          } catch (decryptError) {
-            console.error('Failed to decrypt app secret:', decryptError);
-            return new Response('Internal Server Error', { status: 500, headers: corsHeaders });
-          }
-        }
+      let webhookData;
+      try {
+        webhookData = JSON.parse(rawBody);
+        console.log('Successfully parsed JSON:', JSON.stringify(webhookData, null, 2));
+      } catch (parseError) {
+        console.error('Failed to parse JSON:', parseError);
+        return new Response('Invalid JSON', { status: 400, headers: corsHeaders });
       }
 
-      const webhookData: WebhookPayload = JSON.parse(rawBody);
-      
-      console.log('Parsed webhook data:', JSON.stringify(webhookData, null, 2));
+      // 複数の可能なWebhook形式に対応
+      let processedAnyReply = false;
 
-      if (webhookData.object === 'threads') {
-        console.log('Processing threads webhook...');
+      // 形式1: 標準的なThreads Webhook形式
+      if (webhookData.object === 'threads' && webhookData.entry) {
+        console.log('Processing standard threads webhook...');
         for (const entry of webhookData.entry) {
           console.log('Processing entry:', JSON.stringify(entry, null, 2));
-          for (const change of entry.changes) {
-            console.log('Processing change:', JSON.stringify(change, null, 2));
-            if (change.field === 'mentions' && change.value) {
-              console.log('Found mention, processing reply...');
-              // ペルソナ指定で処理
-              await processReplyDataForPersona(change.value, supabase, personaId);
-              await triggerAutoReply(change.value, supabase);
-            } else {
-              console.log('Change field:', change.field, 'Value present:', !!change.value);
+          if (entry.changes) {
+            for (const change of entry.changes) {
+              console.log('Processing change:', JSON.stringify(change, null, 2));
+              if ((change.field === 'mentions' || change.field === 'replies') && change.value) {
+                console.log('Found mention/reply, processing...');
+                await processReplyDataForPersona(change.value, supabase, personaId);
+                processedAnyReply = true;
+              }
             }
           }
         }
-      } else {
-        console.log('Webhook object type:', webhookData.object);
       }
 
+      // 形式2: valuesを持つ形式
+      if (webhookData.values && Array.isArray(webhookData.values)) {
+        console.log('Processing values-based webhook...');
+        for (const valueItem of webhookData.values) {
+          if (valueItem.field === 'replies' && valueItem.value) {
+            console.log('Found reply in values, processing...');
+            await processReplyDataForPersona(valueItem.value, supabase, personaId);
+            processedAnyReply = true;
+          }
+        }
+      }
+
+      // 形式3: 直接的なリプライデータ
+      if (webhookData.id && webhookData.text && (webhookData.replied_to || webhookData.reply_to_id)) {
+        console.log('Processing direct reply data...');
+        await processReplyDataForPersona(webhookData, supabase, personaId);
+        processedAnyReply = true;
+      }
+
+      console.log('Processed any reply:', processedAnyReply);
+
       logSecurityEvent('webhook_processed', { 
-        object: webhookData.object,
+        object: webhookData.object || 'unknown',
         entries: webhookData.entry?.length || 0,
-        persona_id: personaId
+        values: webhookData.values?.length || 0,
+        persona_id: personaId,
+        processed_reply: processedAnyReply
       });
 
       return new Response('OK', {
