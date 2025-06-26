@@ -9,7 +9,8 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Badge } from "@/components/ui/badge";
-import { Trash2, Eye, EyeOff } from "lucide-react";
+import { Trash2, Eye, EyeOff, ArrowLeft } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 interface Persona {
   id: string;
@@ -28,6 +29,7 @@ interface Persona {
 const PersonaSetup = () => {
   const { user } = useAuth();
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [personas, setPersonas] = useState<Persona[]>([]);
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
@@ -271,237 +273,305 @@ const PersonaSetup = () => {
   };
 
   if (loading) {
-    return <div className="flex justify-center p-8">読み込み中...</div>;
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="container mx-auto p-6">
+          <div className="flex justify-center p-8">読み込み中...</div>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">ペルソナ設定</h1>
-        {!isEditing && (
-          <Button onClick={() => setIsEditing(true)}>
-            新しいペルソナを作成
+    <div className="min-h-screen bg-background">
+      <div className="container mx-auto p-6 max-w-6xl">
+        {/* Header Section */}
+        <div className="flex items-center gap-4 mb-8">
+          <Button variant="outline" size="sm" onClick={() => navigate("/")}>
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            ダッシュボードに戻る
           </Button>
-        )}
-      </div>
+          <div className="flex-1">
+            <h1 className="text-3xl font-bold">ペルソナ設定</h1>
+            <p className="text-muted-foreground mt-1">
+              AIペルソナの管理とThreads API設定
+            </p>
+          </div>
+          {!isEditing && (
+            <Button onClick={() => setIsEditing(true)} size="lg">
+              新しいペルソナを作成
+            </Button>
+          )}
+        </div>
 
-      {isEditing && (
-        <Card>
-          <CardHeader>
-            <CardTitle>
-              {editingPersona ? "ペルソナを編集" : "新しいペルソナを作成"}
-            </CardTitle>
-            <CardDescription>
-              AIペルソナの基本情報とThreads APIの設定を入力してください。
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="name">名前 *</Label>
-                  <Input
-                    id="name"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    required
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="age">年齢</Label>
-                  <Input
-                    id="age"
-                    value={formData.age}
-                    onChange={(e) => setFormData({ ...formData, age: e.target.value })}
-                  />
-                </div>
-              </div>
+        {/* Edit Form Section */}
+        {isEditing && (
+          <Card className="mb-8">
+            <CardHeader>
+              <CardTitle className="text-xl">
+                {editingPersona ? "ペルソナを編集" : "新しいペルソナを作成"}
+              </CardTitle>
+              <CardDescription>
+                AIペルソナの基本情報とThreads APIの設定を入力してください。
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleSubmit} className="space-y-6">
+                {/* Basic Information Section */}
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold text-foreground">基本情報</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="name">名前 *</Label>
+                      <Input
+                        id="name"
+                        value={formData.name}
+                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                        required
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="age">年齢</Label>
+                      <Input
+                        id="age"
+                        value={formData.age}
+                        onChange={(e) => setFormData({ ...formData, age: e.target.value })}
+                        className="mt-1"
+                      />
+                    </div>
+                  </div>
 
-              <div>
-                <Label htmlFor="personality">性格・特徴</Label>
-                <Textarea
-                  id="personality"
-                  value={formData.personality}
-                  onChange={(e) => setFormData({ ...formData, personality: e.target.value })}
-                  rows={3}
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="expertise">専門分野（カンマ区切り）</Label>
-                <Input
-                  id="expertise"
-                  value={formData.expertise}
-                  onChange={(e) => setFormData({ ...formData, expertise: e.target.value })}
-                  placeholder="例: テクノロジー, マーケティング, デザイン"
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="tone_of_voice">口調・トーン</Label>
-                <Input
-                  id="tone_of_voice"
-                  value={formData.tone_of_voice}
-                  onChange={(e) => setFormData({ ...formData, tone_of_voice: e.target.value })}
-                  placeholder="例: フレンドリー, 専門的, カジュアル"
-                />
-              </div>
-
-              <div className="border-t pt-4">
-                <h3 className="text-lg font-semibold mb-4">Threads API設定</h3>
-                
-                <div className="grid grid-cols-1 gap-4">
                   <div>
-                    <Label htmlFor="threads_app_id">Threads App ID</Label>
-                    <Input
-                      id="threads_app_id"
-                      value={formData.threads_app_id}
-                      onChange={(e) => setFormData({ ...formData, threads_app_id: e.target.value })}
+                    <Label htmlFor="personality">性格・特徴</Label>
+                    <Textarea
+                      id="personality"
+                      value={formData.personality}
+                      onChange={(e) => setFormData({ ...formData, personality: e.target.value })}
+                      rows={4}
+                      className="mt-1"
+                      placeholder="ペルソナの性格や特徴を詳しく記述してください..."
                     />
                   </div>
 
-                  <div>
-                    <Label htmlFor="threads_app_secret">Threads App Secret</Label>
-                    <div className="relative">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="expertise">専門分野（カンマ区切り）</Label>
                       <Input
-                        id="threads_app_secret"
-                        type={showAppSecret ? "text" : "password"}
-                        value={formData.threads_app_secret}
-                        onChange={(e) => setFormData({ ...formData, threads_app_secret: e.target.value })}
-                        className="pr-10"
+                        id="expertise"
+                        value={formData.expertise}
+                        onChange={(e) => setFormData({ ...formData, expertise: e.target.value })}
+                        placeholder="例: テクノロジー, マーケティング, デザイン"
+                        className="mt-1"
                       />
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="absolute right-0 top-0 h-full px-3"
-                        onClick={() => setShowAppSecret(!showAppSecret)}
-                      >
-                        {showAppSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                      </Button>
                     </div>
-                  </div>
-
-                  <div>
-                    <Label htmlFor="webhook_verify_token">Webhook Verify Token</Label>
-                    <div className="relative">
+                    <div>
+                      <Label htmlFor="tone_of_voice">口調・トーン</Label>
                       <Input
-                        id="webhook_verify_token"
-                        type={showVerifyToken ? "text" : "password"}
-                        value={formData.webhook_verify_token}
-                        onChange={(e) => setFormData({ ...formData, webhook_verify_token: e.target.value })}
-                        className="pr-10"
+                        id="tone_of_voice"
+                        value={formData.tone_of_voice}
+                        onChange={(e) => setFormData({ ...formData, tone_of_voice: e.target.value })}
+                        placeholder="例: フレンドリー, 専門的, カジュアル"
+                        className="mt-1"
                       />
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="absolute right-0 top-0 h-full px-3"
-                        onClick={() => setShowVerifyToken(!showVerifyToken)}
-                      >
-                        {showVerifyToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                      </Button>
                     </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="flex space-x-2">
-                <Button type="submit">
-                  {editingPersona ? "更新" : "作成"}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    setIsEditing(false);
-                    setEditingPersona(null);
-                    setFormData({
-                      name: "",
-                      age: "",
-                      personality: "",
-                      expertise: "",
-                      tone_of_voice: "",
-                      threads_app_id: "",
-                      threads_app_secret: "",
-                      webhook_verify_token: ""
-                    });
-                  }}
-                >
-                  キャンセル
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
-      )}
+                {/* API Settings Section */}
+                <div className="border-t pt-6 space-y-4">
+                  <h3 className="text-lg font-semibold text-foreground">Threads API設定</h3>
+                  <div className="space-y-4">
+                    <div>
+                      <Label htmlFor="threads_app_id">Threads App ID</Label>
+                      <Input
+                        id="threads_app_id"
+                        value={formData.threads_app_id}
+                        onChange={(e) => setFormData({ ...formData, threads_app_id: e.target.value })}
+                        className="mt-1"
+                      />
+                    </div>
 
-      <div className="grid gap-4">
-        {personas.map((persona) => (
-          <Card key={persona.id}>
-            <CardHeader>
-              <div className="flex justify-between items-start">
-                <div>
-                  <CardTitle className="flex items-center gap-2">
-                    {persona.name}
-                    <Badge variant={persona.is_active ? "default" : "secondary"}>
-                      {persona.is_active ? "有効" : "無効"}
-                    </Badge>
-                  </CardTitle>
-                  <CardDescription>
-                    {persona.age && `年齢: ${persona.age}`}
-                    {persona.tone_of_voice && ` | トーン: ${persona.tone_of_voice}`}
-                  </CardDescription>
-                </div>
-                <div className="flex space-x-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => toggleActive(persona.id, persona.is_active)}
-                  >
-                    {persona.is_active ? "無効化" : "有効化"}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleEdit(persona)}
-                  >
-                    編集
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleDelete(persona.id)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                {persona.personality && (
-                  <p><strong>性格:</strong> {persona.personality}</p>
-                )}
-                {persona.expertise && persona.expertise.length > 0 && (
-                  <div>
-                    <strong>専門分野:</strong>
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      {persona.expertise.map((skill, index) => (
-                        <Badge key={index} variant="outline">
-                          {skill}
-                        </Badge>
-                      ))}
+                    <div>
+                      <Label htmlFor="threads_app_secret">Threads App Secret</Label>
+                      <div className="relative mt-1">
+                        <Input
+                          id="threads_app_secret"
+                          type={showAppSecret ? "text" : "password"}
+                          value={formData.threads_app_secret}
+                          onChange={(e) => setFormData({ ...formData, threads_app_secret: e.target.value })}
+                          className="pr-10"
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="absolute right-0 top-0 h-full px-3"
+                          onClick={() => setShowAppSecret(!showAppSecret)}
+                        >
+                          {showAppSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label htmlFor="webhook_verify_token">Webhook Verify Token</Label>
+                      <div className="relative mt-1">
+                        <Input
+                          id="webhook_verify_token"
+                          type={showVerifyToken ? "text" : "password"}
+                          value={formData.webhook_verify_token}
+                          onChange={(e) => setFormData({ ...formData, webhook_verify_token: e.target.value })}
+                          className="pr-10"
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="absolute right-0 top-0 h-full px-3"
+                          onClick={() => setShowVerifyToken(!showVerifyToken)}
+                        >
+                          {showVerifyToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </Button>
+                      </div>
                     </div>
                   </div>
-                )}
-                {persona.threads_app_id && (
-                  <p><strong>Threads App ID:</strong> {persona.threads_app_id}</p>
-                )}
-              </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex gap-3 pt-4">
+                  <Button type="submit" size="lg">
+                    {editingPersona ? "更新" : "作成"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="lg"
+                    onClick={() => {
+                      setIsEditing(false);
+                      setEditingPersona(null);
+                      setFormData({
+                        name: "",
+                        age: "",
+                        personality: "",
+                        expertise: "",
+                        tone_of_voice: "",
+                        threads_app_id: "",
+                        threads_app_secret: "",
+                        webhook_verify_token: ""
+                      });
+                    }}
+                  >
+                    キャンセル
+                  </Button>
+                </div>
+              </form>
             </CardContent>
           </Card>
-        ))}
+        )}
+
+        {/* Personas List Section */}
+        <div className="space-y-4">
+          <h2 className="text-2xl font-semibold">登録済みペルソナ</h2>
+          {personas.length === 0 ? (
+            <Card>
+              <CardContent className="text-center py-12">
+                <p className="text-muted-foreground mb-4">まだペルソナが登録されていません</p>
+                <Button onClick={() => setIsEditing(true)}>
+                  最初のペルソナを作成
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+              {personas.map((persona) => (
+                <Card key={persona.id} className="hover:shadow-lg transition-shadow">
+                  <CardHeader className="pb-3">
+                    <div className="flex justify-between items-start gap-2">
+                      <div className="flex-1 min-w-0">
+                        <CardTitle className="text-lg truncate">{persona.name}</CardTitle>
+                        <CardDescription className="flex items-center gap-2 mt-1">
+                          {persona.age && `年齢: ${persona.age}`}
+                          <Badge variant={persona.is_active ? "default" : "secondary"} className="ml-auto">
+                            {persona.is_active ? "有効" : "無効"}
+                          </Badge>
+                        </CardDescription>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {persona.personality && (
+                      <div>
+                        <p className="text-sm font-medium mb-1">性格:</p>
+                        <p className="text-sm text-muted-foreground line-clamp-3">{persona.personality}</p>
+                      </div>
+                    )}
+                    
+                    {persona.tone_of_voice && (
+                      <div>
+                        <p className="text-sm font-medium mb-1">トーン:</p>
+                        <p className="text-sm text-muted-foreground">{persona.tone_of_voice}</p>
+                      </div>
+                    )}
+
+                    {persona.expertise && persona.expertise.length > 0 && (
+                      <div>
+                        <p className="text-sm font-medium mb-2">専門分野:</p>
+                        <div className="flex flex-wrap gap-1">
+                          {persona.expertise.slice(0, 3).map((skill, index) => (
+                            <Badge key={index} variant="outline" className="text-xs">
+                              {skill}
+                            </Badge>
+                          ))}
+                          {persona.expertise.length > 3 && (
+                            <Badge variant="outline" className="text-xs">
+                              +{persona.expertise.length - 3}
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {persona.threads_app_id && (
+                      <div>
+                        <p className="text-sm font-medium mb-1">Threads App ID:</p>
+                        <p className="text-xs text-muted-foreground font-mono bg-muted px-2 py-1 rounded">
+                          {persona.threads_app_id}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Action Buttons */}
+                    <div className="flex gap-2 pt-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => toggleActive(persona.id, persona.is_active)}
+                        className="flex-1"
+                      >
+                        {persona.is_active ? "無効化" : "有効化"}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleEdit(persona)}
+                      >
+                        編集
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleDelete(persona.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
