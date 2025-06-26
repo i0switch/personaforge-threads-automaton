@@ -155,6 +155,7 @@ export type Database = {
           threads_access_token: string | null
           threads_app_id: string | null
           threads_app_secret: string | null
+          threads_username: string | null
           tone_of_voice: string | null
           updated_at: string
           user_id: string
@@ -173,6 +174,7 @@ export type Database = {
           threads_access_token?: string | null
           threads_app_id?: string | null
           threads_app_secret?: string | null
+          threads_username?: string | null
           tone_of_voice?: string | null
           updated_at?: string
           user_id: string
@@ -191,6 +193,7 @@ export type Database = {
           threads_access_token?: string | null
           threads_app_id?: string | null
           threads_app_secret?: string | null
+          threads_username?: string | null
           tone_of_voice?: string | null
           updated_at?: string
           user_id?: string
