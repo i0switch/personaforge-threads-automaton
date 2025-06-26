@@ -4,7 +4,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Save, Loader2, Upload, User } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -26,7 +25,6 @@ export const ProfileSettingsTab = ({ profile, onProfileUpdate }: ProfileSettings
   const [saving, setSaving] = useState(false);
   const [displayName, setDisplayName] = useState(profile?.display_name || "");
   const [avatarUrl, setAvatarUrl] = useState(profile?.avatar_url || "");
-  const [autoReplyEnabled, setAutoReplyEnabled] = useState(profile?.auto_reply_enabled || false);
 
   const saveProfile = async () => {
     if (!user || !profile) return;
@@ -37,8 +35,7 @@ export const ProfileSettingsTab = ({ profile, onProfileUpdate }: ProfileSettings
         .from('profiles')
         .update({
           display_name: displayName,
-          avatar_url: avatarUrl,
-          auto_reply_enabled: autoReplyEnabled
+          avatar_url: avatarUrl
         })
         .eq('user_id', user.id);
 
@@ -116,15 +113,6 @@ export const ProfileSettingsTab = ({ profile, onProfileUpdate }: ProfileSettings
           <p className="text-xs text-muted-foreground">
             メールアドレスは変更できません
           </p>
-        </div>
-
-        <div className="flex items-center space-x-2">
-          <Switch
-            id="auto-reply"
-            checked={autoReplyEnabled}
-            onCheckedChange={setAutoReplyEnabled}
-          />
-          <Label htmlFor="auto-reply">自動返信機能を有効にする</Label>
         </div>
 
         <Button onClick={saveProfile} disabled={saving}>
