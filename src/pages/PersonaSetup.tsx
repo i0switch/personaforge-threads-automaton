@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,6 +11,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Badge } from "@/components/ui/badge";
 import { Trash2, Eye, EyeOff, ArrowLeft } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { AvatarUpload } from "@/components/PersonaSetup/AvatarUpload";
 
 interface Persona {
   id: string;
@@ -45,6 +45,7 @@ const PersonaSetup = () => {
     personality: "",
     expertise: "",
     tone_of_voice: "",
+    avatar_url: "",
     threads_app_id: "",
     threads_app_secret: "",
     webhook_verify_token: "",
@@ -93,6 +94,7 @@ const PersonaSetup = () => {
         personality: formData.personality,
         expertise: expertiseArray,
         tone_of_voice: formData.tone_of_voice,
+        avatar_url: formData.avatar_url || null,
         threads_app_id: formData.threads_app_id || null,
         webhook_verify_token: formData.webhook_verify_token || null,
         reply_mode: formData.reply_mode,
@@ -158,6 +160,7 @@ const PersonaSetup = () => {
         personality: "",
         expertise: "",
         tone_of_voice: "",
+        avatar_url: "",
         threads_app_id: "",
         threads_app_secret: "",
         webhook_verify_token: "",
@@ -173,6 +176,34 @@ const PersonaSetup = () => {
         description: error instanceof Error ? error.message : "ペルソナの保存に失敗しました。",
         variant: "destructive",
       });
+    }
+  };
+
+  useEffect(() => {
+    if (user) {
+      loadPersonas();
+    }
+  }, [user]);
+
+  const loadPersonas = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("personas")
+        .select("*")
+        .eq("user_id", user?.id)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      setPersonas(data || []);
+    } catch (error) {
+      console.error("Error loading personas:", error);
+      toast({
+        title: "エラー",
+        description: "ペルソナの読み込みに失敗しました。",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -217,6 +248,7 @@ const PersonaSetup = () => {
       personality: persona.personality || "",
       expertise: persona.expertise?.join(", ") || "",
       tone_of_voice: persona.tone_of_voice || "",
+      avatar_url: persona.avatar_url || "",
       threads_app_id: persona.threads_app_id || "",
       threads_app_secret: decryptedSecret,
       webhook_verify_token: persona.webhook_verify_token || "",
@@ -334,6 +366,14 @@ const PersonaSetup = () => {
                 {/* Basic Information Section */}
                 <div className="space-y-4">
                   <h3 className="text-lg font-semibold text-foreground">基本情報</h3>
+                  
+                  {/* Avatar Upload */}
+                  <AvatarUpload
+                    personaId={editingPersona?.id}
+                    currentAvatarUrl={formData.avatar_url}
+                    onAvatarChange={(url) => setFormData({ ...formData, avatar_url: url })}
+                  />
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <Label htmlFor="name">名前 *</Label>
@@ -488,6 +528,7 @@ const PersonaSetup = () => {
                         personality: "",
                         expertise: "",
                         tone_of_voice: "",
+                        avatar_url: "",
                         threads_app_id: "",
                         threads_app_secret: "",
                         webhook_verify_token: "",
@@ -523,19 +564,28 @@ const PersonaSetup = () => {
                   <Card key={persona.id} className="hover:shadow-lg transition-shadow">
                     <CardHeader className="pb-3">
                       <div className="flex justify-between items-start gap-2">
-                        <div className="flex-1 min-w-0">
-                          <CardTitle className="text-lg truncate">{persona.name}</CardTitle>
-                          <CardDescription className="flex items-center gap-2 mt-1">
-                            {persona.age && `年齢: ${persona.age}`}
-                            <div className="flex gap-1 ml-auto">
-                              <Badge variant={persona.is_active ? "default" : "secondary"}>
-                                {persona.is_active ? "有効" : "無効"}
-                              </Badge>
-                              <Badge variant={replyModeInfo.variant}>
-                                {replyModeInfo.label}
-                              </Badge>
-                            </div>
-                          </CardDescription>
+                        <div className="flex items-center gap-3 flex-1 min-w-0">
+                          {persona.avatar_url && (
+                            <img
+                              src={persona.avatar_url}
+                              alt={persona.name}
+                              className="w-12 h-12 rounded-full object-cover"
+                            />
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <CardTitle className="text-lg truncate">{persona.name}</CardTitle>
+                            <CardDescription className="flex items-center gap-2 mt-1">
+                              {persona.age && `年齢: ${persona.age}`}
+                              <div className="flex gap-1 ml-auto">
+                                <Badge variant={persona.is_active ? "default" : "secondary"}>
+                                  {persona.is_active ? "有効" : "無効"}
+                                </Badge>
+                                <Badge variant={replyModeInfo.variant}>
+                                  {replyModeInfo.label}
+                                </Badge>
+                              </div>
+                            </CardDescription>
+                          </div>
                         </div>
                       </div>
                     </CardHeader>
