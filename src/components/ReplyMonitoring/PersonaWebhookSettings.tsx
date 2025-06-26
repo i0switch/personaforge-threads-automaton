@@ -87,7 +87,9 @@ export const PersonaWebhookSettings = () => {
   };
 
   const getWebhookUrl = (personaId: string) => {
-    return `${window.location.origin}/functions/v1/threads-webhook?persona_id=${personaId}`;
+    // 正しいSupabase Edge FunctionのURLを生成
+    const supabaseUrl = 'https://tqcgbsnoiarnawnppwia.supabase.co';
+    return `${supabaseUrl}/functions/v1/threads-webhook?persona_id=${personaId}`;
   };
 
   if (loading) {

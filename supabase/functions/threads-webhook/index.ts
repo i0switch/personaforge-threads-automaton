@@ -255,6 +255,8 @@ async function verifyPersonaWebhookToken(personaId: string, token: string, supab
 }
 
 serve(async (req) => {
+  console.log('Webhook request received:', req.method, req.url);
+  
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
@@ -267,6 +269,7 @@ serve(async (req) => {
 
     const url = new URL(req.url);
     const personaId = url.searchParams.get('persona_id');
+    console.log('Persona ID from URL:', personaId);
 
     // リクエストサイズの検証
     const contentLength = parseInt(req.headers.get('content-length') || '0', 10);
@@ -287,11 +290,30 @@ serve(async (req) => {
       const token = url.searchParams.get('hub.verify_token');
       const challenge = url.searchParams.get('hub.challenge');
 
+      console.log('GET request params:', { mode, token, challenge, personaId });
+
       if (mode === 'subscribe' && token && challenge) {
         // 個別ペルソナのWebhook検証
         if (personaId) {
-          const isValidToken = await verifyPersonaWebhookToken(personaId, token, supabase);
-          if (isValidToken) {
+          console.log('Verifying persona webhook token for persona:', personaId);
+          
+          const { data: persona, error } = await supabase
+            .from('personas')
+            .select('webhook_verify_token')
+            .eq('id', personaId)
+            .eq('is_active', true)
+            .single();
+
+          console.log('Persona data:', persona, 'Error:', error);
+
+          if (error || !persona) {
+            console.error('Persona not found:', error);
+            logSecurityEvent('persona_not_found', { persona_id: personaId });
+            return new Response('Persona not found', { status: 404, headers: corsHeaders });
+          }
+
+          if (persona.webhook_verify_token === token) {
+            console.log('Token verification successful, returning challenge:', challenge);
             logSecurityEvent('webhook_verification', { 
               mode, 
               persona_id: personaId,
@@ -302,6 +324,7 @@ serve(async (req) => {
               headers: { ...corsHeaders, 'Content-Type': 'text/plain' }
             });
           } else {
+            console.error('Token verification failed. Expected:', persona.webhook_verify_token, 'Received:', token);
             logSecurityEvent('webhook_verification_failed', { 
               mode, 
               persona_id: personaId,
@@ -311,6 +334,7 @@ serve(async (req) => {
           }
         } else {
           // 従来の全体的なWebhook検証（後方互換性のため）
+          console.log('Legacy webhook verification');
           logSecurityEvent('webhook_verification', { mode, token: token ? '[PRESENT]' : '[MISSING]' });
           return new Response(challenge, {
             status: 200,
@@ -319,6 +343,7 @@ serve(async (req) => {
         }
       }
 
+      console.log('GET request conditions not met');
       return new Response('Not Found', { status: 404, headers: corsHeaders });
     }
 
