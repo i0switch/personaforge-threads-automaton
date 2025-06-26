@@ -31,7 +31,8 @@ serve(async (req) => {
           name,
           user_id,
           threads_access_token,
-          threads_username
+          threads_username,
+          ai_auto_reply_enabled
         )
       `)
       .eq('is_active', true);
@@ -164,23 +165,28 @@ async function checkRepliesForPost(persona: any, postId: string): Promise<number
               newRepliesCount++;
               console.log(`New reply saved: ${thread.id}`);
 
-              // 自動返信チェック
-              const { data: profile } = await supabase
-                .from('profiles')
-                .select('auto_reply_enabled')
-                .eq('user_id', persona.user_id)
-                .single();
+              // AI自動返信チェック
+              if (persona.ai_auto_reply_enabled) {
+                console.log(`Triggering AI auto-reply for persona ${persona.name}`);
+                try {
+                  const { data: autoReplyResponse, error: autoReplyError } = await supabase.functions.invoke('threads-auto-reply', {
+                    body: {
+                      postContent: '', // 元投稿の内容
+                      replyContent: thread.text,
+                      replyId: thread.id,
+                      personaId: persona.id,
+                      userId: persona.user_id
+                    }
+                  });
 
-              if (profile?.auto_reply_enabled) {
-                // 自動返信を送信
-                await supabase.functions.invoke('threads-auto-reply', {
-                  body: {
-                    postContent: '', // 元投稿の内容
-                    replyContent: thread.text,
-                    personaId: persona.id,
-                    userId: persona.user_id
+                  if (autoReplyError) {
+                    console.error(`Auto-reply error for ${thread.id}:`, autoReplyError);
+                  } else {
+                    console.log(`Auto-reply sent for ${thread.id}:`, autoReplyResponse);
                   }
-                });
+                } catch (autoReplyErr) {
+                  console.error(`Failed to send auto-reply for ${thread.id}:`, autoReplyErr);
+                }
               }
             }
           }
