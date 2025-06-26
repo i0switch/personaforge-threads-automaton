@@ -185,7 +185,7 @@ async function processReplyData(replyData: any, personaId: string | null): Promi
   // Get persona information
   const { data: persona, error: personaError } = await supabase
     .from('personas')
-    .select('id, name, user_id, threads_app_id, threads_username, ai_auto_reply_enabled')
+    .select('id, name, user_id, threads_app_id, threads_username, ai_auto_reply_enabled, threads_access_token')
     .eq('id', personaId)
     .single();
 
@@ -264,8 +264,78 @@ async function processReplyData(replyData: any, personaId: string | null): Promi
 
   console.log('Reply successfully inserted!');
 
-  // Check auto reply settings
-  console.log('Checking auto reply settings...');
+  // Check for keyword-based auto replies first
+  console.log('Checking keyword-based auto replies...');
+  const { data: autoReplies, error: autoReplyError } = await supabase
+    .from('auto_replies')
+    .select('*')
+    .eq('user_id', persona.user_id)
+    .eq('persona_id', personaId)
+    .eq('is_active', true);
+
+  if (!autoReplyError && autoReplies && autoReplies.length > 0) {
+    console.log(`Found ${autoReplies.length} active auto-reply rules`);
+    
+    for (const autoReply of autoReplies) {
+      const keywords = autoReply.trigger_keywords;
+      if (keywords && Array.isArray(keywords)) {
+        console.log(`Checking keywords: ${keywords.join(', ')}`);
+        
+        // Check if any keyword is found in the reply text
+        const replyTextLower = sanitizedData.reply_text.toLowerCase();
+        const matchedKeyword = keywords.find(keyword => 
+          replyTextLower.includes(keyword.toLowerCase())
+        );
+        
+        if (matchedKeyword) {
+          console.log(`Keyword matched: "${matchedKeyword}"`);
+          console.log(`Sending keyword-based auto reply: "${autoReply.response_template}"`);
+          
+          try {
+            // Send keyword-based reply using Threads API
+            const replySuccess = await sendThreadsReply(
+              autoReply.response_template,
+              sanitizedData.reply_id,
+              persona.threads_access_token
+            );
+            
+            if (replySuccess) {
+              // Update the thread_replies table to mark auto reply as sent
+              await supabase
+                .from('thread_replies')
+                .update({ auto_reply_sent: true })
+                .eq('id', insertedReply.id);
+              
+              console.log('Keyword-based auto reply sent successfully');
+              
+              // Log activity
+              await supabase
+                .from('activity_logs')
+                .insert({
+                  user_id: persona.user_id,
+                  persona_id: personaId,
+                  action_type: 'keyword_auto_reply_sent',
+                  description: `キーワード自動返信を送信しました (キーワード: ${matchedKeyword})`,
+                  metadata: {
+                    reply_to: sanitizedData.reply_text,
+                    reply_to_id: sanitizedData.reply_id,
+                    matched_keyword: matchedKeyword,
+                    response: autoReply.response_template
+                  }
+                });
+              
+              return true; // Exit early after successful keyword reply
+            }
+          } catch (keywordReplyError) {
+            console.error('Failed to send keyword-based auto reply:', keywordReplyError);
+          }
+        }
+      }
+    }
+  }
+
+  // If no keyword match, check AI auto reply settings
+  console.log('No keyword match found, checking AI auto reply settings...');
   
   if (persona.ai_auto_reply_enabled) {
     console.log('AI auto reply is enabled for this persona');
@@ -309,6 +379,68 @@ async function processReplyData(replyData: any, personaId: string | null): Promi
   }
 
   return true;
+}
+
+async function sendThreadsReply(replyText: string, replyToId: string, accessToken: string): Promise<boolean> {
+  try {
+    console.log('Creating Threads reply container...');
+    const createContainerResponse = await fetch('https://graph.threads.net/v1.0/me/threads', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        media_type: 'TEXT_POST',
+        text: replyText,
+        reply_to_id: replyToId,
+        access_token: accessToken
+      }),
+    });
+
+    if (!createContainerResponse.ok) {
+      const errorText = await createContainerResponse.text();
+      console.error('Threads create container error:', errorText);
+      return false;
+    }
+
+    const containerData = await createContainerResponse.json();
+    console.log('Reply container created:', containerData.id);
+
+    if (!containerData.id) {
+      console.error('No container ID returned from Threads API');
+      return false;
+    }
+
+    // Wait and publish
+    console.log('Waiting before publish...');
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    console.log('Publishing reply to Threads...');
+    const publishResponse = await fetch('https://graph.threads.net/v1.0/me/threads_publish', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        creation_id: containerData.id,
+        access_token: accessToken
+      }),
+    });
+
+    if (!publishResponse.ok) {
+      const errorText = await publishResponse.text();
+      console.error('Threads publish error:', errorText);
+      return false;
+    }
+
+    const publishData = await publishResponse.json();
+    console.log('Reply published:', publishData.id);
+    return true;
+
+  } catch (error) {
+    console.error('Error sending Threads reply:', error);
+    return false;
+  }
 }
 
 async function logSecurityEvent(event: any) {
