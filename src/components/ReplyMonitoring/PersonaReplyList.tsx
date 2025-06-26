@@ -83,6 +83,13 @@ export const PersonaReplyList = () => {
       const { data, error } = await query;
 
       if (error) throw error;
+      
+      // デバッグ用のログを追加
+      console.log('Fetched replies:', data);
+      data?.forEach(reply => {
+        console.log(`Reply ${reply.id}: auto_reply_sent = ${reply.auto_reply_sent}`);
+      });
+      
       setReplies(data || []);
     } catch (error) {
       console.error('Error fetching replies:', error);
@@ -149,7 +156,7 @@ export const PersonaReplyList = () => {
                           </span>
                         </div>
                         <div className="flex items-center space-x-2">
-                          {reply.auto_reply_sent && (
+                          {reply.auto_reply_sent === true && (
                             <Badge variant="secondary">自動返信済み</Badge>
                           )}
                           <span className="text-sm text-gray-500">
@@ -159,6 +166,11 @@ export const PersonaReplyList = () => {
                       </div>
                       
                       <p className="text-gray-900">{reply.reply_text}</p>
+                      
+                      {/* デバッグ情報を表示 */}
+                      <div className="text-xs text-gray-400 mt-2">
+                        Debug: auto_reply_sent = {String(reply.auto_reply_sent)}
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
