@@ -75,6 +75,23 @@ export const PersonaForm = ({ editingPersona, onSubmit, onCancel }: PersonaFormP
     }));
   };
 
+  // 自動返信の排他制御
+  const handleAutoReplyChange = (checked: boolean) => {
+    setFormData(prev => ({
+      ...prev,
+      auto_reply_enabled: checked,
+      ai_auto_reply_enabled: checked ? false : prev.ai_auto_reply_enabled
+    }));
+  };
+
+  const handleAiAutoReplyChange = (checked: boolean) => {
+    setFormData(prev => ({
+      ...prev,
+      ai_auto_reply_enabled: checked,
+      auto_reply_enabled: checked ? false : prev.auto_reply_enabled
+    }));
+  };
+
   return (
     <div className="space-y-6">
       <Card>
@@ -163,14 +180,14 @@ export const PersonaForm = ({ editingPersona, onSubmit, onCancel }: PersonaFormP
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
-                    <Label>自動返信を有効にする</Label>
+                    <Label>トリガー自動返信を有効にする</Label>
                     <p className="text-sm text-muted-foreground">
-                      リプライを受信した時に自動で返信します
+                      リプライを受信した時に設定した定型文を自動で返信します
                     </p>
                   </div>
                   <Switch
                     checked={formData.auto_reply_enabled}
-                    onCheckedChange={(checked) => handleInputChange("auto_reply_enabled", checked)}
+                    onCheckedChange={handleAutoReplyChange}
                   />
                 </div>
 
@@ -183,7 +200,7 @@ export const PersonaForm = ({ editingPersona, onSubmit, onCancel }: PersonaFormP
                   </div>
                   <Switch
                     checked={formData.ai_auto_reply_enabled}
-                    onCheckedChange={(checked) => handleInputChange("ai_auto_reply_enabled", checked)}
+                    onCheckedChange={handleAiAutoReplyChange}
                   />
                 </div>
 
