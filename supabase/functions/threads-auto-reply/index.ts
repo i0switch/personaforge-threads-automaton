@@ -53,7 +53,7 @@ serve(async (req) => {
       userId
     });
 
-    // Get persona information
+    // Get persona information with detailed fields
     const { data: persona, error: personaError } = await supabase
       .from('personas')
       .select('*')
@@ -72,27 +72,37 @@ serve(async (req) => {
       throw new Error('Threads access token not configured for this persona');
     }
 
-    // Generate AI reply using Gemini
+    // 元の投稿内容を取得する（もし可能であれば）
+    let originalPostContent = postContent || '';
+    if (!originalPostContent) {
+      // 投稿内容を取得する試み（必要に応じて実装）
+      console.log('No original post content provided, using empty string');
+    }
+
+    // ペルソナのサンプル投稿を準備
+    const styleGuide = [
+      persona.personality ? `性格: ${persona.personality}` : '',
+      persona.age ? `年齢: ${persona.age}` : '',
+      persona.tone_of_voice ? `話し方: ${persona.tone_of_voice}` : '',
+      persona.expertise && persona.expertise.length > 0 ? `専門分野: ${persona.expertise.join(', ')}` : ''
+    ].filter(Boolean).join('\n');
+
+    // 改善されたプロンプトを使用
     const prompt = [
       'あなたは、ソーシャルメディア「Threads」で活躍する、経験豊富なコミュニティマネージャーです。',
       'あなたのゴールは、受信したリプライに対して、あなたのペルソナに沿った、人間らしく、魅力的で、気の利いた返信を生成し、会話を促進することです。',
-      '',
+      '---',
       '## あなたのペルソナ情報',
-      `- **名前**: ${persona.name}`,
-      `- **年齢**: ${persona.age || '不明'}`,
-      `- **性格**: ${persona.personality || ''}`,
-      `- **専門分野**: ${persona.expertise?.join(', ') || ''}`,
-      `- **話し方**: ${persona.tone_of_voice || ''}`,
-      '',
+      `* **ペルソナ名**: ${persona.name}`,
+      `* **口調・スタイルガイド**: ${styleGuide}`,
+      '---',
       '## 返信タスクの背景',
       '以下の「元の投稿」に対して、あるユーザーから「受信リプライ」が届きました。',
-      `* **元の投稿**: ${postContent || '(本文なし)'}`,
+      `* **元の投稿**: ${originalPostContent || '(本文なし)'}`,
       `* **受信リプライ**: ${replyContent}`,
       '---',
-      '',
       '## あなたへの指示',
       '上記の「受信リプライ」に対して、以下の「厳格なルール」をすべて守り、最も適切で自然な返信を生成してください。',
-      '',
       '### 厳格なルール',
       '- **思考プロセス**: まず受信リプライの意図（質問、感想、共感など）を分析し、次にあなたのペルソナならどう応答するかを考え、それから返信文を作成してください。',
       '- **ペルソナの一貫性**: 必ず上記「あなたのペルソナ情報」に記載された口調、スタイル、過去のサンプル投稿のトーンを忠実に守ってください。',
@@ -204,7 +214,7 @@ serve(async (req) => {
         action_type: 'auto_reply_sent',
         description: 'AI自動返信を送信しました',
         metadata: {
-          original_post: postContent || '(empty)',
+          original_post: originalPostContent || '(empty)',
           reply_to: replyContent,
           reply_to_id: replyId,
           generated_reply: generatedReply,

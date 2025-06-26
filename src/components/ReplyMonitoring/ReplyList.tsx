@@ -25,6 +25,7 @@ export const ReplyList = () => {
   const { toast } = useToast();
   const [replies, setReplies] = useState<Reply[]>([]);
   const [loading, setLoading] = useState(false);
+  const [sendingReply, setSendingReply] = useState<string | null>(null);
 
   useEffect(() => {
     if (user) {
@@ -64,24 +65,33 @@ export const ReplyList = () => {
 
   const sendManualReply = async (reply: Reply) => {
     try {
-      setLoading(true);
+      setSendingReply(reply.id);
       
-      const { error } = await supabase.functions.invoke('threads-auto-reply', {
+      const { data, error } = await supabase.functions.invoke('threads-auto-reply', {
         body: {
           postContent: '', // 元投稿の内容
           replyContent: reply.reply_text,
+          replyId: reply.reply_id,
           personaId: reply.persona_id,
           userId: user!.id
         }
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error sending manual reply:', error);
+        throw error;
+      }
 
       // auto_reply_sentを更新
-      await supabase
+      const { error: updateError } = await supabase
         .from('thread_replies')
         .update({ auto_reply_sent: true })
         .eq('id', reply.id);
+
+      if (updateError) {
+        console.error('Error updating reply status:', updateError);
+        throw updateError;
+      }
 
       await fetchReplies();
       
@@ -97,7 +107,7 @@ export const ReplyList = () => {
         variant: 'destructive'
       });
     } finally {
-      setLoading(false);
+      setSendingReply(null);
     }
   };
 
@@ -146,9 +156,9 @@ export const ReplyList = () => {
                           <Button
                             size="sm"
                             onClick={() => sendManualReply(reply)}
-                            disabled={loading}
+                            disabled={sendingReply === reply.id}
                           >
-                            手動返信
+                            {sendingReply === reply.id ? '送信中...' : '手動返信'}
                           </Button>
                         </div>
                       )}
