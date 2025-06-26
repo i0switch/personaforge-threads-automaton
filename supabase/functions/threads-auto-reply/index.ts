@@ -205,6 +205,20 @@ serve(async (req) => {
     const publishData = await publishResponse.json();
     console.log('Reply published:', publishData.id);
 
+    // Update the thread_replies table to mark auto reply as sent
+    console.log('Updating thread_replies auto_reply_sent flag...');
+    const { error: updateError } = await supabase
+      .from('thread_replies')
+      .update({ auto_reply_sent: true })
+      .eq('reply_id', replyId)
+      .eq('persona_id', personaId);
+
+    if (updateError) {
+      console.error('Failed to update auto_reply_sent flag:', updateError);
+    } else {
+      console.log('Successfully updated auto_reply_sent flag');
+    }
+
     // Log activity
     await supabase
       .from('activity_logs')

@@ -242,7 +242,7 @@ async function processReplyData(replyData: any, personaId: string | null): Promi
 
   // Insert new reply to database
   console.log('Inserting new reply to database...');
-  const { error: insertError } = await supabase
+  const { data: insertedReply, error: insertError } = await supabase
     .from('thread_replies')
     .insert({
       user_id: persona.user_id,
@@ -253,7 +253,9 @@ async function processReplyData(replyData: any, personaId: string | null): Promi
       reply_author_id: sanitizedData.reply_author_id,
       reply_author_username: sanitizedData.reply_author_username,
       reply_timestamp: sanitizedData.reply_timestamp
-    });
+    })
+    .select()
+    .single();
 
   if (insertError) {
     console.error('Failed to insert reply:', insertError);
@@ -283,6 +285,21 @@ async function processReplyData(replyData: any, personaId: string | null): Promi
         console.error('Auto-reply function error:', autoReplyError);
       } else {
         console.log('Auto-reply function response:', autoReplyResponse);
+        
+        // 自動返信が成功した場合、auto_reply_sentをtrueに更新
+        if (autoReplyResponse && autoReplyResponse.success) {
+          console.log('Auto-reply successful, updating auto_reply_sent to true');
+          const { error: updateError } = await supabase
+            .from('thread_replies')
+            .update({ auto_reply_sent: true })
+            .eq('id', insertedReply.id);
+
+          if (updateError) {
+            console.error('Failed to update auto_reply_sent:', updateError);
+          } else {
+            console.log('Successfully updated auto_reply_sent to true');
+          }
+        }
       }
     } catch (autoReplyErr) {
       console.error('Failed to call auto-reply function:', autoReplyErr);
