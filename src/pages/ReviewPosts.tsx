@@ -1,18 +1,15 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { ArrowLeft, Trash2, Calendar, Clock, Image as ImageIcon, Loader2 } from "lucide-react";
+import { ArrowLeft, Calendar, Loader2 } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { format } from "date-fns";
-import { ja } from "date-fns/locale";
-import { ImageGenerationSection } from "@/components/ReviewPosts/ImageGenerationSection";
+import { PersonaHeader } from "@/components/ReviewPosts/PersonaHeader";
+import { PostsNeedingImageGeneration } from "@/components/ReviewPosts/PostsNeedingImageGeneration";
+import { PostsNeedingReview } from "@/components/ReviewPosts/PostsNeedingReview";
+import { PostsList } from "@/components/ReviewPosts/PostsList";
 import type { Database } from "@/integrations/supabase/types";
 
 type Persona = Database['public']['Tables']['personas']['Row'];
@@ -32,7 +29,6 @@ const ReviewPosts = () => {
   const [posts, setPosts] = useState<Post[]>([]);
   const [persona, setPersona] = useState<Persona | null>(null);
   const [isScheduling, setIsScheduling] = useState(false);
-  const [showImageGeneration, setShowImageGeneration] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reviewedPosts, setReviewedPosts] = useState<string[]>([]);
 
@@ -309,185 +305,33 @@ const ReviewPosts = () => {
         )}
 
         {/* ペルソナ情報 */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Avatar className="h-8 w-8">
-                <AvatarImage src={persona.avatar_url || ""} />
-                <AvatarFallback>{persona.name[0]}</AvatarFallback>
-              </Avatar>
-              {persona.name}
-            </CardTitle>
-            <CardDescription>
-              生成された投稿: {posts.length}件
-              {postsNeedingImageGeneration.length > 0 && (
-                <span className="block text-orange-600 mt-1">
-                  画像生成が必要な投稿: {postsNeedingImageGeneration.length}件
-                </span>
-              )}
-              {postsNeedingReview.length > 0 && (
-                <span className="block text-blue-600 mt-1">
-                  画像レビューが必要な投稿: {postsNeedingReview.length}件
-                </span>
-              )}
-            </CardDescription>
-          </CardHeader>
-        </Card>
+        <PersonaHeader
+          persona={persona}
+          totalPosts={posts.length}
+          postsNeedingImageGeneration={postsNeedingImageGeneration.length}
+          postsNeedingReview={postsNeedingReview.length}
+        />
 
         {/* 画像生成が必要な場合の表示 */}
-        {postsNeedingImageGeneration.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-orange-600">画像生成が必要です</CardTitle>
-              <CardDescription>
-                {postsNeedingImageGeneration.length}件の投稿に画像を生成してください
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Button
-                variant="outline"
-                onClick={() => setShowImageGeneration(!showImageGeneration)}
-                className="w-full"
-              >
-                <ImageIcon className="h-4 w-4 mr-2" />
-                {showImageGeneration ? '画像生成を閉じる' : '投稿用画像を生成'}
-              </Button>
-              
-              {showImageGeneration && (
-                <div className="mt-4">
-                  <ImageGenerationSection
-                    onImagesGenerated={(images) => {
-                      console.log('ReviewPosts: Images generated:', images.length);
-                      // 最初の画像生成が必要な投稿に追加
-                      if (postsNeedingImageGeneration.length > 0) {
-                        const postIndex = posts.findIndex(p => p.id === postsNeedingImageGeneration[0].id);
-                        if (postIndex !== -1) {
-                          updatePostImages(postIndex, images);
-                        }
-                      }
-                    }}
-                  />
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
+        <PostsNeedingImageGeneration
+          postsNeedingImageGeneration={postsNeedingImageGeneration}
+          posts={posts}
+          onImagesGenerated={updatePostImages}
+        />
 
         {/* レビューが必要な投稿の表示 */}
-        {postsNeedingReview.length > 0 && (
-          <div className="space-y-4">
-            <h2 className="text-xl font-semibold text-blue-600">画像レビューが必要な投稿</h2>
-            {postsNeedingReview.map((post, index) => (
-              <Card key={post.id}>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-lg">投稿レビュー</CardTitle>
-                    <Badge variant="outline" className="bg-blue-50">レビュー待ち</Badge>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="p-3 bg-gray-50 rounded">
-                    <p className="text-sm font-medium mb-2">投稿内容:</p>
-                    <p className="whitespace-pre-wrap">{post.content}</p>
-                  </div>
-                  
-                  {post.images && post.images.length > 0 && (
-                    <div className="space-y-2">
-                      <div className="text-sm font-medium text-muted-foreground">生成された画像:</div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {post.images.map((imageUrl, imageIndex) => (
-                          <div key={imageIndex} className="relative">
-                            <img
-                              src={imageUrl}
-                              alt={`生成画像 ${imageIndex + 1}`}
-                              className="w-full max-w-md mx-auto rounded-lg border object-cover"
-                              style={{ maxHeight: '300px' }}
-                              onError={(e) => {
-                                console.error('ReviewPosts: Failed to load image:', imageUrl);
-                                const target = e.target as HTMLImageElement;
-                                target.style.display = 'none';
-                              }}
-                            />
-                          </div>
-                        ))}
-                      </div>
-                      <Button 
-                        onClick={() => approveGeneratedImage(post.id)}
-                        className="w-full"
-                      >
-                        この画像を承認する
-                      </Button>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
+        <PostsNeedingReview
+          postsNeedingReview={postsNeedingReview}
+          onApprove={approveGeneratedImage}
+        />
 
         {/* 通常の投稿一覧（すべての画像がレビュー済みの場合） */}
-        {allImagesReviewed && posts.length > 0 && (
-          <div className="space-y-4">
-            <h2 className="text-xl font-semibold">投稿一覧</h2>
-            {posts.map((post, index) => (
-              <Card key={post.id || index}>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-lg">投稿 {index + 1}</CardTitle>
-                    <div className="flex items-center gap-2">
-                      {post.scheduled_for && (
-                        <Badge variant="outline" className="flex items-center gap-1">
-                          <Calendar className="h-3 w-3" />
-                          {format(new Date(post.scheduled_for), 'MM/dd', { locale: ja })}
-                          <Clock className="h-3 w-3 ml-1" />
-                          {format(new Date(post.scheduled_for), 'HH:mm', { locale: ja })}
-                        </Badge>
-                      )}
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => deletePost(index)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <Textarea
-                    value={post.content || ''}
-                    onChange={(e) => updatePost(index, e.target.value)}
-                    rows={4}
-                    placeholder="投稿内容を編集..."
-                  />
-                  
-                  {/* 画像プレビュー */}
-                  {post.images && post.images.length > 0 && (
-                    <div className="space-y-2">
-                      <div className="text-sm font-medium text-muted-foreground">添付画像:</div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {post.images.map((imageUrl, imageIndex) => (
-                          <div key={`image-${imageIndex}`} className="relative">
-                            <img
-                              src={imageUrl}
-                              alt={`画像 ${imageIndex + 1}`}
-                              className="w-full max-w-md mx-auto rounded-lg border object-cover"
-                              style={{ maxHeight: '300px' }}
-                              onError={(e) => {
-                                console.error('ReviewPosts: Failed to load image:', imageUrl);
-                                const target = e.target as HTMLImageElement;
-                                target.style.display = 'none';
-                              }}
-                            />
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+        {allImagesReviewed && (
+          <PostsList
+            posts={posts}
+            onUpdate={updatePost}
+            onDelete={deletePost}
+          />
         )}
 
         {/* 投稿がない場合 */}
