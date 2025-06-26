@@ -94,18 +94,24 @@ const PersonaSetup = () => {
 
       // threads_app_secretが入力されている場合は暗号化して保存
       if (formData.threads_app_secret) {
-        const { data: secretData, error: secretError } = await supabase.functions.invoke('save-secret', {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) throw new Error('認証が必要です');
+
+        const response = await supabase.functions.invoke('save-secret', {
           body: {
-            key_name: `threads_app_secret_${editingPersona?.id || 'new'}`,
-            key_value: formData.threads_app_secret
-          }
+            keyName: `threads_app_secret_${editingPersona?.id || 'new'}`,
+            keyValue: formData.threads_app_secret
+          },
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+          },
         });
 
-        if (secretError) {
-          throw new Error('APIキーの暗号化に失敗しました');
+        if (response.error) {
+          throw new Error(response.error.message || 'APIキーの暗号化に失敗しました');
         }
 
-        personaData.threads_app_secret = secretData.encrypted_key;
+        personaData.threads_app_secret = response.data.encrypted_key;
       }
 
       if (editingPersona) {
@@ -163,14 +169,20 @@ const PersonaSetup = () => {
     let decryptedSecret = "";
     if (persona.threads_app_secret) {
       try {
-        const { data: secretData, error: secretError } = await supabase.functions.invoke('retrieve-secret', {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) throw new Error('認証が必要です');
+
+        const response = await supabase.functions.invoke('retrieve-secret', {
           body: {
-            key_name: `threads_app_secret_${persona.id}`
-          }
+            keyName: `threads_app_secret_${persona.id}`
+          },
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+          },
         });
 
-        if (!secretError && secretData?.key_value) {
-          decryptedSecret = secretData.key_value;
+        if (!response.error && response.data?.keyValue) {
+          decryptedSecret = response.data.keyValue;
         }
       } catch (error) {
         console.error("Error retrieving secret:", error);
