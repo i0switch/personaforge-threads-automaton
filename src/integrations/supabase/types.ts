@@ -144,6 +144,8 @@ export type Database = {
       personas: {
         Row: {
           age: string | null
+          ai_auto_reply_enabled: boolean | null
+          auto_reply_enabled: boolean | null
           avatar_url: string | null
           created_at: string
           expertise: string[] | null
@@ -151,7 +153,6 @@ export type Database = {
           is_active: boolean
           name: string
           personality: string | null
-          reply_mode: string | null
           threads_access_token: string | null
           threads_app_id: string | null
           threads_app_secret: string | null
@@ -163,6 +164,8 @@ export type Database = {
         }
         Insert: {
           age?: string | null
+          ai_auto_reply_enabled?: boolean | null
+          auto_reply_enabled?: boolean | null
           avatar_url?: string | null
           created_at?: string
           expertise?: string[] | null
@@ -170,7 +173,6 @@ export type Database = {
           is_active?: boolean
           name: string
           personality?: string | null
-          reply_mode?: string | null
           threads_access_token?: string | null
           threads_app_id?: string | null
           threads_app_secret?: string | null
@@ -182,6 +184,8 @@ export type Database = {
         }
         Update: {
           age?: string | null
+          ai_auto_reply_enabled?: boolean | null
+          auto_reply_enabled?: boolean | null
           avatar_url?: string | null
           created_at?: string
           expertise?: string[] | null
@@ -189,7 +193,6 @@ export type Database = {
           is_active?: boolean
           name?: string
           personality?: string | null
-          reply_mode?: string | null
           threads_access_token?: string | null
           threads_app_id?: string | null
           threads_app_secret?: string | null
