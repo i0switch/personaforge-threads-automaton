@@ -1,4 +1,3 @@
-
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
@@ -24,49 +23,134 @@ async function getUserApiKey(userId: string, keyName: string): Promise<string | 
       .single();
 
     if (error || !data) {
+      console.log(`No user API key found for ${keyName}, will use fallback`);
       return null;
     }
 
-    // 復号化処理
-    const ENCRYPTION_KEY = 'AIThreadsSecretKey2024ForAPIEncryption';
-    
-    const enc = new TextEncoder();
-    const keyMaterial = await crypto.subtle.importKey(
-      'raw',
-      enc.encode(ENCRYPTION_KEY),
-      { name: 'PBKDF2' },
-      false,
-      ['deriveKey']
-    );
-    
-    const key = await crypto.subtle.deriveKey(
-      {
-        name: 'PBKDF2',
-        salt: enc.encode('salt'),
-        iterations: 100000,
-        hash: 'SHA-256',
-      },
-      keyMaterial,
-      { name: 'AES-GCM', length: 256 },
-      false,
-      ['encrypt', 'decrypt']
-    );
+    // 復号化処理 - より安全なエラーハンドリング
+    try {
+      const ENCRYPTION_KEY = Deno.env.get('ENCRYPTION_KEY') || 'AIThreadsSecretKey2024ForAPIEncryption';
+      
+      const enc = new TextEncoder();
+      const keyMaterial = await crypto.subtle.importKey(
+        'raw',
+        enc.encode(ENCRYPTION_KEY),
+        { name: 'PBKDF2' },
+        false,
+        ['deriveKey']
+      );
+      
+      const key = await crypto.subtle.deriveKey(
+        {
+          name: 'PBKDF2',
+          salt: enc.encode('salt'),
+          iterations: 100000,
+          hash: 'SHA-256',
+        },
+        keyMaterial,
+        { name: 'AES-GCM', length: 256 },
+        false,
+        ['encrypt', 'decrypt']
+      );
 
-    const combined = Uint8Array.from(atob(data.encrypted_key), c => c.charCodeAt(0));
-    const iv = combined.slice(0, 12);
-    const encrypted = combined.slice(12);
-    
-    const decrypted = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv: iv },
-      key,
-      encrypted
-    );
-    
-    const dec = new TextDecoder();
-    return dec.decode(decrypted);
+      const combined = Uint8Array.from(atob(data.encrypted_key), c => c.charCodeAt(0));
+      const iv = combined.slice(0, 12);
+      const encrypted = combined.slice(12);
+      
+      const decrypted = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: iv },
+        key,
+        encrypted
+      );
+      
+      const dec = new TextDecoder();
+      const decryptedKey = dec.decode(decrypted);
+      console.log('Successfully decrypted user API key');
+      return decryptedKey;
+    } catch (decryptError) {
+      console.error('Decryption failed:', decryptError);
+      return null;
+    }
   } catch (error) {
     console.error('Error retrieving user API key:', error);
     return null;
+  }
+}
+
+// レート制限対応のためのリトライ機能
+async function callGeminiWithRetry(apiKey: string, prompt: string, maxRetries = 3): Promise<any> {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`Gemini API call attempt ${attempt}/${maxRetries}`);
+      
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                {
+                  text: prompt
+                }
+              ]
+            }
+          ],
+          generationConfig: {
+            temperature: 0.9,
+            topK: 1,
+            topP: 1,
+            maxOutputTokens: 2048,
+          },
+          safetySettings: [
+            {
+              category: "HARM_CATEGORY_HARASSMENT",
+              threshold: "BLOCK_MEDIUM_AND_ABOVE"
+            },
+            {
+              category: "HARM_CATEGORY_HATE_SPEECH",
+              threshold: "BLOCK_MEDIUM_AND_ABOVE"
+            },
+            {
+              category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+              threshold: "BLOCK_MEDIUM_AND_ABOVE"
+            },
+            {
+              category: "HARM_CATEGORY_DANGEROUS_CONTENT",
+              threshold: "BLOCK_MEDIUM_AND_ABOVE"
+            }
+          ]
+        }),
+      });
+
+      if (response.status === 429) {
+        // レート制限の場合は待機時間を増やしてリトライ
+        const waitTime = Math.pow(2, attempt) * 1000; // 指数バックオフ
+        console.log(`Rate limited, waiting ${waitTime}ms before retry...`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+        continue;
+      }
+
+      if (!response.ok) {
+        throw new Error(`Gemini API error: ${response.status} ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      console.log('Gemini API call successful');
+      return data;
+
+    } catch (error) {
+      console.error(`Attempt ${attempt} failed:`, error);
+      
+      if (attempt === maxRetries) {
+        throw error;
+      }
+      
+      // 最後の試行でない場合は少し待ってリトライ
+      await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+    }
   }
 }
 
@@ -109,7 +193,17 @@ serve(async (req) => {
     const geminiApiKey = userGeminiApiKey || fallbackGeminiApiKey;
 
     if (!geminiApiKey) {
-      throw new Error('Gemini API key is not configured. Please set your API key in Settings.');
+      return new Response(
+        JSON.stringify({ 
+          error: 'Gemini API key is not configured. Please set your API key in Settings.',
+          success: false,
+          needsApiKey: true
+        }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }, 
+          status: 400 
+        }
+      );
     }
 
     // Calculate total posts to generate
@@ -134,6 +228,7 @@ serve(async (req) => {
     const timeSlots = generateTimeSlots(selectedDates, selectedTimes);
 
     const posts = [];
+    const failedPosts = [];
 
     for (let i = 0; i < timeSlots.length; i++) {
       console.log(`Generating post ${i + 1}/${timeSlots.length}`);
@@ -142,54 +237,8 @@ serve(async (req) => {
       const prompt = createPostPrompt(persona, topics, i + 1, timeSlots.length, customPrompt, timeSlots[i]);
 
       try {
-        // Call Gemini API
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${geminiApiKey}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            contents: [
-              {
-                parts: [
-                  {
-                    text: prompt
-                  }
-                ]
-              }
-            ],
-            generationConfig: {
-              temperature: 0.9,
-              topK: 1,
-              topP: 1,
-              maxOutputTokens: 2048,
-            },
-            safetySettings: [
-              {
-                category: "HARM_CATEGORY_HARASSMENT",
-                threshold: "BLOCK_MEDIUM_AND_ABOVE"
-              },
-              {
-                category: "HARM_CATEGORY_HATE_SPEECH",
-                threshold: "BLOCK_MEDIUM_AND_ABOVE"
-              },
-              {
-                category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-                threshold: "BLOCK_MEDIUM_AND_ABOVE"
-              },
-              {
-                category: "HARM_CATEGORY_DANGEROUS_CONTENT",
-                threshold: "BLOCK_MEDIUM_AND_ABOVE"
-              }
-            ]
-          }),
-        });
-
-        if (!response.ok) {
-          throw new Error(`Gemini API error: ${response.status} ${response.statusText}`);
-        }
-
-        const data = await response.json();
+        // Call Gemini API with retry logic
+        const data = await callGeminiWithRetry(geminiApiKey, prompt);
 
         if (!data.candidates || !data.candidates[0] || !data.candidates[0].content) {
           throw new Error('Invalid response from Gemini API');
@@ -218,7 +267,8 @@ serve(async (req) => {
 
         if (saveError) {
           console.error('Error saving post:', saveError);
-          throw saveError;
+          failedPosts.push({ index: i + 1, error: saveError.message });
+          continue;
         }
 
         console.log(`Post ${i + 1} saved with ID: ${savedPost.id}`);
@@ -226,22 +276,28 @@ serve(async (req) => {
 
       } catch (error) {
         console.error(`Error generating post ${i + 1}:`, error);
-        // Continue with next post instead of failing completely
+        failedPosts.push({ index: i + 1, error: error.message });
         continue;
       }
 
-      // Add small delay to avoid rate limiting
-      await new Promise(resolve => setTimeout(resolve, 200));
+      // Add delay to avoid rate limiting - longer delay between requests
+      await new Promise(resolve => setTimeout(resolve, 2000)); // 2秒の間隔
     }
 
     console.log(`Successfully generated ${posts.length} posts`);
+    
+    if (failedPosts.length > 0) {
+      console.log(`Failed to generate ${failedPosts.length} posts:`, failedPosts);
+    }
 
-        return new Response(
+    return new Response(
       JSON.stringify({ 
         posts,
         success: true,
         generated_count: posts.length,
-        requested_count: timeSlots.length
+        requested_count: timeSlots.length,
+        failed_count: failedPosts.length,
+        failures: failedPosts
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
