@@ -96,44 +96,6 @@ export const PersonaReplyList = () => {
     }
   };
 
-  const sendManualReply = async (reply: Reply) => {
-    try {
-      setLoading(true);
-      
-      const { error } = await supabase.functions.invoke('threads-auto-reply', {
-        body: {
-          postContent: '',
-          replyContent: reply.reply_text,
-          personaId: reply.persona_id,
-          userId: user!.id
-        }
-      });
-
-      if (error) throw error;
-
-      await supabase
-        .from('thread_replies')
-        .update({ auto_reply_sent: true })
-        .eq('id', reply.id);
-
-      await fetchReplies();
-      
-      toast({
-        title: '成功',
-        description: '手動返信を送信しました'
-      });
-    } catch (error) {
-      console.error('Error sending manual reply:', error);
-      toast({
-        title: 'エラー',
-        description: '返信の送信に失敗しました',
-        variant: 'destructive'
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
     <div className="space-y-4">
       <div className="flex items-center space-x-4">
@@ -188,7 +150,7 @@ export const PersonaReplyList = () => {
                         </div>
                         <div className="flex items-center space-x-2">
                           {reply.auto_reply_sent && (
-                            <Badge variant="secondary">返信済み</Badge>
+                            <Badge variant="secondary">自動返信済み</Badge>
                           )}
                           <span className="text-sm text-gray-500">
                             {new Date(reply.reply_timestamp).toLocaleString()}
@@ -197,18 +159,6 @@ export const PersonaReplyList = () => {
                       </div>
                       
                       <p className="text-gray-900">{reply.reply_text}</p>
-                      
-                      {!reply.auto_reply_sent && (
-                        <div className="flex justify-end">
-                          <Button
-                            size="sm"
-                            onClick={() => sendManualReply(reply)}
-                            disabled={loading}
-                          >
-                            手動返信
-                          </Button>
-                        </div>
-                      )}
                     </div>
                   </CardContent>
                 </Card>
