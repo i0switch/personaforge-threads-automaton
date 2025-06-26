@@ -10,6 +10,7 @@ import { useToast } from '@/hooks/use-toast';
 interface Reply {
   id: string;
   original_post_id: string;
+  reply_id: string;  // 追加：Threads APIで必要なreply_id
   reply_text: string;
   reply_author_username: string;
   reply_timestamp: string;
@@ -67,6 +68,14 @@ export const ReplyList = () => {
     try {
       setSendingReply(reply.id);
       
+      console.log('Sending manual reply with data:', {
+        postContent: '', 
+        replyContent: reply.reply_text,
+        replyId: reply.reply_id,
+        personaId: reply.persona_id,
+        userId: user!.id
+      });
+      
       const { data, error } = await supabase.functions.invoke('threads-auto-reply', {
         body: {
           postContent: '', // 元投稿の内容
@@ -81,6 +90,8 @@ export const ReplyList = () => {
         console.error('Error sending manual reply:', error);
         throw error;
       }
+
+      console.log('Manual reply response:', data);
 
       // auto_reply_sentを更新
       const { error: updateError } = await supabase
@@ -151,7 +162,7 @@ export const ReplyList = () => {
                       
                       <p className="text-gray-900">{reply.reply_text}</p>
                       
-                      {!reply.auto_reply_sent && (
+                      {!reply.auto_reply_sent && reply.reply_id && (
                         <div className="flex justify-end">
                           <Button
                             size="sm"
