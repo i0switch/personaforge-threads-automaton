@@ -6,7 +6,6 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Bot, MessageSquare, Settings, User } from "lucide-react";
 
@@ -29,7 +28,6 @@ export const PersonaForm = ({ editingPersona, onSubmit, onCancel }: PersonaFormP
     threads_access_token: "",
     threads_username: "",
     webhook_verify_token: "",
-    reply_mode: "disabled",
     auto_reply_enabled: false,
     ai_auto_reply_enabled: false
   });
@@ -51,7 +49,6 @@ export const PersonaForm = ({ editingPersona, onSubmit, onCancel }: PersonaFormP
         threads_access_token: editingPersona.threads_access_token || "",
         threads_username: editingPersona.threads_username || "",
         webhook_verify_token: editingPersona.webhook_verify_token || "",
-        reply_mode: editingPersona.reply_mode || "disabled",
         auto_reply_enabled: editingPersona.auto_reply_enabled || false,
         ai_auto_reply_enabled: editingPersona.ai_auto_reply_enabled || false
       });
@@ -202,23 +199,6 @@ export const PersonaForm = ({ editingPersona, onSubmit, onCancel }: PersonaFormP
                     checked={formData.ai_auto_reply_enabled}
                     onCheckedChange={handleAiAutoReplyChange}
                   />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="reply_mode">返信モード</Label>
-                  <Select
-                    value={formData.reply_mode}
-                    onValueChange={(value) => handleInputChange("reply_mode", value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="disabled">無効</SelectItem>
-                      <SelectItem value="mentions">メンションのみ</SelectItem>
-                      <SelectItem value="all_replies">すべてのリプライ</SelectItem>
-                    </SelectContent>
-                  </Select>
                 </div>
               </div>
             </div>

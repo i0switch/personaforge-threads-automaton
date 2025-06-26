@@ -80,7 +80,8 @@ const PersonaSetup = () => {
         threads_access_token: formData.threads_access_token || null,
         threads_username: formData.threads_username || null,
         webhook_verify_token: formData.webhook_verify_token || null,
-        reply_mode: formData.reply_mode || 'disabled',
+        auto_reply_enabled: formData.auto_reply_enabled || false,
+        ai_auto_reply_enabled: formData.ai_auto_reply_enabled || false,
         user_id: user.id
       };
 
