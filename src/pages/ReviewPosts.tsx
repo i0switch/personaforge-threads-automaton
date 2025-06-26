@@ -36,22 +36,29 @@ const ReviewPosts = () => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    console.log('ReviewPosts: Component mounted');
-    console.log('ReviewPosts: Location state:', location.state);
+    console.log('ReviewPosts: Component mounted, checking location state');
     
     try {
       const state = location.state as ReviewPostsState;
+      console.log('ReviewPosts: Raw location state:', state);
+      
       if (state && state.posts && state.persona) {
-        console.log('ReviewPosts: Setting posts and persona from state');
+        console.log('ReviewPosts: Setting posts:', state.posts.length, 'and persona:', state.persona.name);
         setPosts(state.posts);
         setPersona(state.persona);
         setError(null);
       } else {
-        console.log('ReviewPosts: No valid state found, redirecting to create-posts');
+        console.error('ReviewPosts: Invalid state - redirecting to create-posts');
+        console.log('ReviewPosts: State structure:', {
+          hasState: !!state,
+          hasPosts: state?.posts ? 'yes' : 'no',
+          hasPersona: state?.persona ? 'yes' : 'no'
+        });
+        setError('投稿データが見つかりません。');
         navigate("/create-posts");
       }
     } catch (error) {
-      console.error('ReviewPosts: Error loading state:', error);
+      console.error('ReviewPosts: Error processing state:', error);
       setError('投稿データの読み込みに失敗しました。');
       toast({
         title: "エラー",
@@ -64,10 +71,11 @@ const ReviewPosts = () => {
 
   const updatePost = (index: number, content: string) => {
     try {
-      console.log('ReviewPosts: Updating post', index, 'with content:', content);
+      console.log('ReviewPosts: Updating post', index, 'with content length:', content.length);
       const updatedPosts = [...posts];
       updatedPosts[index] = { ...updatedPosts[index], content };
       setPosts(updatedPosts);
+      console.log('ReviewPosts: Post updated successfully');
     } catch (error) {
       console.error('ReviewPosts: Error updating post:', error);
       setError('投稿の更新に失敗しました。');
@@ -82,7 +90,9 @@ const ReviewPosts = () => {
   const deletePost = (index: number) => {
     try {
       console.log('ReviewPosts: Deleting post at index:', index);
-      setPosts(posts.filter((_, i) => i !== index));
+      const newPosts = posts.filter((_, i) => i !== index);
+      setPosts(newPosts);
+      console.log('ReviewPosts: Post deleted, remaining posts:', newPosts.length);
       toast({
         title: "投稿を削除しました",
         description: "投稿が削除されました。",
@@ -100,7 +110,7 @@ const ReviewPosts = () => {
 
   const updatePostImages = (postIndex: number, images: string[]) => {
     try {
-      console.log('ReviewPosts: Updating post images for post', postIndex, 'with images:', images);
+      console.log('ReviewPosts: Updating post images for post', postIndex, 'with images:', images.length);
       const updatedPosts = [...posts];
       updatedPosts[postIndex] = { ...updatedPosts[postIndex], images };
       setPosts(updatedPosts);
@@ -109,6 +119,7 @@ const ReviewPosts = () => {
         title: "成功",
         description: "画像を投稿に追加しました。",
       });
+      console.log('ReviewPosts: Images updated successfully');
     } catch (error) {
       console.error('ReviewPosts: Error updating post images:', error);
       setError('画像の追加に失敗しました。');
@@ -185,8 +196,18 @@ const ReviewPosts = () => {
     }
   };
 
+  // Debug current state
+  console.log('ReviewPosts: Current render state:', {
+    hasPersona: !!persona,
+    postsCount: posts.length,
+    error,
+    showImageGeneration,
+    isScheduling
+  });
+
   // Show error state
-  if (error) {
+  if (error && !persona) {
+    console.log('ReviewPosts: Rendering error state');
     return (
       <div className="min-h-screen bg-background p-6">
         <div className="max-w-4xl mx-auto">
@@ -210,6 +231,7 @@ const ReviewPosts = () => {
 
   // Show loading state
   if (!persona) {
+    console.log('ReviewPosts: Rendering loading state');
     return (
       <div className="min-h-screen bg-background p-6">
         <div className="max-w-4xl mx-auto">
@@ -222,7 +244,7 @@ const ReviewPosts = () => {
     );
   }
 
-  console.log('ReviewPosts: Rendering component with persona:', persona.name, 'and posts:', posts.length);
+  console.log('ReviewPosts: Rendering main content with persona:', persona.name, 'and posts:', posts.length);
 
   return (
     <div className="min-h-screen bg-background p-6">
@@ -237,6 +259,17 @@ const ReviewPosts = () => {
             <p className="text-muted-foreground">生成された投稿を確認・修正してください</p>
           </div>
         </div>
+
+        {/* Error display */}
+        {error && (
+          <Card>
+            <CardContent className="p-4">
+              <div className="p-3 bg-red-50 border border-red-200 rounded-md">
+                <p className="text-sm text-red-600">{error}</p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* ペルソナ情報 */}
         <Card>
@@ -268,7 +301,7 @@ const ReviewPosts = () => {
           {showImageGeneration && (
             <ImageGenerationSection
               onImagesGenerated={(images) => {
-                console.log('ReviewPosts: Images generated:', images);
+                console.log('ReviewPosts: Images generated:', images.length);
                 // Default to adding to first post if no specific post is selected
                 if (posts.length > 0) {
                   updatePostImages(0, images);
@@ -279,88 +312,101 @@ const ReviewPosts = () => {
         </div>
 
         {/* 投稿一覧 */}
-        <div className="space-y-4">
-          {posts.map((post, index) => (
-            <Card key={index}>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-lg">投稿 {index + 1}</CardTitle>
-                  <div className="flex items-center gap-2">
-                    {post.scheduled_for && (
-                      <Badge variant="outline" className="flex items-center gap-1">
-                        <Calendar className="h-3 w-3" />
-                        {format(new Date(post.scheduled_for), 'MM/dd', { locale: ja })}
-                        <Clock className="h-3 w-3 ml-1" />
-                        {format(new Date(post.scheduled_for), 'HH:mm', { locale: ja })}
-                      </Badge>
-                    )}
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => deletePost(index)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <Textarea
-                  value={post.content}
-                  onChange={(e) => updatePost(index, e.target.value)}
-                  rows={4}
-                  placeholder="投稿内容を編集..."
-                />
-                
-                {/* 画像プレビュー */}
-                {post.images && post.images.length > 0 && (
-                  <div className="space-y-2">
-                    <div className="text-sm font-medium text-muted-foreground">添付画像:</div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {post.images.map((imageUrl, imageIndex) => (
-                        <div key={imageIndex} className="relative">
-                          <img
-                            src={imageUrl}
-                            alt={`投稿画像 ${imageIndex + 1}`}
-                            className="w-full max-w-md mx-auto rounded-lg border object-cover"
-                            style={{ maxHeight: '300px' }}
-                            onError={(e) => {
-                              console.error('ReviewPosts: Failed to load image:', imageUrl);
-                              const target = e.target as HTMLImageElement;
-                              target.style.display = 'none';
-                            }}
-                          />
-                        </div>
-                      ))}
+        {posts.length > 0 ? (
+          <div className="space-y-4">
+            {posts.map((post, index) => (
+              <Card key={post.id || index}>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-lg">投稿 {index + 1}</CardTitle>
+                    <div className="flex items-center gap-2">
+                      {post.scheduled_for && (
+                        <Badge variant="outline" className="flex items-center gap-1">
+                          <Calendar className="h-3 w-3" />
+                          {format(new Date(post.scheduled_for), 'MM/dd', { locale: ja })}
+                          <Clock className="h-3 w-3 ml-1" />
+                          {format(new Date(post.scheduled_for), 'HH:mm', { locale: ja })}
+                        </Badge>
+                      )}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => deletePost(index)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   </div>
-                )}
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <Textarea
+                    value={post.content || ''}
+                    onChange={(e) => updatePost(index, e.target.value)}
+                    rows={4}
+                    placeholder="投稿内容を編集..."
+                  />
+                  
+                  {/* 画像プレビュー */}
+                  {post.images && post.images.length > 0 && (
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium text-muted-foreground">添付画像:</div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {post.images.map((imageUrl, imageIndex) => (
+                          <div key={imageIndex} className="relative">
+                            <img
+                              src={imageUrl}
+                              alt={`投稿画像 ${imageIndex + 1}`}
+                              className="w-full max-w-md mx-auto rounded-lg border object-cover"
+                              style={{ maxHeight: '300px' }}
+                              onError={(e) => {
+                                console.error('ReviewPosts: Failed to load image:', imageUrl);
+                                const target = e.target as HTMLImageElement;
+                                target.style.display = 'none';
+                              }}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : (
+          <Card>
+            <CardContent className="p-8 text-center">
+              <p className="text-muted-foreground">表示する投稿がありません。</p>
+              <Button onClick={() => navigate("/create-posts")} className="mt-4">
+                投稿を作成する
+              </Button>
+            </CardContent>
+          </Card>
+        )}
 
         {/* アクションボタン */}
-        <div className="flex gap-4">
-          <Button 
-            onClick={scheduleAllPosts} 
-            disabled={isScheduling || posts.length === 0}
-            className="flex-1"
-            size="lg"
-          >
-            {isScheduling ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                予約中...
-              </>
-            ) : (
-              <>
-                <Calendar className="h-4 w-4 mr-2" />
-                投稿を予約する
-              </>
-            )}
-          </Button>
-        </div>
+        {posts.length > 0 && (
+          <div className="flex gap-4">
+            <Button 
+              onClick={scheduleAllPosts} 
+              disabled={isScheduling || posts.length === 0}
+              className="flex-1"
+              size="lg"
+            >
+              {isScheduling ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  予約中...
+                </>
+              ) : (
+                <>
+                  <Calendar className="h-4 w-4 mr-2" />
+                  投稿を予約する
+                </>
+              )}
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   );
