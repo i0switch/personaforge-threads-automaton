@@ -72,16 +72,15 @@ const ReviewPosts = () => {
 
   // 画像生成が必要な投稿を計算
   const postsNeedingImageGeneration = posts.filter(post => {
-    const hasUploaded = post.image_urls && post.image_urls.length > 0;
-    const hasGenerated = post.generated_images && post.generated_images.length > 0;
-    return !hasUploaded && !hasGenerated;
+    const hasImages = post.images && post.images.length > 0;
+    return !hasImages;
   });
 
-  // レビューが必要な投稿を計算（画像生成済みでまだレビューされていない投稿）
+  // レビューが必要な投稿を計算（画像があってまだレビューされていない投稿）
   const postsNeedingReview = posts.filter(post => {
-    const hasGenerated = post.generated_images && post.generated_images.length > 0;
+    const hasImages = post.images && post.images.length > 0;
     const isReviewed = reviewedPosts.includes(post.id);
-    return hasGenerated && !isReviewed;
+    return hasImages && !isReviewed;
   });
 
   // すべての画像がレビュー済みかどうか
@@ -94,11 +93,10 @@ const ReviewPosts = () => {
   console.log('All images reviewed:', allImagesReviewed);
 
   posts.forEach(post => {
-    const hasUploaded = post.image_urls && post.image_urls.length > 0;
-    const hasGenerated = post.generated_images && post.generated_images.length > 0;
+    const hasImages = post.images && post.images.length > 0;
     const isReviewed = reviewedPosts.includes(post.id);
-    const needsReview = hasGenerated && !isReviewed;
-    console.log(`Post ${post.id}: hasUploaded=${hasUploaded}, hasGenerated=${hasGenerated}, isReviewed=${isReviewed}, needsReview=${needsReview}`);
+    const needsReview = hasImages && !isReviewed;
+    console.log(`Post ${post.id}: hasImages=${hasImages}, isReviewed=${isReviewed}, needsReview=${needsReview}`);
   });
 
   const updatePost = (index: number, content: string) => {
@@ -144,7 +142,7 @@ const ReviewPosts = () => {
     try {
       console.log('ReviewPosts: Updating post images for post', postIndex, 'with images:', images.length);
       const updatedPosts = [...posts];
-      updatedPosts[postIndex] = { ...updatedPosts[postIndex], generated_images: images };
+      updatedPosts[postIndex] = { ...updatedPosts[postIndex], images: images };
       setPosts(updatedPosts);
       
       toast({
@@ -393,11 +391,11 @@ const ReviewPosts = () => {
                     <p className="whitespace-pre-wrap">{post.content}</p>
                   </div>
                   
-                  {post.generated_images && post.generated_images.length > 0 && (
+                  {post.images && post.images.length > 0 && (
                     <div className="space-y-2">
                       <div className="text-sm font-medium text-muted-foreground">生成された画像:</div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {post.generated_images.map((imageUrl, imageIndex) => (
+                        {post.images.map((imageUrl, imageIndex) => (
                           <div key={imageIndex} className="relative">
                             <img
                               src={imageUrl}
@@ -464,32 +462,15 @@ const ReviewPosts = () => {
                   />
                   
                   {/* 画像プレビュー */}
-                  {((post.image_urls && post.image_urls.length > 0) || (post.generated_images && post.generated_images.length > 0)) && (
+                  {post.images && post.images.length > 0 && (
                     <div className="space-y-2">
                       <div className="text-sm font-medium text-muted-foreground">添付画像:</div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {/* アップロード画像 */}
-                        {post.image_urls && post.image_urls.map((imageUrl, imageIndex) => (
-                          <div key={`upload-${imageIndex}`} className="relative">
+                        {post.images.map((imageUrl, imageIndex) => (
+                          <div key={`image-${imageIndex}`} className="relative">
                             <img
                               src={imageUrl}
-                              alt={`アップロード画像 ${imageIndex + 1}`}
-                              className="w-full max-w-md mx-auto rounded-lg border object-cover"
-                              style={{ maxHeight: '300px' }}
-                              onError={(e) => {
-                                console.error('ReviewPosts: Failed to load image:', imageUrl);
-                                const target = e.target as HTMLImageElement;
-                                target.style.display = 'none';
-                              }}
-                            />
-                          </div>
-                        ))}
-                        {/* 生成画像 */}
-                        {post.generated_images && post.generated_images.map((imageUrl, imageIndex) => (
-                          <div key={`generated-${imageIndex}`} className="relative">
-                            <img
-                              src={imageUrl}
-                              alt={`生成画像 ${imageIndex + 1}`}
+                              alt={`画像 ${imageIndex + 1}`}
                               className="w-full max-w-md mx-auto rounded-lg border object-cover"
                               style={{ maxHeight: '300px' }}
                               onError={(e) => {
