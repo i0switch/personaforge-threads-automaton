@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -84,12 +83,6 @@ export const PersonaReplyList = () => {
 
       if (error) throw error;
       
-      // デバッグ用のログを追加
-      console.log('Fetched replies:', data);
-      data?.forEach(reply => {
-        console.log(`Reply ${reply.id}: auto_reply_sent = ${reply.auto_reply_sent}`);
-      });
-      
       setReplies(data || []);
     } catch (error) {
       console.error('Error fetching replies:', error);
@@ -166,11 +159,6 @@ export const PersonaReplyList = () => {
                       </div>
                       
                       <p className="text-gray-900">{reply.reply_text}</p>
-                      
-                      {/* デバッグ情報を表示 */}
-                      <div className="text-xs text-gray-400 mt-2">
-                        Debug: auto_reply_sent = {String(reply.auto_reply_sent)}
-                      </div>
                     </div>
                   </CardContent>
                 </Card>
