@@ -76,7 +76,7 @@ const PersonaSetup = () => {
         avatar_url: formData.avatar_url || null,
         threads_app_id: formData.threads_app_id || null,
         webhook_verify_token: formData.webhook_verify_token || null,
-        reply_mode: formData.reply_mode,
+        reply_mode: formData.reply_mode || 'disabled',
         user_id: user.id
       };
 
