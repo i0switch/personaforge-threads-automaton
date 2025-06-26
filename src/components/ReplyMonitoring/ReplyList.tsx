@@ -3,14 +3,13 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 
 interface Reply {
   id: string;
   original_post_id: string;
-  reply_id: string;  // 追加：Threads APIで必要なreply_id
+  reply_id: string;
   reply_text: string;
   reply_author_username: string;
   reply_timestamp: string;
@@ -26,7 +25,6 @@ export const ReplyList = () => {
   const { toast } = useToast();
   const [replies, setReplies] = useState<Reply[]>([]);
   const [loading, setLoading] = useState(false);
-  const [sendingReply, setSendingReply] = useState<string | null>(null);
 
   useEffect(() => {
     if (user) {
@@ -64,64 +62,6 @@ export const ReplyList = () => {
     }
   };
 
-  const sendManualReply = async (reply: Reply) => {
-    try {
-      setSendingReply(reply.id);
-      
-      console.log('Sending manual reply with data:', {
-        postContent: '', 
-        replyContent: reply.reply_text,
-        replyId: reply.reply_id,
-        personaId: reply.persona_id,
-        userId: user!.id
-      });
-      
-      const { data, error } = await supabase.functions.invoke('threads-auto-reply', {
-        body: {
-          postContent: '', // 元投稿の内容
-          replyContent: reply.reply_text,
-          replyId: reply.reply_id,
-          personaId: reply.persona_id,
-          userId: user!.id
-        }
-      });
-
-      if (error) {
-        console.error('Error sending manual reply:', error);
-        throw error;
-      }
-
-      console.log('Manual reply response:', data);
-
-      // auto_reply_sentを更新
-      const { error: updateError } = await supabase
-        .from('thread_replies')
-        .update({ auto_reply_sent: true })
-        .eq('id', reply.id);
-
-      if (updateError) {
-        console.error('Error updating reply status:', updateError);
-        throw updateError;
-      }
-
-      await fetchReplies();
-      
-      toast({
-        title: '成功',
-        description: '手動返信を送信しました'
-      });
-    } catch (error) {
-      console.error('Error sending manual reply:', error);
-      toast({
-        title: 'エラー',
-        description: '返信の送信に失敗しました',
-        variant: 'destructive'
-      });
-    } finally {
-      setSendingReply(null);
-    }
-  };
-
   if (loading && replies.length === 0) {
     return <div>読み込み中...</div>;
   }
@@ -152,7 +92,7 @@ export const ReplyList = () => {
                         </div>
                         <div className="flex items-center space-x-2">
                           {reply.auto_reply_sent && (
-                            <Badge variant="secondary">返信済み</Badge>
+                            <Badge variant="secondary">自動返信済み</Badge>
                           )}
                           <span className="text-sm text-gray-500">
                             {new Date(reply.reply_timestamp).toLocaleString()}
@@ -161,18 +101,6 @@ export const ReplyList = () => {
                       </div>
                       
                       <p className="text-gray-900">{reply.reply_text}</p>
-                      
-                      {!reply.auto_reply_sent && reply.reply_id && (
-                        <div className="flex justify-end">
-                          <Button
-                            size="sm"
-                            onClick={() => sendManualReply(reply)}
-                            disabled={sendingReply === reply.id}
-                          >
-                            {sendingReply === reply.id ? '送信中...' : '手動返信'}
-                          </Button>
-                        </div>
-                      )}
                     </div>
                   </CardContent>
                 </Card>
