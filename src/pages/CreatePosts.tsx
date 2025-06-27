@@ -161,7 +161,7 @@ const CreatePosts = () => {
       console.log('Starting post generation with:', {
         personaId: selectedPersona,
         topics: topics.split('\n').filter(t => t.trim()),
-        selectedDates: selectedDates.map(d => d.toISOString()),
+        selectedDates: selectedDates.map(d => format(d, 'yyyy-MM-dd')), // 日付のみを送信
         selectedTimes,
         customPrompt
       });
@@ -170,7 +170,7 @@ const CreatePosts = () => {
         body: {
           personaId: selectedPersona,
           topics: topics.split('\n').filter(t => t.trim()),
-          selectedDates: selectedDates.map(d => d.toISOString()),
+          selectedDates: selectedDates.map(d => format(d, 'yyyy-MM-dd')), // 日付のみを送信
           selectedTimes,
           customPrompt
         }
@@ -826,7 +826,12 @@ const CreatePosts = () => {
                   <CardHeader>
                     <div className="flex items-center justify-between">
                       <CardTitle className="text-lg">
-                        {post.scheduled_for ? format(new Date(post.scheduled_for), 'M月d日 HH:mm', { locale: ja }) : `投稿 ${index + 1}`}
+                        {post.scheduled_for ? (() => {
+                          // scheduled_forをローカル時間として解釈して表示
+                          const scheduledDate = new Date(post.scheduled_for + 'Z'); // UTCとして解釈
+                          const localDate = new Date(scheduledDate.getTime() + (9 * 60 * 60 * 1000)); // JST（+9時間）に変換
+                          return format(localDate, 'M月d日 HH:mm', { locale: ja });
+                        })() : `投稿 ${index + 1}`}
                       </CardTitle>
                       <Button
                         size="sm"
@@ -1134,7 +1139,11 @@ const CreatePosts = () => {
                         <Card key={post.id}>
                           <CardHeader>
                             <CardTitle className="text-lg">
-                              投稿予定: {post.scheduled_for ? format(new Date(post.scheduled_for), 'M月d日 HH:mm', { locale: ja }) : `投稿 ${actualIndex + 1}`}
+                              投稿予定: {post.scheduled_for ? (() => {
+                                const scheduledDate = new Date(post.scheduled_for + 'Z');
+                                const localDate = new Date(scheduledDate.getTime() + (9 * 60 * 60 * 1000));
+                                return format(localDate, 'M月d日 HH:mm', { locale: ja });
+                              })() : `投稿 ${actualIndex + 1}`}
                             </CardTitle>
                           </CardHeader>
                           <CardContent className="space-y-4">
@@ -1193,7 +1202,11 @@ const CreatePosts = () => {
                         <Card key={postId}>
                           <CardHeader>
                             <CardTitle className="text-lg">
-                              投稿予定: {post.scheduled_for ? format(new Date(post.scheduled_for), 'M月d日 HH:mm', { locale: ja }) : `投稿 ${actualIndex + 1}`}
+                              投稿予定: {post.scheduled_for ? (() => {
+                                const scheduledDate = new Date(post.scheduled_for + 'Z');
+                                const localDate = new Date(scheduledDate.getTime() + (9 * 60 * 60 * 1000));
+                                return format(localDate, 'M月d日 HH:mm', { locale: ja });
+                              })() : `投稿 ${actualIndex + 1}`}
                             </CardTitle>
                           </CardHeader>
                           <CardContent className="space-y-4">
@@ -1269,7 +1282,11 @@ const CreatePosts = () => {
                         <Card key={postId}>
                           <CardHeader>
                             <CardTitle className="text-lg">
-                              投稿予定: {post.scheduled_for ? format(new Date(post.scheduled_for), 'M月d日 HH:mm', { locale: ja }) : `投稿 ${actualIndex + 1}`}
+                              投稿予定: {post.scheduled_for ? (() => {
+                                const scheduledDate = new Date(post.scheduled_for + 'Z');
+                                const localDate = new Date(scheduledDate.getTime() + (9 * 60 * 60 * 1000));
+                                return format(localDate, 'M月d日 HH:mm', { locale: ja });
+                              })() : `投稿 ${actualIndex + 1}`}
                             </CardTitle>
                           </CardHeader>
                           <CardContent className="space-y-4">

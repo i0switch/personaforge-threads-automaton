@@ -268,13 +268,15 @@ function generateTimeSlots(selectedDates: string[], selectedTimes: string[]): st
   const slots = [];
   
   for (const dateStr of selectedDates) {
-    const date = new Date(dateStr);
+    // 日付文字列をそのままDate型に変換（ローカル時間として解釈）
+    const date = new Date(`${dateStr}T00:00:00`);
     
     for (const timeStr of selectedTimes) {
       const [hour, minute] = timeStr.split(':').map(Number);
       const scheduledDate = new Date(date);
       scheduledDate.setHours(hour, minute, 0, 0);
       
+      // ローカル時間をUTCに変換せずそのまま使用
       slots.push(scheduledDate.toISOString());
     }
   }
