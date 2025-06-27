@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -131,7 +132,8 @@ const ReviewPosts = () => {
         description: `${posts.length}件の投稿を予約しました。`,
       });
 
-      navigate("/scheduled-posts");
+      // ダッシュボードに移動
+      navigate("/");
     } catch (error) {
       console.error('Error scheduling posts:', error);
       toast({
