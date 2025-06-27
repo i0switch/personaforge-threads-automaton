@@ -1,6 +1,6 @@
 
 import { Badge } from "@/components/ui/badge";
-import { isPast, format } from "date-fns";
+import { format } from "date-fns";
 import { ja } from "date-fns/locale";
 import type { Database } from "@/integrations/supabase/types";
 
@@ -27,19 +27,24 @@ export const PostStatusBadge = ({ post }: PostStatusBadgeProps) => {
   
   if (post.status === 'scheduled') {
     if (post.scheduled_for) {
-      const scheduledDate = new Date(post.scheduled_for);
+      // UTCから日本時間に変換
+      const utcDate = new Date(post.scheduled_for);
+      const jstDate = new Date(utcDate.getTime() + (9 * 60 * 60 * 1000));
       const now = new Date();
+      
+      // 現在時刻も日本時間に変換
+      const nowJst = new Date(now.getTime() + (9 * 60 * 60 * 1000));
       
       // 5分の猶予を設けて期限切れ判定
       const gracePeriod = 5 * 60 * 1000; // 5分をミリ秒で
-      const isOverdue = (now.getTime() - scheduledDate.getTime()) > gracePeriod;
+      const isOverdue = (nowJst.getTime() - jstDate.getTime()) > gracePeriod;
       
       if (isOverdue) {
         return (
           <div className="flex flex-col items-start gap-1">
             <Badge variant="destructive">期限切れ</Badge>
             <span className="text-xs text-muted-foreground">
-              予定: {format(scheduledDate, 'MM/dd HH:mm', { locale: ja })}
+              予定: {format(jstDate, 'MM/dd HH:mm', { locale: ja })}
             </span>
           </div>
         );
@@ -49,7 +54,7 @@ export const PostStatusBadge = ({ post }: PostStatusBadgeProps) => {
         <div className="flex flex-col items-start gap-1">
           <Badge variant="secondary">予約済み</Badge>
           <span className="text-xs text-muted-foreground">
-            {format(scheduledDate, 'MM/dd HH:mm', { locale: ja })}
+            {format(jstDate, 'MM/dd HH:mm', { locale: ja })}
           </span>
         </div>
       );
