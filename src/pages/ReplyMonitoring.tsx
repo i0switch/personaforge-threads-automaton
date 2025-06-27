@@ -22,7 +22,7 @@ const ReplyMonitoring = () => {
           className="mr-4"
         >
           <ArrowLeft className="h-4 w-4 mr-2" />
-          ホームに戻る
+          戻る
         </Button>
         <h1 className="text-3xl font-bold">リプライ監視</h1>
       </div>
