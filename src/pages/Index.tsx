@@ -220,8 +220,6 @@ const Index = () => {
                       className={`w-full h-12 border-2 font-semibold transition-all duration-300 flex items-center justify-center gap-2 ${
                         feature.disabled 
                           ? 'border-gray-300 text-gray-400 bg-white' 
-                          : feature.title === "ペルソナ設定"
-                          ? `border-transparent bg-gradient-to-r ${feature.color} text-white hover:shadow-md hover:scale-105`
                           : `border-transparent bg-gradient-to-r ${feature.color} text-white hover:shadow-md hover:scale-105`
                       }`}
                       disabled={feature.disabled}
@@ -234,17 +232,19 @@ const Index = () => {
                         <>
                           アクセス不可
                         </>
-                      ) : feature.title === "ペルソナ設定" ? (
-                        <>
-                          <Edit className="h-4 w-4" />
-                          設定・編集
-                          <Sparkles className="h-4 w-4" />
-                        </>
                       ) : (
-                        <>
-                          開始する
-                          <Rocket className="h-4 w-4" />
-                        </>
+                        feature.title === "ペルソナ設定" ? (
+                          <>
+                            <Edit className="h-4 w-4" />
+                            設定・編集
+                            <Sparkles className="h-4 w-4" />
+                          </>
+                        ) : (
+                          <>
+                            開始する
+                            <Rocket className="h-4 w-4" />
+                          </>
+                        )
                       )}
                     </Button>
                   </CardContent>
