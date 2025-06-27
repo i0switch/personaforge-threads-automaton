@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -431,7 +430,7 @@ const CreatePosts = () => {
       }
 
       // Get the generated prompt for this specific post
-      const postPrompt = imagePrompts[post.id] || "selfie photo, smiling woman, casual outfit, natural lighting";
+      const postPrompt = imagePrompts[post.id] || "selfie photo, smiling woman, casual outfit, natural lighting, morning time, cozy atmosphere";
       console.log('Using image prompt for this post:', postPrompt);
 
       const requestBody = {
@@ -614,7 +613,7 @@ const CreatePosts = () => {
   console.log('Posts for image generation:', postsForImageGeneration.length);
   console.log('All images reviewed:', allImagesReviewed);
 
-  // Helper function to safely format date
+  // Helper function to safely format date - Updated to handle timezone correctly
   const formatScheduledDate = (scheduledFor: string | null): string => {
     if (!scheduledFor) return '投稿時刻未設定';
     
@@ -624,7 +623,10 @@ const CreatePosts = () => {
         console.error('Invalid date:', scheduledFor);
         return '投稿時刻エラー';
       }
-      return format(date, 'M月d日 HH:mm', { locale: ja });
+      
+      // Convert UTC to JST by adding 9 hours
+      const jstDate = new Date(date.getTime() + (9 * 60 * 60 * 1000));
+      return format(jstDate, 'M月d日 HH:mm', { locale: ja });
     } catch (error) {
       console.error('Error formatting date:', error, scheduledFor);
       return '投稿時刻エラー';
@@ -844,7 +846,7 @@ const CreatePosts = () => {
                   <CardHeader>
                     <div className="flex items-center justify-between">
                       <CardTitle className="text-lg">
-                        {formatScheduledDate(post.scheduled_for)}
+                        投稿予定: {formatScheduledDate(post.scheduled_for)}
                       </CardTitle>
                       <Button
                         size="sm"
