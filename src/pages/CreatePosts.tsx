@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,7 +15,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { format } from "date-fns";
+import { format, isValid } from "date-fns";
 import { ja } from "date-fns/locale";
 import type { Database } from "@/integrations/supabase/types";
 
@@ -161,7 +162,7 @@ const CreatePosts = () => {
       console.log('Starting post generation with:', {
         personaId: selectedPersona,
         topics: topics.split('\n').filter(t => t.trim()),
-        selectedDates: selectedDates.map(d => format(d, 'yyyy-MM-dd')), // 日付のみを送信
+        selectedDates: selectedDates.map(d => format(d, 'yyyy-MM-dd')),
         selectedTimes,
         customPrompt
       });
@@ -170,7 +171,7 @@ const CreatePosts = () => {
         body: {
           personaId: selectedPersona,
           topics: topics.split('\n').filter(t => t.trim()),
-          selectedDates: selectedDates.map(d => format(d, 'yyyy-MM-dd')), // 日付のみを送信
+          selectedDates: selectedDates.map(d => format(d, 'yyyy-MM-dd')),
           selectedTimes,
           customPrompt
         }
@@ -613,6 +614,23 @@ const CreatePosts = () => {
   console.log('Posts for image generation:', postsForImageGeneration.length);
   console.log('All images reviewed:', allImagesReviewed);
 
+  // Helper function to safely format date
+  const formatScheduledDate = (scheduledFor: string | null): string => {
+    if (!scheduledFor) return '投稿時刻未設定';
+    
+    try {
+      const date = new Date(scheduledFor);
+      if (!isValid(date)) {
+        console.error('Invalid date:', scheduledFor);
+        return '投稿時刻エラー';
+      }
+      return format(date, 'M月d日 HH:mm', { locale: ja });
+    } catch (error) {
+      console.error('Error formatting date:', error, scheduledFor);
+      return '投稿時刻エラー';
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-4xl mx-auto space-y-6">
@@ -826,12 +844,7 @@ const CreatePosts = () => {
                   <CardHeader>
                     <div className="flex items-center justify-between">
                       <CardTitle className="text-lg">
-                        {post.scheduled_for ? (() => {
-                          // scheduled_forをローカル時間として解釈して表示
-                          const scheduledDate = new Date(post.scheduled_for + 'Z'); // UTCとして解釈
-                          const localDate = new Date(scheduledDate.getTime() + (9 * 60 * 60 * 1000)); // JST（+9時間）に変換
-                          return format(localDate, 'M月d日 HH:mm', { locale: ja });
-                        })() : `投稿 ${index + 1}`}
+                        {formatScheduledDate(post.scheduled_for)}
                       </CardTitle>
                       <Button
                         size="sm"
@@ -1139,11 +1152,7 @@ const CreatePosts = () => {
                         <Card key={post.id}>
                           <CardHeader>
                             <CardTitle className="text-lg">
-                              投稿予定: {post.scheduled_for ? (() => {
-                                const scheduledDate = new Date(post.scheduled_for + 'Z');
-                                const localDate = new Date(scheduledDate.getTime() + (9 * 60 * 60 * 1000));
-                                return format(localDate, 'M月d日 HH:mm', { locale: ja });
-                              })() : `投稿 ${actualIndex + 1}`}
+                              投稿予定: {formatScheduledDate(post.scheduled_for)}
                             </CardTitle>
                           </CardHeader>
                           <CardContent className="space-y-4">
@@ -1202,11 +1211,7 @@ const CreatePosts = () => {
                         <Card key={postId}>
                           <CardHeader>
                             <CardTitle className="text-lg">
-                              投稿予定: {post.scheduled_for ? (() => {
-                                const scheduledDate = new Date(post.scheduled_for + 'Z');
-                                const localDate = new Date(scheduledDate.getTime() + (9 * 60 * 60 * 1000));
-                                return format(localDate, 'M月d日 HH:mm', { locale: ja });
-                              })() : `投稿 ${actualIndex + 1}`}
+                              投稿予定: {formatScheduledDate(post.scheduled_for)}
                             </CardTitle>
                           </CardHeader>
                           <CardContent className="space-y-4">
@@ -1282,11 +1287,7 @@ const CreatePosts = () => {
                         <Card key={postId}>
                           <CardHeader>
                             <CardTitle className="text-lg">
-                              投稿予定: {post.scheduled_for ? (() => {
-                                const scheduledDate = new Date(post.scheduled_for + 'Z');
-                                const localDate = new Date(scheduledDate.getTime() + (9 * 60 * 60 * 1000));
-                                return format(localDate, 'M月d日 HH:mm', { locale: ja });
-                              })() : `投稿 ${actualIndex + 1}`}
+                              投稿予定: {formatScheduledDate(post.scheduled_for)}
                             </CardTitle>
                           </CardHeader>
                           <CardContent className="space-y-4">
