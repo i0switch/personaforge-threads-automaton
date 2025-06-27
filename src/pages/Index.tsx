@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -230,22 +229,24 @@ const Index = () => {
                       }}
                     >
                       {feature.disabled ? (
-                        <>
-                          <span>アクセス不可</span>
-                        </>
+                        <span className="flex items-center gap-2">
+                          アクセス不可
+                        </span>
                       ) : (
-                        feature.title === "ペルソナ設定" ? (
-                          <span className="flex items-center gap-2">
-                            <Edit className="h-4 w-4" />
-                            設定・編集
-                            <Sparkles className="h-4 w-4" />
-                          </span>
-                        ) : (
-                          <span className="flex items-center gap-2">
-                            開始する
-                            <Rocket className="h-4 w-4" />
-                          </span>
-                        )
+                        <span className="flex items-center gap-2">
+                          {feature.title === "ペルソナ設定" ? (
+                            <>
+                              <Edit className="h-4 w-4" />
+                              設定・編集
+                              <Sparkles className="h-4 w-4" />
+                            </>
+                          ) : (
+                            <>
+                              開始する
+                              <Rocket className="h-4 w-4" />
+                            </>
+                          )}
+                        </span>
                       )}
                     </Button>
                   </CardContent>
