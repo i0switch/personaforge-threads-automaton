@@ -1,3 +1,4 @@
+
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
@@ -129,7 +130,7 @@ serve(async (req) => {
 
     console.log(`Using persona: ${persona.name}`);
 
-    // Generate time slots from selected dates and times (ローカル時間で処理)
+    // Generate time slots from selected dates and times
     const timeSlots = generateTimeSlots(selectedDates, selectedTimes);
 
     const posts = [];
@@ -235,7 +236,7 @@ serve(async (req) => {
 
     console.log(`Successfully generated ${posts.length} posts`);
 
-    return new Response(
+        return new Response(
       JSON.stringify({ 
         posts,
         success: true,
@@ -267,17 +268,12 @@ function generateTimeSlots(selectedDates: string[], selectedTimes: string[]): st
   const slots = [];
   
   for (const dateStr of selectedDates) {
-    // ローカル日付として処理（タイムゾーンのずれを防ぐ）
-    const dateParts = dateStr.split('-');
-    const year = parseInt(dateParts[0]);
-    const month = parseInt(dateParts[1]) - 1; // Monthは0ベース
-    const day = parseInt(dateParts[2]);
+    const date = new Date(dateStr);
     
     for (const timeStr of selectedTimes) {
       const [hour, minute] = timeStr.split(':').map(Number);
-      
-      // ローカル時間で日付を作成
-      const scheduledDate = new Date(year, month, day, hour, minute, 0, 0);
+      const scheduledDate = new Date(date);
+      scheduledDate.setHours(hour, minute, 0, 0);
       
       slots.push(scheduledDate.toISOString());
     }

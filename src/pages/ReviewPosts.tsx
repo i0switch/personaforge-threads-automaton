@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -34,12 +33,10 @@ const ReviewPosts = () => {
 
   useEffect(() => {
     const state = location.state as ReviewPostsState;
-    if (state && state.posts && state.persona) {
-      console.log('ReviewPosts state:', state);
+    if (state) {
       setPosts(state.posts);
       setPersona(state.persona);
     } else {
-      console.log('No state found, redirecting to create-posts');
       navigate("/create-posts");
     }
   }, [location.state, navigate]);
@@ -78,16 +75,14 @@ const ReviewPosts = () => {
       }
 
       // Log activity
-      if (user) {
-        await supabase
-          .from('activity_logs')
-          .insert({
-            user_id: user.id,
-            persona_id: persona.id,
-            action_type: 'posts_scheduled',
-            description: `${posts.length}件の投稿を予約しました`
-          });
-      }
+      await supabase
+        .from('activity_logs')
+        .insert({
+          user_id: user!.id,
+          persona_id: persona.id,
+          action_type: 'posts_scheduled',
+          description: `${posts.length}件の投稿を予約しました`
+        });
 
       toast({
         title: "成功",
@@ -212,7 +207,7 @@ const ReviewPosts = () => {
           ))}
         </div>
 
-        {/* アクションボタン */}
+        {/* アクションボタン - 画像生成ボタンを削除 */}
         <div className="flex gap-4">
           <Button 
             onClick={scheduleAllPosts} 

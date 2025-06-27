@@ -1,301 +1,522 @@
 
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { 
-  User, 
+  Users, 
+  MessageSquare, 
   Calendar, 
-  MessageCircle, 
-  BarChart3, 
   Settings, 
-  Plus,
-  Eye,
-  Timer,
-  UserCheck
+  Bot, 
+  BarChart3,
+  Shield,
+  Edit,
+  ExternalLink,
+  CheckCircle,
+  Crown,
+  Heart,
+  Zap,
+  TrendingUp,
+  Sparkles,
+  Star,
+  Rocket,
+  Brain
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { useState, useEffect } from "react";
+import { useAccountStatus } from "@/hooks/useAccountStatus";
+import { AccountStatusBanner } from "@/components/AccountStatusBanner";
 import { supabase } from "@/integrations/supabase/client";
-import { useToast } from "@/hooks/use-toast";
-import type { Database } from "@/integrations/supabase/types";
-
-type Persona = Database['public']['Tables']['personas']['Row'];
-type Post = Database['public']['Tables']['posts']['Row'];
 
 const Index = () => {
   const navigate = useNavigate();
-  const { user, signOut } = useAuth();
-  const { toast } = useToast();
-  
-  const [personas, setPersonas] = useState<Persona[]>([]);
-  const [stats, setStats] = useState({
-    totalPosts: 0,
-    scheduledPosts: 0,
-    publishedPosts: 0
-  });
-  const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
+  const { isApproved, isActive } = useAccountStatus();
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
-    if (user) {
-      loadDashboardData();
-    }
+    checkAdminStatus();
   }, [user]);
 
-  const loadDashboardData = async () => {
+  const checkAdminStatus = async () => {
     if (!user) return;
     
     try {
-      // Load personas
-      const { data: personasData, error: personasError } = await supabase
-        .from('personas')
-        .select('*')
-        .eq('user_id', user.id);
-
-      if (personasError) throw personasError;
-      setPersonas(personasData || []);
-
-      // Load posts stats
-      const { data: postsData, error: postsError } = await supabase
-        .from('posts')
-        .select('status')
-        .eq('user_id', user.id);
-
-      if (postsError) throw postsError;
-
-      const totalPosts = postsData?.length || 0;
-      const scheduledPosts = postsData?.filter(p => p.status === 'scheduled').length || 0;
-      const publishedPosts = postsData?.filter(p => p.status === 'published').length || 0;
-
-      setStats({
-        totalPosts,
-        scheduledPosts,
-        publishedPosts
-      });
-
+      const { data } = await supabase.rpc('is_admin', { _user_id: user.id });
+      setIsAdmin(data || false);
     } catch (error) {
-      console.error('Error loading dashboard data:', error);
-      toast({
-        title: "エラー",
-        description: "ダッシュボードデータの読み込みに失敗しました。",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
+      console.error('Error checking admin status:', error);
     }
   };
 
-  const handleSignOut = async () => {
-    try {
-      await signOut();
-      navigate("/auth");
-    } catch (error) {
-      console.error('Error signing out:', error);
-      toast({
-        title: "エラー",
-        description: "ログアウトに失敗しました。",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const menuItems = [
+  const features = [
     {
       title: "ペルソナ設定",
-      description: "AIキャラクターの作成・管理",
-      icon: User,
-      action: () => navigate("/persona-setup"),
-      buttonText: personas.length > 0 ? "設定・編集" : "開始する",
-      stats: `${personas.length}個のペルソナ`
+      description: "AIアシスタントの性格や専門分野を設定・編集",
+      icon: Users,
+      path: "/persona-setup",
+      color: "from-slate-600 to-slate-700",
+      bgGradient: "from-slate-50 to-gray-50",
+      borderColor: "border-slate-200",
+      disabled: !isApproved || !isActive
     },
     {
-      title: "新規投稿作成",
-      description: "AIが自動で投稿を生成",
-      icon: Plus,
-      action: () => navigate("/create-posts"),
-      buttonText: "開始する",
-      stats: "ワンクリックで投稿生成"
+      title: "投稿作成",
+      description: "AIを使って魅力的な投稿を生成",
+      icon: MessageSquare,
+      path: "/create-posts",
+      color: "from-emerald-600 to-teal-700",
+      bgGradient: "from-emerald-50 to-teal-50",
+      borderColor: "border-emerald-200",
+      disabled: !isApproved || !isActive
     },
     {
-      title: "予約投稿管理",
-      description: "スケジュール確認・編集・公開",
+      title: "スケジュール管理",
+      description: "投稿の予約と自動投稿設定",
       icon: Calendar,
-      action: () => navigate("/scheduled-posts"),
-      buttonText: "開始する",
-      stats: `${stats.scheduledPosts}件の予約投稿`
+      path: "/scheduled-posts",
+      color: "from-indigo-600 to-purple-700",
+      bgGradient: "from-indigo-50 to-purple-50",
+      borderColor: "border-indigo-200",
+      disabled: !isApproved || !isActive
     },
     {
-      title: "リプライ監視",
-      description: "自動返信とコメント管理",
-      icon: MessageCircle,
-      action: () => navigate("/reply-monitoring"),
-      buttonText: "開始する",
-      stats: "リアルタイム監視"
+      title: "自動返信",
+      description: "コメントへの自動返信機能",
+      icon: Bot,
+      path: "/auto-reply",
+      color: "from-amber-600 to-orange-700",
+      bgGradient: "from-amber-50 to-orange-50",
+      borderColor: "border-amber-200",
+      disabled: !isApproved || !isActive
     },
     {
-      title: "スケジューリング",
-      description: "自動投稿スケジュール管理",
-      icon: Timer,
-      action: () => navigate("/scheduling-dashboard"),
-      buttonText: "開始する",
-      stats: "自動スケジュール"
+      title: "返信監視",
+      description: "返信の監視とレポート機能",
+      icon: BarChart3,
+      path: "/reply-monitoring",
+      color: "from-rose-600 to-pink-700",
+      bgGradient: "from-rose-50 to-pink-50",
+      borderColor: "border-rose-200",
+      disabled: !isApproved || !isActive
     },
     {
-      title: "画像生成",
-      description: "AI画像生成とカスタマイズ",
-      icon: Eye,
-      action: () => navigate("/image-generation"),
-      buttonText: "開始する",
-      stats: "高品質AI画像"
+      title: "設定",
+      description: "アカウント設定とAPIキー管理",
+      icon: Settings,
+      path: "/settings",
+      color: "from-gray-600 to-slate-700",
+      bgGradient: "from-gray-50 to-slate-50",
+      borderColor: "border-gray-200",
+      disabled: false
     }
   ];
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-background p-6">
-        <div className="max-w-6xl mx-auto">
-          <div className="animate-pulse">
-            <div className="h-8 bg-muted rounded w-1/4 mb-4"></div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {[...Array(6)].map((_, i) => (
-                <div key={i} className="h-48 bg-muted rounded"></div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen bg-background p-6">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-slate-50 to-stone-50 p-6">
       <div className="max-w-6xl mx-auto space-y-8">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-4xl font-bold">AI Threads</h1>
-            <p className="text-muted-foreground mt-2">
-              AIを活用したソーシャルメディア管理プラットフォーム
+        {/* Hero Section with Enhanced Design */}
+        <div className="text-center space-y-6 relative">
+          <div className="absolute inset-0 bg-gradient-to-r from-slate-600/5 via-indigo-600/5 to-gray-600/5 rounded-3xl blur-3xl"></div>
+          <div className="relative bg-white/90 backdrop-blur-sm rounded-3xl p-8 shadow-xl border border-slate-200/50">
+            <div className="flex items-center justify-center gap-3 mb-4">
+              <div className="p-3 bg-gradient-to-r from-slate-700 to-gray-800 rounded-2xl shadow-lg">
+                <Brain className="h-8 w-8 text-white" />
+              </div>
+              <h1 className="text-5xl font-bold bg-gradient-to-r from-slate-700 via-gray-800 to-slate-900 bg-clip-text text-transparent">
+                Threads-Genius AI
+              </h1>
+              <div className="flex items-center gap-1">
+                <Star className="h-5 w-5 text-amber-500 fill-amber-500" />
+                <Star className="h-5 w-5 text-amber-500 fill-amber-500" />
+                <Star className="h-5 w-5 text-amber-500 fill-amber-500" />
+              </div>
+            </div>
+            <p className="text-xl text-gray-700 max-w-3xl mx-auto leading-relaxed">
+              <span className="font-semibold text-slate-700">Gemini搭載</span>次世代AI自動運用プラットフォーム
+              <br />
+              <span className="text-lg">🚀 革新的なThreads運用体験を提供</span>
             </p>
           </div>
-          <div className="flex items-center gap-4">
-            <Button 
-              variant="outline" 
-              onClick={() => navigate("/settings")}
-            >
-              <Settings className="h-4 w-4 mr-2" />
-              設定
-            </Button>
-            <Button variant="outline" onClick={handleSignOut}>
-              ログアウト
-            </Button>
-          </div>
         </div>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">総投稿数</CardTitle>
-              <BarChart3 className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.totalPosts}</div>
-              <p className="text-xs text-muted-foreground">全ての投稿</p>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">予約投稿</CardTitle>
-              <Calendar className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.scheduledPosts}</div>
-              <p className="text-xs text-muted-foreground">スケジュール済み</p>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">公開投稿</CardTitle>
-              <UserCheck className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.publishedPosts}</div>
-              <p className="text-xs text-muted-foreground">公開済み</p>
-            </CardContent>
-          </Card>
-        </div>
+        <AccountStatusBanner />
 
-        {/* Menu Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {menuItems.map((item, index) => (
-            <Card key={index} className="hover:shadow-lg transition-shadow duration-200">
+        {/* Enhanced Admin Section */}
+        {isAdmin && (
+          <Card className="border-0 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 shadow-2xl">
+            <div className="bg-white/95 backdrop-blur-sm m-1 rounded-lg">
               <CardHeader>
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-primary/10 rounded-lg">
-                    <item.icon className="h-6 w-6 text-primary" />
+                <CardTitle className="flex items-center gap-3 text-gray-800">
+                  <div className="p-2 bg-gradient-to-r from-amber-600 to-orange-600 rounded-lg">
+                    <Shield className="h-6 w-6 text-white" />
                   </div>
-                  <div className="flex-1">
-                    <CardTitle className="text-lg">{item.title}</CardTitle>
-                  </div>
-                </div>
-                <CardDescription className="mt-2">
-                  {item.description}
+                  管理者機能
+                  <Badge className="bg-gradient-to-r from-amber-600 to-orange-600 text-white">
+                    ADMIN
+                  </Badge>
+                </CardTitle>
+                <CardDescription className="text-gray-600 text-lg">
+                  ユーザーアカウントの管理とシステム設定
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">
-                    {item.stats}
-                  </span>
-                  <Button 
-                    onClick={item.action}
-                    className="h-8"
-                  >
-                    {item.buttonText}
-                  </Button>
-                </div>
+                <Button 
+                  onClick={() => navigate("/admin")}
+                  className="bg-gradient-to-r from-amber-700 to-orange-700 hover:from-amber-800 hover:to-orange-800 text-white shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
+                  size="lg"
+                >
+                  <Shield className="h-5 w-5 mr-2" />
+                  管理者ダッシュボード
+                  <Rocket className="h-4 w-4 ml-2" />
+                </Button>
               </CardContent>
-            </Card>
-          ))}
+            </div>
+          </Card>
+        )}
+
+        {/* Enhanced Feature Cards */}
+        <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
+          {features.map((feature) => {
+            const Icon = feature.icon;
+            return (
+              <Card 
+                key={feature.title} 
+                className={`group relative overflow-hidden border-0 bg-gradient-to-br ${feature.bgGradient} shadow-lg hover:shadow-xl transition-all duration-500 transform hover:scale-105 ${
+                  feature.disabled ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'
+                }`}
+                onClick={() => !feature.disabled && navigate(feature.path)}
+              >
+                {/* Subtle Border */}
+                <div className={`absolute inset-0 bg-gradient-to-r ${feature.color} p-0.5 rounded-xl opacity-20`}>
+                  <div className="bg-white rounded-lg h-full w-full"></div>
+                </div>
+                
+                {/* Content */}
+                <div className="relative z-10 h-full">
+                  <CardHeader className="pb-4">
+                    <CardTitle className="flex items-center gap-4 text-xl">
+                      <div className={`p-3 bg-gradient-to-r ${feature.color} rounded-xl shadow-md group-hover:scale-110 transition-transform duration-300`}>
+                        <Icon className="h-7 w-7 text-white" />
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-gray-800 font-bold">{feature.title}</span>
+                          {feature.disabled && (
+                            <Badge variant="secondary" className="text-xs bg-gray-200">
+                              無効
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                    </CardTitle>
+                    <CardDescription className="text-gray-600 text-base leading-relaxed ml-16">
+                      {feature.description}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="pt-0">
+                    <Button 
+                      variant="outline" 
+                      className={`w-full h-12 border-2 font-semibold transition-all duration-300 ${
+                        feature.disabled 
+                          ? 'border-gray-300 text-gray-400' 
+                          : `border-transparent bg-gradient-to-r ${feature.color} text-white hover:shadow-md hover:scale-105`
+                      }`}
+                      disabled={feature.disabled}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (!feature.disabled) navigate(feature.path);
+                      }}
+                    >
+                      {feature.disabled ? (
+                        <>
+                          <span>アクセス不可</span>
+                        </>
+                      ) : (
+                        feature.title === "ペルソナ設定" ? (
+                          <span className="flex items-center gap-2">
+                            <Edit className="h-4 w-4" />
+                            設定・編集
+                            <Sparkles className="h-4 w-4" />
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-2">
+                            開始する
+                            <Rocket className="h-4 w-4" />
+                          </span>
+                        )
+                      )}
+                    </Button>
+                  </CardContent>
+                </div>
+
+                {/* Subtle Hover Effect */}
+                <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/5 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000"></div>
+              </Card>
+            );
+          })}
         </div>
 
-        {/* Active Personas */}
-        {personas.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle>アクティブなペルソナ</CardTitle>
-              <CardDescription>現在設定されているAIキャラクター</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-wrap gap-4">
-                {personas.slice(0, 6).map((persona) => (
-                  <div key={persona.id} className="flex items-center gap-3 p-3 bg-muted rounded-lg">
-                    <Avatar className="h-10 w-10">
-                      <AvatarImage src={persona.avatar_url || ""} />
-                      <AvatarFallback>{persona.name[0]}</AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <p className="font-medium">{persona.name}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {persona.is_active ? "アクティブ" : "非アクティブ"}
+        {/* Enhanced Advertisement Section */}
+        <div className="space-y-8">
+          <div className="text-center relative">
+            <div className="absolute inset-0 bg-gradient-to-r from-emerald-400/10 via-slate-400/10 to-indigo-400/10 rounded-2xl blur-2xl"></div>
+            <div className="relative bg-white/90 backdrop-blur-sm rounded-2xl p-6 shadow-lg">
+              <h2 className="text-3xl font-bold bg-gradient-to-r from-emerald-700 via-slate-800 to-indigo-700 bg-clip-text text-transparent mb-3">
+                💰 収益化加速ツール 💰
+              </h2>
+              <p className="text-gray-700 text-lg">
+                AIを使った最新の収益化手法をご紹介
+              </p>
+            </div>
+          </div>
+
+          <div className="grid gap-8 md:grid-cols-1 lg:grid-cols-2">
+            {/* 恋愛ジャンル広告 */}
+            <Card className="group relative overflow-hidden border-0 bg-gradient-to-br from-rose-50 via-pink-50 to-rose-100 shadow-lg hover:shadow-xl transition-all duration-500 transform hover:scale-102">
+              <div className="absolute inset-0 bg-gradient-to-r from-rose-500 to-pink-600 p-0.5 rounded-xl opacity-20">
+                <div className="bg-white rounded-lg h-full w-full"></div>
+              </div>
+              <div className="relative z-10">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-3 text-rose-800">
+                    <div className="p-2 bg-gradient-to-r from-rose-600 to-pink-600 rounded-lg">
+                      <Heart className="h-6 w-6 text-white" />
+                    </div>
+                    恋愛ジャンル攻略法
+                    <div className="flex items-center gap-1">
+                      <Star className="h-4 w-4 text-rose-500 fill-rose-500" />
+                      <Star className="h-4 w-4 text-rose-500 fill-rose-500" />
+                      <Star className="h-4 w-4 text-rose-500 fill-rose-500" />
+                    </div>
+                  </CardTitle>
+                  <CardDescription className="text-rose-700 font-semibold text-lg">
+                    「恋愛ジャンルはもう飽和」と思ってません？
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="bg-white/90 backdrop-blur-sm rounded-xl p-6 border border-rose-200 shadow-sm">
+                    <p className="text-gray-800 font-bold text-lg mb-3">
+                      まだまだ稼ぎ放題なんです。
+                    </p>
+                    <p className="text-gray-700 mb-4 leading-relaxed">
+                      しかも、AIが勝手にネタ・コピーを全部作成。<br/>
+                      あなたは投稿ボタンを押すだけ。
+                    </p>
+                    <div className="flex items-center gap-3 text-rose-700 bg-rose-50 rounded-lg p-3">
+                      <Sparkles className="h-5 w-5" />
+                      <span className="font-semibold">完全自動化システム</span>
+                    </div>
+                  </div>
+                  
+                  <Button 
+                    className="w-full h-12 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-700 hover:to-pink-700 text-white shadow-md hover:shadow-lg transition-all duration-300 transform hover:scale-105"
+                    asChild
+                  >
+                    <a 
+                      href="https://note.com/mido_renai/n/n9a3cdcc9dc4f" 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-center gap-2 text-lg font-semibold"
+                    >
+                      <ExternalLink className="h-5 w-5" />
+                      恋愛ジャンル攻略法を見る
+                      <Rocket className="h-4 w-4" />
+                    </a>
+                  </Button>
+                </CardContent>
+              </div>
+            </Card>
+
+            {/* ドスケベライティング広告 */}
+            <Card className="group relative overflow-hidden border-0 bg-gradient-to-br from-orange-50 via-amber-50 to-orange-100 shadow-lg hover:shadow-xl transition-all duration-500 transform hover:scale-102">
+              <div className="absolute inset-0 bg-gradient-to-r from-orange-500 to-amber-600 p-0.5 rounded-xl opacity-20">
+                <div className="bg-white rounded-lg h-full w-full"></div>
+              </div>
+              <div className="relative z-10">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-3 text-orange-800">
+                    <div className="p-2 bg-gradient-to-r from-orange-600 to-amber-600 rounded-lg">
+                      <Zap className="h-6 w-6 text-white" />
+                    </div>
+                    AIライティング革命
+                    <Badge className="bg-gradient-to-r from-orange-600 to-amber-600 text-white">
+                      NEW
+                    </Badge>
+                  </CardTitle>
+                  <CardDescription className="text-orange-700 font-semibold text-lg">
+                    「エロが書けないAI」はもう時代遅れ。
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="bg-white/90 backdrop-blur-sm rounded-xl p-6 border border-orange-200 shadow-sm">
+                    <p className="text-gray-800 font-bold text-lg mb-4">
+                      AIで"売れるドスケベ文章"を量産可能に
+                    </p>
+                    <div className="space-y-3">
+                      <div className="flex items-start gap-3 p-3 bg-emerald-50 rounded-lg">
+                        <CheckCircle className="h-5 w-5 text-emerald-600 mt-0.5" />
+                        <span className="text-gray-700 font-medium">売れるドスケベライティングをAIで爆速生成</span>
+                      </div>
+                      <div className="flex items-start gap-3 p-3 bg-emerald-50 rounded-lg">
+                        <CheckCircle className="h-5 w-5 text-emerald-600 mt-0.5" />
+                        <span className="text-gray-700 font-medium">心理学×FOMOを駆使して購買意欲を最大化</span>
+                      </div>
+                      <div className="flex items-start gap-3 p-3 bg-emerald-50 rounded-lg">
+                        <CheckCircle className="h-5 w-5 text-emerald-600 mt-0.5" />
+                        <span className="text-gray-700 font-medium">今ならまだ誰も知らない、先行者利益を独占！</span>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <Button 
+                    className="w-full h-12 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-700 hover:to-amber-700 text-white shadow-md hover:shadow-lg transition-all duration-300 transform hover:scale-105"
+                    asChild
+                  >
+                    <a 
+                      href="https://deeps.me/u/mountain_cb/a/ChatGPTHack" 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-center gap-2 text-lg font-semibold"
+                    >
+                      <ExternalLink className="h-5 w-5" />
+                      AIライティング手法を確認する
+                      <Zap className="h-4 w-4" />
+                    </a>
+                  </Button>
+                </CardContent>
+              </div>
+            </Card>
+          </div>
+
+          {/* バズポストGPTs広告（大きく表示） */}
+          <Card className="group relative overflow-hidden border-0 bg-gradient-to-br from-indigo-50 via-slate-50 to-indigo-100 shadow-xl hover:shadow-2xl transition-all duration-500 transform hover:scale-101">
+            <div className="absolute inset-0 bg-gradient-to-r from-indigo-600 via-slate-700 to-indigo-600 p-0.5 rounded-xl opacity-15">
+              <div className="bg-white rounded-lg h-full w-full"></div>
+            </div>
+            <div className="relative z-10">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-3 text-2xl text-indigo-800">
+                  <div className="p-3 bg-gradient-to-r from-indigo-700 to-slate-800 rounded-xl shadow-lg">
+                    <TrendingUp className="h-8 w-8 text-white" />
+                  </div>
+                  バズった裏垢女子ポストを大量学習済み
+                  <div className="flex items-center gap-1">
+                    <Star className="h-5 w-5 text-amber-500 fill-amber-500" />
+                    <Star className="h-5 w-5 text-amber-500 fill-amber-500" />
+                    <Star className="h-5 w-5 text-amber-500 fill-amber-500" />
+                    <Star className="h-5 w-5 text-amber-500 fill-amber-500" />
+                    <Star className="h-5 w-5 text-amber-500 fill-amber-500" />
+                  </div>
+                </CardTitle>
+                <CardDescription className="text-indigo-700 font-bold text-xl">
+                  やばいGPTsができました - アダアフィ垢バズポスト自動生成GPTs
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-8">
+                <div className="bg-white/90 backdrop-blur-sm rounded-xl p-6 border border-indigo-200 shadow-sm">
+                  <div className="flex items-start gap-4 mb-6">
+                    <div className="text-3xl">👱</div>
+                    <div className="flex-1">
+                      <p className="text-gray-800 font-semibold text-lg mb-2">
+                        <strong>アダアフィってめっちゃ稼げるよね</strong>
+                      </p>
+                      <p className="text-gray-700">
+                        そうなんだよね、でもさ...
+                      </p>
+                    </div>
+                    <div className="text-3xl">🧔</div>
+                  </div>
+                </div>
+
+                <div className="grid md:grid-cols-2 gap-8">
+                  <div className="space-y-4">
+                    <h3 className="font-bold text-xl text-gray-800 flex items-center gap-2">
+                      <span className="text-2xl">😤</span>
+                      こんなお悩みありませんか？
+                    </h3>
+                    
+                    <div className="space-y-3">
+                      <div className="bg-gray-50 rounded-xl p-4 border border-gray-200 shadow-sm">
+                        <p className="text-gray-700 font-medium">
+                          ■ アダアフィやってみたいけど上手にポストが作れずインプが😭
+                        </p>
+                      </div>
+                      <div className="bg-gray-50 rounded-xl p-4 border border-gray-200 shadow-sm">
+                        <p className="text-gray-700 font-medium">
+                          ■ 毎日継続してポスト作成できず結局利益が出ずに諦めてしまった
+                        </p>
+                      </div>
+                      <div className="bg-gray-50 rounded-xl p-4 border border-gray-200 shadow-sm">
+                        <p className="text-gray-700 font-medium">
+                          ■ そもそもターゲットに刺さるポストが作れない😡
+                        </p>
+                      </div>
+                      <div className="bg-gray-50 rounded-xl p-4 border border-gray-200 shadow-sm">
+                        <p className="text-gray-700 font-medium">
+                          ■ 生成AIでポスト作成を試みるもうまく生成できない、プロンプトも難しくて結局挫折🙇‍♂️
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-gradient-to-br from-amber-100 via-yellow-100 to-amber-100 rounded-xl p-6 border-2 border-amber-200 shadow-md">
+                    <h4 className="font-bold text-gray-800 mb-4 flex items-center gap-2 text-xl">
+                      <span className="text-2xl">💎</span>
+                      そんなあなたへ
+                    </h4>
+                    
+                    <div className="space-y-4 mb-6">
+                      <div className="flex items-start gap-3 bg-white/90 rounded-lg p-4 shadow-sm">
+                        <CheckCircle className="h-5 w-5 text-emerald-600 mt-0.5" />
+                        <span className="text-gray-700 font-medium">
+                          <strong>複雑なプロンプトは一切不要！</strong><br/>
+                          超簡単な指示でバズるポストを大量生成
+                        </span>
+                      </div>
+                      <div className="flex items-start gap-3 bg-white/90 rounded-lg p-4 shadow-sm">
+                        <CheckCircle className="h-5 w-5 text-emerald-600 mt-0.5" />
+                        <span className="text-gray-700 font-medium">
+                          半年以上かけてリサーチした大量のバズポストをGPTsに学習済み
+                        </span>
+                      </div>
+                      <div className="flex items-start gap-3 bg-white/90 rounded-lg p-4 shadow-sm">
+                        <CheckCircle className="h-5 w-5 text-emerald-600 mt-0.5" />
+                        <span className="text-gray-700 font-medium">
+                          完全脳死で作業しても勝手にクオリティの高いポストを自動生成
+                        </span>
+                      </div>
+                    </div>
+                    
+                    <div className="text-center">
+                      <p className="text-indigo-700 font-bold text-lg mb-4 flex items-center justify-center gap-2">
+                        <Sparkles className="h-5 w-5" />
+                        バズるポストが簡単に作れる秘密の方法👇
                       </p>
                     </div>
                   </div>
-                ))}
-                {personas.length > 6 && (
-                  <div className="flex items-center justify-center p-3 bg-muted rounded-lg">
-                    <p className="text-sm text-muted-foreground">
-                      +{personas.length - 6} more
-                    </p>
-                  </div>
-                )}
-              </div>
-            </CardContent>
+                </div>
+                
+                <Button 
+                  className="w-full h-16 bg-gradient-to-r from-indigo-700 via-slate-800 to-indigo-700 hover:from-indigo-800 hover:via-slate-900 hover:to-indigo-800 text-white text-xl font-bold shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
+                  asChild
+                >
+                  <a 
+                    href="https://deeps.me/u/mountain_cb/a/bazzpostGPTs" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-center gap-3"
+                  >
+                    <Crown className="h-6 w-6" />
+                    やばいGPTsの詳細を確認する
+                    <Rocket className="h-5 w-5" />
+                  </a>
+                </Button>
+              </CardContent>
+            </div>
           </Card>
-        )}
+        </div>
       </div>
     </div>
   );
