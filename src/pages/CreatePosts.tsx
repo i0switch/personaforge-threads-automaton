@@ -166,12 +166,22 @@ const CreatePosts = () => {
         customPrompt
       });
 
+      // Create scheduled dates by combining selected dates and times in local timezone
+      const scheduledDates = [];
+      for (const date of selectedDates) {
+        for (const time of selectedTimes) {
+          const [hours, minutes] = time.split(':').map(Number);
+          const scheduledDate = new Date(date);
+          scheduledDate.setHours(hours, minutes, 0, 0);
+          scheduledDates.push(scheduledDate.toISOString());
+        }
+      }
+
       const { data, error } = await supabase.functions.invoke('generate-posts', {
         body: {
           personaId: selectedPersona,
           topics: topics.split('\n').filter(t => t.trim()),
-          selectedDates: selectedDates.map(d => d.toISOString()),
-          selectedTimes,
+          scheduledDates, // Pass the combined scheduled dates
           customPrompt
         }
       });
@@ -619,7 +629,7 @@ const CreatePosts = () => {
         <div className="flex items-center gap-4">
           <Button variant="outline" size="sm" onClick={() => navigate("/")}>
             <ArrowLeft className="h-4 w-4 mr-2" />
-            戻る
+            ダッシュボードに戻る
           </Button>
           <div>
             <h1 className="text-3xl font-bold">新規投稿作成</h1>
