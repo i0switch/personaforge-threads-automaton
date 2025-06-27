@@ -99,13 +99,18 @@ const ReviewPosts = () => {
 
     setIsScheduling(true);
     try {
+      console.log('Starting to schedule posts...');
+      
       const postsToUpdate = posts.map(post => ({
         id: post.id,
         content: post.content,
         status: 'scheduled' as const
       }));
 
+      // 投稿をスケジュール状態に更新
       for (const post of postsToUpdate) {
+        console.log(`Updating post ${post.id} to scheduled status`);
+        
         const { error } = await supabase
           .from('posts')
           .update({ 
@@ -114,10 +119,52 @@ const ReviewPosts = () => {
           })
           .eq('id', post.id);
 
-        if (error) throw error;
+        if (error) {
+          console.error(`Error updating post ${post.id}:`, error);
+          throw error;
+        }
+
+        // キューに追加（重複チェック付き）
+        console.log(`Adding post ${post.id} to queue`);
+        
+        // 既存のキューアイテムをチェック
+        const { data: existingQueue, error: queueCheckError } = await supabase
+          .from('post_queue')
+          .select('id')
+          .eq('post_id', post.id)
+          .eq('user_id', user!.id);
+
+        if (queueCheckError) {
+          console.error('Error checking existing queue:', queueCheckError);
+        }
+
+        // 既存のキューアイテムがない場合のみ追加
+        if (!existingQueue || existingQueue.length === 0) {
+          const originalPost = posts.find(p => p.id === post.id);
+          const scheduledFor = originalPost?.scheduled_for || new Date().toISOString();
+          
+          const { error: queueError } = await supabase
+            .from('post_queue')
+            .insert({
+              user_id: user!.id,
+              post_id: post.id,
+              scheduled_for: scheduledFor,
+              queue_position: postsToUpdate.indexOf(post),
+              status: 'queued'
+            });
+
+          if (queueError) {
+            console.error(`Error adding post ${post.id} to queue:`, queueError);
+            throw queueError;
+          }
+          
+          console.log(`Post ${post.id} added to queue successfully`);
+        } else {
+          console.log(`Post ${post.id} already in queue, skipping`);
+        }
       }
 
-      // Log activity
+      // アクティビティログを記録
       await supabase
         .from('activity_logs')
         .insert({
@@ -127,9 +174,11 @@ const ReviewPosts = () => {
           description: `${posts.length}件の投稿を予約しました`
         });
 
+      console.log('All posts scheduled successfully');
+      
       toast({
         title: "成功",
-        description: `${posts.length}件の投稿を予約しました。`,
+        description: `${posts.length}件の投稿を予約しました。自動投稿が開始されます。`,
       });
 
       // ダッシュボードに移動
