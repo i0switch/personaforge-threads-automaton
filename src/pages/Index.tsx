@@ -219,7 +219,9 @@ const Index = () => {
                       variant="outline" 
                       className={`w-full h-12 border-2 font-semibold transition-all duration-300 flex items-center justify-center gap-2 ${
                         feature.disabled 
-                          ? 'border-gray-300 text-gray-400' 
+                          ? 'border-gray-300 text-gray-400 bg-white' 
+                          : feature.title === "ペルソナ設定"
+                          ? `border-transparent bg-gradient-to-r ${feature.color} text-white hover:shadow-md hover:scale-105`
                           : `border-transparent bg-gradient-to-r ${feature.color} text-white hover:shadow-md hover:scale-105`
                       }`}
                       disabled={feature.disabled}
