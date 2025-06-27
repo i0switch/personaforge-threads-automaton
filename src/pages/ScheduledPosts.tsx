@@ -31,6 +31,7 @@ const ScheduledPosts = () => {
   const [savingPost, setSavingPost] = useState<string | null>(null);
   const [selectedPosts, setSelectedPosts] = useState<string[]>([]);
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [runningScheduler, setRunningScheduler] = useState(false);
   
   // フィルタリングとソートの状態
   const [filters, setFilters] = useState<PostFilters>({
@@ -136,6 +137,44 @@ const ScheduledPosts = () => {
 
     return filtered;
   }, [posts, filters, sort]);
+
+  const runAutoScheduler = async () => {
+    setRunningScheduler(true);
+    try {
+      console.log('Running auto-scheduler manually...');
+      
+      const { data, error } = await supabase.functions.invoke('auto-scheduler', {
+        body: {}
+      });
+
+      if (error) {
+        console.error('Auto-scheduler error:', error);
+        throw error;
+      }
+
+      console.log('Auto-scheduler result:', data);
+      
+      toast({
+        title: "スケジューラー実行完了",
+        description: data?.processed > 0 
+          ? `${data.successful || 0}件の投稿を処理しました。`
+          : "処理対象の投稿はありませんでした。",
+      });
+
+      // 投稿リストを再読み込み
+      await loadScheduledPosts();
+      
+    } catch (error) {
+      console.error('Error running auto-scheduler:', error);
+      toast({
+        title: "エラー",
+        description: "スケジューラーの実行中にエラーが発生しました。",
+        variant: "destructive",
+      });
+    } finally {
+      setRunningScheduler(false);
+    }
+  };
 
   const editPost = async (postId: string, updates: Partial<Post>) => {
     setSavingPost(postId);
@@ -306,12 +345,29 @@ const ScheduledPosts = () => {
             <ArrowLeft className="h-4 w-4 mr-2" />
             戻る
           </Button>
-          <div>
+          <div className="flex-1">
             <h1 className="text-3xl font-bold">予約投稿管理</h1>
             <p className="text-muted-foreground">
               スケジュール確認・編集・公開
             </p>
           </div>
+          <Button 
+            onClick={runAutoScheduler}
+            disabled={runningScheduler}
+            variant="outline"
+          >
+            {runningScheduler ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                実行中...
+              </>
+            ) : (
+              <>
+                <Calendar className="h-4 w-4 mr-2" />
+                スケジューラー実行
+              </>
+            )}
+          </Button>
         </div>
 
         <Card>

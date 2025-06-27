@@ -1,419 +1,319 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Calendar } from "@/components/ui/calendar";
-import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { CalendarIcon, CheckCheck, Copy, CopyCheck, PlusCircle, RefreshCw, Trash2, ArrowLeft } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { CalendarIcon, Plus, Trash2, Loader2 } from "lucide-react";
 import { format } from "date-fns";
-import { DayPicker } from "react-day-picker";
-import { add, isSameDay } from 'date-fns';
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { DateRange } from "react-day-picker";
 import { useNavigate } from "react-router-dom";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 
 type Persona = Database['public']['Tables']['personas']['Row'];
 
+interface Post {
+  content: string;
+  scheduledTime: Date | null;
+}
+
 const CreatePosts = () => {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { toast } = useToast();
-  const navigate = useNavigate();
-
-  const [selectedPersona, setSelectedPersona] = useState<Persona | null>(null);
-  const [personas, setPersonas] = useState<Persona[]>([]);
-  const [loadingPersonas, setLoadingPersonas] = useState(true);
   
-  const [selectedTopics, setSelectedTopics] = useState<string[]>([]);
-  const [newTopic, setNewTopic] = useState("");
-  const [customPrompt, setCustomPrompt] = useState("");
-  const [selectedDates, setSelectedDates] = useState<Date[]>([]);
-  const [selectedTimes, setSelectedTimes] = useState<string[]>([]);
+  const [personas, setPersonas] = useState<Persona[]>([]);
+  const [selectedPersona, setSelectedPersona] = useState<Persona | null>(null);
+  const [posts, setPosts] = useState<Post[]>([{ content: '', scheduledTime: null }]);
+  const [date, setDate] = useState<DateRange | undefined>(undefined);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [generationProgress, setGenerationProgress] = useState(0);
-  const [isCopied, setIsCopied] = useState(false);
 
   useEffect(() => {
-    if (user) {
-      loadPersonas();
-    }
-  }, [user]);
+    const fetchPersonas = async () => {
+      if (!user) {
+        console.log('CreatePosts: Not authenticated, skipping persona fetch');
+        return;
+      }
 
-  const loadPersonas = async () => {
-    setLoadingPersonas(true);
-    try {
-      const { data, error } = await supabase
-        .from('personas')
-        .select('*')
-        .eq('user_id', user?.id)
-        .order('created_at', { ascending: false });
+      try {
+        console.log('CreatePosts: Fetching personas for user:', user.id);
+        const { data: personasData, error } = await supabase
+          .from('personas')
+          .select('*')
+          .eq('user_id', user.id);
 
-      if (error) throw error;
-      setPersonas(data || []);
-    } catch (error) {
-      console.error('Error loading personas:', error);
-      toast({
-        title: "エラー",
-        description: "ペルソナの読み込みに失敗しました",
-        variant: "destructive",
-      });
-    } finally {
-      setLoadingPersonas(false);
-    }
+        if (error) {
+          console.error('CreatePosts: Error fetching personas:', error);
+          toast({
+            title: "エラー",
+            description: "ペルソナの取得に失敗しました。",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        console.log('CreatePosts: Fetched personas:', personasData?.length);
+        setPersonas(personasData || []);
+      } catch (error) {
+        console.error('CreatePosts: Unexpected error fetching personas:', error);
+        toast({
+          title: "エラー",
+          description: "ペルソナの取得中に予期せぬエラーが発生しました。",
+          variant: "destructive",
+        });
+      }
+    };
+
+    fetchPersonas();
+  }, [user, toast]);
+
+  const addPost = () => {
+    console.log('CreatePosts: Adding a new post');
+    setPosts([...posts, { content: '', scheduledTime: null }]);
   };
 
-  const handleTopicAdd = () => {
-    if (newTopic.trim() !== "") {
-      setSelectedTopics([...selectedTopics, newTopic.trim()]);
-      setNewTopic("");
-    }
+  const updatePost = (index: number, content: string) => {
+    console.log('CreatePosts: Updating post at index:', index, 'with content length:', content.length);
+    const updatedPosts = [...posts];
+    updatedPosts[index] = { ...updatedPosts[index], content };
+    setPosts(updatedPosts);
   };
 
-  const handleTopicRemove = (topicToRemove: string) => {
-    setSelectedTopics(selectedTopics.filter((topic) => topic !== topicToRemove));
+  const deletePost = (index: number) => {
+    console.log('CreatePosts: Deleting post at index:', index);
+    const newPosts = posts.filter((_, i) => i !== index);
+    setPosts(newPosts);
   };
 
-  const handleDateSelect = (dates: Date[] | undefined) => {
-    if (dates) {
-      setSelectedDates(dates);
-    }
-  };
-
-  const handleTimeSelect = (time: string) => {
-    const isTimeSelected = selectedTimes.includes(time);
-    if (isTimeSelected) {
-      setSelectedTimes(selectedTimes.filter((t) => t !== time));
-    } else {
-      setSelectedTimes([...selectedTimes, time]);
-    }
+  const updateScheduledTime = (index: number, time: Date | null) => {
+    console.log('CreatePosts: Updating scheduled time for post at index:', index, 'to:', time);
+    const updatedPosts = [...posts];
+    updatedPosts[index] = { ...updatedPosts[index], scheduledTime: time };
+    setPosts(updatedPosts);
   };
 
   const generatePosts = async () => {
-    if (!selectedPersona || selectedTopics.length === 0 || selectedDates.length === 0 || selectedTimes.length === 0) {
+    if (!selectedPersona || posts.length === 0) {
       toast({
         title: "エラー",
-        description: "すべての必須項目を入力してください。",
+        description: "ペルソナを選択し、投稿を作成してください。",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!user) {
+      toast({
+        title: "エラー",
+        description: "ログインが必要です。",
         variant: "destructive",
       });
       return;
     }
 
     setIsGenerating(true);
-    setGenerationProgress(0);
-
+    
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        throw new Error('認証が必要です');
-      }
+      console.log('CreatePosts: Starting post generation for persona:', selectedPersona.name);
+      console.log('CreatePosts: Posts to generate:', posts.length);
 
-      console.log('Starting post generation with data:', {
-        personaId: selectedPersona.id,
-        topics: selectedTopics,
-        dates: selectedDates,
-        times: selectedTimes
-      });
-
-      const response = await supabase.functions.invoke('generate-posts', {
+      const { data, error } = await supabase.functions.invoke('generate-posts', {
         body: {
-          personaId: selectedPersona.id,
-          topics: selectedTopics,
-          selectedDates: selectedDates.map(date => date.toISOString()),
-          selectedTimes: selectedTimes,
-          customPrompt: customPrompt.trim() || undefined
-        },
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
+          persona_id: selectedPersona.id,
+          posts: posts,
+          user_id: user.id
         },
       });
 
-      console.log('Generation response:', response);
-
-      if (response.error) {
-        console.error('Generation error:', response.error);
-        throw new Error(response.error.message || '投稿の生成に失敗しました');
+      if (error) {
+        console.error('CreatePosts: Function error:', error);
+        throw error;
       }
 
-      const result = response.data;
-      
-      if (result.success && result.posts && result.posts.length > 0) {
-        toast({
-          title: "成功",
-          description: `${result.generated_count}件の投稿を生成しました。`,
-        });
-        
-        if (result.failed_count > 0) {
-          toast({
-            title: "一部失敗",
-            description: `${result.failed_count}件の投稿の生成に失敗しました。`,
-            variant: "destructive",
-          });
-        }
-
-        // レビューページに遷移する際に、元の設定データも渡す
-        navigate("/review-posts", {
-          state: {
-            posts: result.posts,
-            persona: selectedPersona,
-            originalSettings: {
-              selectedDates: selectedDates,
-              selectedTimes: selectedTimes,
-              topics: selectedTopics
-            }
-          }
-        });
-      } else {
-        throw new Error(result.error || '投稿を生成できませんでした。APIキーが正しく設定されているか確認してください。');
+      if (!data || !data.posts) {
+        console.error('CreatePosts: No posts returned from function');
+        throw new Error('投稿の生成に失敗しました');
       }
 
-    } catch (error: any) {
-      console.error('Error generating posts:', error);
+      console.log('CreatePosts: Generated posts:', data.posts.length);
+
+      // Log activity
+      await supabase
+        .from('activity_logs')
+        .insert({
+          user_id: user.id,
+          persona_id: selectedPersona.id,
+          action_type: 'posts_generated',
+          description: `${data.posts.length}件の投稿を生成しました`
+        });
+
+      toast({
+        title: "成功",
+        description: `${data.posts.length}件の投稿を生成し、保存しました。`,
+      });
+
+      // Clear the form
+      setPosts([{ content: '', scheduledTime: null }]);
+      setSelectedPersona(null);
+
+      // Navigate to dashboard instead of review-posts
+      navigate("/");
+
+    } catch (error) {
+      console.error('CreatePosts: Error generating posts:', error);
       toast({
         title: "エラー",
-        description: error.message || "投稿生成中にエラーが発生しました。",
+        description: error instanceof Error ? error.message : "投稿の生成に失敗しました。",
         variant: "destructive",
       });
     } finally {
       setIsGenerating(false);
-      setGenerationProgress(0);
     }
-  };
-
-  const handleCopyToClipboard = () => {
-    navigator.clipboard.writeText(JSON.stringify({
-      persona: selectedPersona,
-      topics: selectedTopics,
-      dates: selectedDates.map(date => date.toISOString()),
-      times: selectedTimes,
-      customPrompt: customPrompt
-    }, null, 2));
-    setIsCopied(true);
-    setTimeout(() => setIsCopied(false), 2000);
   };
 
   return (
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-4xl mx-auto space-y-6">
-        <div className="flex items-center gap-4">
-          <Button variant="outline" size="sm" onClick={() => navigate("/")}>
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            戻る
-          </Button>
-          <div className="flex-1">
-            <h1 className="text-3xl font-bold">投稿を作成</h1>
-            <p className="text-muted-foreground">
-              AIを活用してThreadsの投稿を自動生成
-            </p>
-          </div>
+        <div>
+          <h1 className="text-3xl font-bold">投稿作成</h1>
+          <p className="text-muted-foreground">
+            ペルソナを選択して、投稿を作成してください。
+          </p>
         </div>
 
         <Card>
           <CardHeader>
             <CardTitle>ペルソナを選択</CardTitle>
             <CardDescription>
-              投稿に使用するAIペルソナを選択してください
+              投稿に使用するペルソナを選択してください。
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Select onValueChange={(value) => setSelectedPersona(personas.find(p => p.id === value) || null)}>
+            <Select onValueChange={(value) => {
+              const persona = personas.find((p) => p.id === value);
+              setSelectedPersona(persona || null);
+            }}>
               <SelectTrigger className="w-full">
-                <SelectValue placeholder="ペルソナを選択" />
+                <SelectValue placeholder="ペルソナを選択" defaultValue={selectedPersona?.id} />
               </SelectTrigger>
               <SelectContent>
-                {loadingPersonas ? (
-                  <SelectItem value="loading" disabled>
-                    読み込み中...
+                {personas.map((persona) => (
+                  <SelectItem key={persona.id} value={persona.id}>
+                    {persona.name}
                   </SelectItem>
-                ) : personas.length > 0 ? (
-                  personas.map((persona) => (
-                    <SelectItem key={persona.id} value={persona.id}>
-                      {persona.name}
-                    </SelectItem>
-                  ))
-                ) : (
-                  <SelectItem value="no-personas" disabled>
-                    ペルソナが見つかりません
-                  </SelectItem>
-                )}
+                ))}
               </SelectContent>
             </Select>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>投稿テーマ</CardTitle>
-            <CardDescription>
-              投稿するトピックやキーワードを入力してください
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex gap-2">
-              <Input
-                type="text"
-                placeholder="新しいトピックを追加"
-                value={newTopic}
-                onChange={(e) => setNewTopic(e.target.value)}
-              />
-              <Button type="button" onClick={handleTopicAdd}>
-                <PlusCircle className="h-4 w-4 mr-2" />
-                追加
-              </Button>
-            </div>
-            <ScrollArea className="h-[100px] w-full rounded-md border">
-              <div className="flex flex-wrap gap-2 p-2">
-                {selectedTopics.map((topic) => (
-                  <Badge
-                    key={topic}
-                    variant="secondary"
-                    className="cursor-pointer hover:opacity-80 transition"
-                    onClick={() => handleTopicRemove(topic)}
-                  >
-                    {topic}
-                    <Trash2 className="h-4 w-4 ml-2" />
-                  </Badge>
-                ))}
-              </div>
-            </ScrollArea>
-          </CardContent>
-        </Card>
+        {selectedPersona && (
+          <Card>
+            <CardHeader>
+              <CardTitle>投稿内容</CardTitle>
+              <CardDescription>
+                {selectedPersona.name}として投稿する内容を入力してください。
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {posts.map((post, index) => (
+                <div key={index} className="grid gap-2">
+                  <Label htmlFor={`post-${index}`}>投稿 {index + 1}</Label>
+                  <Textarea
+                    id={`post-${index}`}
+                    placeholder="投稿内容を入力してください"
+                    value={post.content}
+                    onChange={(e) => updatePost(index, e.target.value)}
+                    rows={4}
+                  />
 
-        <Card>
-          <CardHeader>
-            <CardTitle>投稿日時</CardTitle>
-            <CardDescription>
-              投稿する日時を選択してください
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-6">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <div>
-                <Label>日付を選択</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant={"outline"}
-                      className={cn(
-                        "w-full justify-start text-left font-normal",
-                        !selectedDates && "text-muted-foreground"
-                      )}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {selectedDates?.length > 0 ? (
-                        format(selectedDates[0], "yyyy/MM/dd") + (selectedDates.length > 1 ? ' +' + (selectedDates.length - 1) : '')
-                      ) : (
-                        <span>日付を選択</span>
-                      )}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <DayPicker
-                      mode="multiple"
-                      selected={selectedDates}
-                      onSelect={handleDateSelect}
-                      footer={selectedDates?.length > 0 ? (
-                        <p className="p-4 text-center text-sm">
-                          {selectedDates.length} 日選択
-                        </p>
-                      ) : (
-                        <p className="p-4 text-center text-sm">
-                          日付を選択してください
-                        </p>
-                      )}
+                  <div className="flex items-center space-x-2">
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant={"outline"}
+                          className={
+                            "justify-start text-left font-normal w-32" +
+                            (post.scheduledTime ? "text-foreground" : "text-muted-foreground")
+                          }
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {post.scheduledTime ? (
+                            format(post.scheduledTime, "yyyy-MM-dd")
+                          ) : (
+                            <span>日付を選択</span>
+                          )}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                          mode="single"
+                          // selected={date}
+                          onSelect={(date) => {
+                            updateScheduledTime(index, date);
+                          }}
+                          disabled={(date) =>
+                            date < new Date()
+                          }
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
+                    <Input
+                      type="time"
+                      defaultValue={post.scheduledTime ? format(post.scheduledTime, "HH:mm") : null}
+                      onChange={(e) => {
+                        const selectedTime = e.target.value;
+                        if (selectedTime) {
+                          const [hours, minutes] = selectedTime.split(':');
+                          const newDate = post.scheduledTime ? new Date(post.scheduledTime) : new Date();
+                          newDate.setHours(parseInt(hours, 10));
+                          newDate.setMinutes(parseInt(minutes, 10));
+                          updateScheduledTime(index, newDate);
+                        }
+                      }}
+                      className="w-24"
                     />
-                  </PopoverContent>
-                </Popover>
-              </div>
-
-              <div>
-                <Label>時間を選択</Label>
-                <div className="grid grid-cols-3 gap-2">
-                  {["09:00", "12:00", "15:00", "18:00", "21:00", "23:00"].map((time) => (
                     <Button
-                      key={time}
-                      variant={selectedTimes.includes(time) ? "default" : "outline"}
-                      onClick={() => handleTimeSelect(time)}
+                      variant="outline"
+                      size="sm"
+                      onClick={() => deletePost(index)}
                     >
-                      {time}
-                      {selectedTimes.includes(time) && <CheckCheck className="h-4 w-4 ml-2" />}
+                      <Trash2 className="h-4 w-4" />
                     </Button>
-                  ))}
+                  </div>
                 </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+              ))}
+              <Button variant="secondary" onClick={addPost}>
+                <Plus className="h-4 w-4 mr-2" />
+                投稿を追加
+              </Button>
+            </CardContent>
+          </Card>
+        )}
 
-        <Card>
-          <CardHeader>
-            <CardTitle>カスタム指示</CardTitle>
-            <CardDescription>
-              AIに対する追加の指示や要望を入力してください (オプション)
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Textarea
-              placeholder="AIに対する追加の指示や要望を入力してください"
-              value={customPrompt}
-              onChange={(e) => setCustomPrompt(e.target.value)}
-            />
-          </CardContent>
-        </Card>
-
-        <div className="flex justify-between items-center">
+        {selectedPersona && (
           <Button
-            type="button"
+            className="w-full"
             onClick={generatePosts}
             disabled={isGenerating}
           >
             {isGenerating ? (
               <>
-                <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                生成中... {generationProgress}%
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                生成中...
               </>
             ) : (
               "投稿を生成"
             )}
           </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={handleCopyToClipboard}
-            disabled={isCopied}
-          >
-            {isCopied ? (
-              <>
-                <CopyCheck className="mr-2 h-4 w-4" />
-                コピー済み!
-              </>
-            ) : (
-              <>
-                <Copy className="mr-2 h-4 w-4" />
-                設定をコピー
-              </>
-            )}
-          </Button>
-        </div>
+        )}
       </div>
     </div>
   );

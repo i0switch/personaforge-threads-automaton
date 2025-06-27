@@ -11,7 +11,6 @@ import Index from "@/pages/Index";
 import Auth from "@/pages/Auth";
 import PersonaSetup from "@/pages/PersonaSetup";
 import CreatePosts from "@/pages/CreatePosts";
-import ReviewPosts from "@/pages/ReviewPosts";
 import ScheduledPosts from "@/pages/ScheduledPosts";
 import AutoReply from "@/pages/AutoReply";
 import Settings from "@/pages/Settings";
@@ -50,14 +49,6 @@ function App() {
                     element={
                       <ProtectedRoute>
                         <CreatePosts />
-                      </ProtectedRoute>
-                    }
-                  />
-                  <Route
-                    path="/review-posts"
-                    element={
-                      <ProtectedRoute>
-                        <ReviewPosts />
                       </ProtectedRoute>
                     }
                   />

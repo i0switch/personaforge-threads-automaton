@@ -64,41 +64,30 @@ export const AutoScheduler = () => {
       }
 
       const optimalHours = settings?.optimal_hours || [9, 12, 15, 18, 21];
-      const timezone = settings?.timezone || 'Asia/Tokyo';
-      
-      // 現在時刻を取得（タイムゾーンを考慮）
       const now = new Date();
-      let scheduleTime = new Date(now);
+      let scheduleTime = new Date();
 
       // 次の最適な時間を見つける
       const currentHour = now.getHours();
-      let nextOptimalHour = optimalHours.find(hour => hour > currentHour);
+      const nextOptimalHour = optimalHours.find(hour => hour > currentHour) || optimalHours[0];
       
-      if (!nextOptimalHour) {
-        // 今日の最適時間がすべて過ぎている場合は翌日の最初の時間に
-        nextOptimalHour = optimalHours[0];
+      if (nextOptimalHour <= currentHour) {
         scheduleTime.setDate(scheduleTime.getDate() + 1);
       }
-      
       scheduleTime.setHours(nextOptimalHour, 0, 0, 0);
-
-      console.log('Scheduling posts starting from:', scheduleTime.toISOString());
 
       // 各投稿をスケジュール
       for (let i = 0; i < draftPosts.length; i++) {
         const post = draftPosts[i];
         const postScheduleTime = new Date(scheduleTime);
         
-        // 投稿間隔を設定（各投稿を適切な間隔で配置）
+        // 投稿間隔を設定（各投稿を2時間間隔で配置）
         if (i > 0) {
-          const hourIndex = i % optimalHours.length;
-          const dayOffset = Math.floor(i / optimalHours.length);
-          
-          postScheduleTime.setDate(scheduleTime.getDate() + dayOffset);
-          postScheduleTime.setHours(optimalHours[hourIndex], 0, 0, 0);
+          const hoursToAdd = Math.floor(i / optimalHours.length) * 24 + 
+                           (optimalHours.indexOf(optimalHours[i % optimalHours.length]) - 
+                            optimalHours.indexOf(nextOptimalHour)) * 2;
+          postScheduleTime.setHours(postScheduleTime.getHours() + hoursToAdd);
         }
-
-        console.log(`Scheduling post ${post.id} for:`, postScheduleTime.toISOString());
 
         // 投稿をスケジュール状態に更新
         const { error: updateError } = await supabase
