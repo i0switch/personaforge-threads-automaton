@@ -1,4 +1,5 @@
 
+
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -12,7 +13,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { CalendarIcon, CheckCheck, Copy, CopyCheck, PlusCircle, RefreshCw, Trash2 } from "lucide-react";
+import { CalendarIcon, CheckCheck, Copy, CopyCheck, PlusCircle, RefreshCw, Trash2, ArrowLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { DayPicker } from "react-day-picker";
@@ -214,11 +215,17 @@ const CreatePosts = () => {
   return (
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-4xl mx-auto space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold">投稿を作成</h1>
-          <p className="text-muted-foreground">
-            AIを活用してThreadsの投稿を自動生成
-          </p>
+        <div className="flex items-center gap-4">
+          <Button variant="outline" size="sm" onClick={() => navigate("/")}>
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            戻る
+          </Button>
+          <div className="flex-1">
+            <h1 className="text-3xl font-bold">投稿を作成</h1>
+            <p className="text-muted-foreground">
+              AIを活用してThreadsの投稿を自動生成
+            </p>
+          </div>
         </div>
 
         <Card>
