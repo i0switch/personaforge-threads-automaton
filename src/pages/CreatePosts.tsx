@@ -613,7 +613,7 @@ const CreatePosts = () => {
   console.log('Posts for image generation:', postsForImageGeneration.length);
   console.log('All images reviewed:', allImagesReviewed);
 
-  // Helper function to safely format date - Updated to handle timezone correctly
+  // Helper function to safely format date - Fixed timezone handling
   const formatScheduledDate = (scheduledFor: string | null): string => {
     if (!scheduledFor) return '投稿時刻未設定';
     
@@ -624,9 +624,9 @@ const CreatePosts = () => {
         return '投稿時刻エラー';
       }
       
-      // Convert UTC to JST by adding 9 hours
-      const jstDate = new Date(date.getTime() + (9 * 60 * 60 * 1000));
-      return format(jstDate, 'M月d日 HH:mm', { locale: ja });
+      // The date is already in the correct timezone (JST) from the backend
+      // No need for additional timezone conversion
+      return format(date, 'M月d日 HH:mm', { locale: ja });
     } catch (error) {
       console.error('Error formatting date:', error, scheduledFor);
       return '投稿時刻エラー';
