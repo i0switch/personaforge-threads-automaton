@@ -1,11 +1,18 @@
 
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const encryptionKey = Deno.env.get('ENCRYPTION_KEY')!;
+
+const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -21,7 +28,61 @@ serve(async (req) => {
       persona: persona?.name
     });
 
-    const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
+    // Get authorization header to identify the user
+    const authHeader = req.headers.get('Authorization');
+    let geminiApiKey = Deno.env.get('GEMINI_API_KEY'); // Default fallback
+
+    if (authHeader && persona?.user_id) {
+      try {
+        // Get user's personal API key if available
+        const { data: userApiKey, error: keyError } = await supabase
+          .from('user_api_keys')
+          .select('encrypted_key')
+          .eq('user_id', persona.user_id)
+          .eq('key_name', 'GEMINI_API_KEY')
+          .single();
+
+        if (!keyError && userApiKey?.encrypted_key) {
+          console.log('Found user personal Gemini API key, decrypting...');
+          
+          // Decrypt the user's API key
+          const encoder = new TextEncoder();
+          const decoder = new TextDecoder();
+          
+          // Base64デコード
+          const encryptedData = Uint8Array.from(atob(userApiKey.encrypted_key), c => c.charCodeAt(0));
+          
+          // IVと暗号化されたデータを分離
+          const iv = encryptedData.slice(0, 12);
+          const ciphertext = encryptedData.slice(12);
+
+          // 暗号化キーをCryptoKeyに変換
+          const keyMaterial = await crypto.subtle.importKey(
+            'raw',
+            encoder.encode(encryptionKey.padEnd(32, '0').slice(0, 32)),
+            { name: 'AES-GCM' },
+            false,
+            ['decrypt']
+          );
+
+          // データを復号化
+          const decryptedData = await crypto.subtle.decrypt(
+            { name: 'AES-GCM', iv: iv },
+            keyMaterial,
+            ciphertext
+          );
+
+          const decryptedKey = decoder.decode(decryptedData);
+          geminiApiKey = decryptedKey;
+          console.log('Successfully using user personal Gemini API key');
+        } else {
+          console.log('No user personal API key found, using global key');
+        }
+      } catch (error) {
+        console.error('Error retrieving user API key, falling back to global key:', error);
+      }
+    }
+
     if (!geminiApiKey) {
       throw new Error('GEMINI_API_KEY is not configured');
     }

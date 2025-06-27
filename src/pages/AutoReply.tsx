@@ -167,12 +167,18 @@ const AutoReply = () => {
         persona: selectedPersona
       });
 
+      // Get current session for authentication
+      const { data: { session } } = await supabase.auth.getSession();
+      
       const { data, error } = await supabase.functions.invoke('generate-auto-reply', {
         body: {
           postContent: testPostContent,
           replyContent: testReplyContent,
           persona: selectedPersona
-        }
+        },
+        headers: session ? {
+          Authorization: `Bearer ${session.access_token}`,
+        } : {}
       });
 
       console.log('Auto-reply response:', { data, error });
