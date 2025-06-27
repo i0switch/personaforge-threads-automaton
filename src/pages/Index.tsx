@@ -232,20 +232,16 @@ const Index = () => {
                         <span className="flex items-center gap-2">
                           アクセス不可
                         </span>
+                      ) : feature.title === "ペルソナ設定" ? (
+                        <span className="flex items-center gap-2">
+                          <Edit className="h-4 w-4" />
+                          設定・編集
+                          <Sparkles className="h-4 w-4" />
+                        </span>
                       ) : (
                         <span className="flex items-center gap-2">
-                          {feature.title === "ペルソナ設定" ? (
-                            <>
-                              <Edit className="h-4 w-4" />
-                              設定・編集
-                              <Sparkles className="h-4 w-4" />
-                            </>
-                          ) : (
-                            <>
-                              開始する
-                              <Rocket className="h-4 w-4" />
-                            </>
-                          )}
+                          開始する
+                          <Rocket className="h-4 w-4" />
                         </span>
                       )}
                     </Button>
