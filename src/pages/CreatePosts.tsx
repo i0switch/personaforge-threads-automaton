@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -230,19 +231,23 @@ const CreatePosts = () => {
           <CardContent>
             <Select onValueChange={(value) => setSelectedPersona(personas.find(p => p.id === value) || null)}>
               <SelectTrigger className="w-full">
-                <SelectValue placeholder="ペルソナを選択" defaultValue={selectedPersona?.id} />
+                <SelectValue placeholder="ペルソナを選択" />
               </SelectTrigger>
               <SelectContent>
                 {loadingPersonas ? (
-                  <SelectItem value="" disabled>
+                  <SelectItem value="loading" disabled>
                     読み込み中...
                   </SelectItem>
-                ) : (
+                ) : personas.length > 0 ? (
                   personas.map((persona) => (
                     <SelectItem key={persona.id} value={persona.id}>
                       {persona.name}
                     </SelectItem>
                   ))
+                ) : (
+                  <SelectItem value="no-personas" disabled>
+                    ペルソナが見つかりません
+                  </SelectItem>
                 )}
               </SelectContent>
             </Select>
