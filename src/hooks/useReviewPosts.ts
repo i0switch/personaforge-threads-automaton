@@ -12,7 +12,11 @@ type Post = Database['public']['Tables']['posts']['Row'];
 interface ReviewPostsState {
   posts: Post[];
   persona: Persona;
-  scheduledDateTime?: string; // 選択された日時を保持
+  originalSettings?: {
+    selectedDates: Date[];
+    selectedTimes: string[];
+    topics: string[];
+  };
 }
 
 export const useReviewPosts = () => {
@@ -23,7 +27,7 @@ export const useReviewPosts = () => {
   
   const [posts, setPosts] = useState<Post[]>([]);
   const [persona, setPersona] = useState<Persona | null>(null);
-  const [scheduledDateTime, setScheduledDateTime] = useState<string | null>(null);
+  const [originalSettings, setOriginalSettings] = useState<any>(null);
   const [isScheduling, setIsScheduling] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -35,10 +39,10 @@ export const useReviewPosts = () => {
       setPosts(state.posts);
       setPersona(state.persona);
       
-      // 選択された日時があれば保持
-      if (state.scheduledDateTime) {
-        setScheduledDateTime(state.scheduledDateTime);
-        console.log('Scheduled DateTime from state:', state.scheduledDateTime);
+      // 元の設定データがあれば保持
+      if (state.originalSettings) {
+        setOriginalSettings(state.originalSettings);
+        console.log('Original settings:', state.originalSettings);
       }
       
       setIsLoading(false);
@@ -68,33 +72,19 @@ export const useReviewPosts = () => {
 
     setIsScheduling(true);
     try {
-      // 選択された日時があれば使用、なければデフォルト処理
-      let baseScheduleTime = scheduledDateTime ? new Date(scheduledDateTime) : new Date();
-      
-      // デフォルトのスケジュール時刻設定（日時が選択されていない場合）
-      if (!scheduledDateTime) {
-        baseScheduleTime.setHours(baseScheduleTime.getHours() + 1, 0, 0, 0);
-      }
-
-      console.log('Base schedule time:', baseScheduleTime.toISOString());
-
+      // 投稿を既存のスケジュール時間のまま保存
       for (let i = 0; i < posts.length; i++) {
         const post = posts[i];
-        const postScheduleTime = new Date(baseScheduleTime);
-        
-        // 複数投稿の場合は30分間隔で配置
-        if (i > 0) {
-          postScheduleTime.setMinutes(postScheduleTime.getMinutes() + (i * 30));
-        }
 
-        console.log(`Scheduling post ${i + 1} for:`, postScheduleTime.toISOString());
+        console.log(`Scheduling post ${i + 1} for:`, post.scheduled_for);
 
         const { error } = await supabase
           .from('posts')
           .update({ 
             content: post.content,
             status: 'scheduled',
-            scheduled_for: postScheduleTime.toISOString()
+            // scheduled_forは既に正しい時間が設定されているのでそのまま使用
+            scheduled_for: post.scheduled_for
           })
           .eq('id', post.id);
 
@@ -106,7 +96,7 @@ export const useReviewPosts = () => {
           .insert({
             user_id: user!.id,
             post_id: post.id,
-            scheduled_for: postScheduleTime.toISOString(),
+            scheduled_for: post.scheduled_for,
             queue_position: i,
             status: 'queued'
           });
@@ -150,7 +140,7 @@ export const useReviewPosts = () => {
   return {
     posts,
     persona,
-    scheduledDateTime,
+    originalSettings,
     isScheduling,
     isLoading,
     updatePost,

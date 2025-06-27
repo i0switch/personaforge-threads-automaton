@@ -1,9 +1,10 @@
 
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Trash2, Calendar, Clock } from "lucide-react";
+import { Trash2, Edit3, Check, X } from "lucide-react";
 import { format } from "date-fns";
 import { ja } from "date-fns/locale";
 import type { Database } from "@/integrations/supabase/types";
@@ -18,59 +19,82 @@ interface PostEditCardProps {
 }
 
 export const PostEditCard = ({ post, index, onUpdate, onDelete }: PostEditCardProps) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editContent, setEditContent] = useState(post.content);
+
+  const handleSave = () => {
+    onUpdate(index, editContent);
+    setIsEditing(false);
+  };
+
+  const handleCancel = () => {
+    setEditContent(post.content);
+    setIsEditing(false);
+  };
+
+  const formatScheduledTime = (scheduledFor: string | null) => {
+    if (!scheduledFor) return "未設定";
+    
+    try {
+      const date = new Date(scheduledFor);
+      // 日本時間で表示
+      return format(date, "M月d日 HH:mm", { locale: ja });
+    } catch (error) {
+      console.error("Date formatting error:", error);
+      return "日時エラー";
+    }
+  };
+
   return (
     <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-lg">投稿 {index + 1}</CardTitle>
-          <div className="flex items-center gap-2">
-            {post.scheduled_for && (
-              <Badge variant="outline" className="flex items-center gap-1">
-                <Calendar className="h-3 w-3" />
-                {format(new Date(post.scheduled_for), 'MM/dd', { locale: ja })}
-                <Clock className="h-3 w-3 ml-1" />
-                {format(new Date(post.scheduled_for), 'HH:mm', { locale: ja })}
-              </Badge>
+      <CardHeader className="pb-3">
+        <div className="flex justify-between items-start">
+          <CardTitle className="text-lg">
+            {formatScheduledTime(post.scheduled_for)}
+          </CardTitle>
+          <div className="flex gap-2">
+            {isEditing ? (
+              <>
+                <Button size="sm" onClick={handleSave}>
+                  <Check className="h-4 w-4" />
+                </Button>
+                <Button size="sm" variant="outline" onClick={handleCancel}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button size="sm" variant="outline" onClick={() => setIsEditing(true)}>
+                  <Edit3 className="h-4 w-4" />
+                </Button>
+                <Button size="sm" variant="destructive" onClick={() => onDelete(index)}>
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </>
             )}
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => onDelete(index)}
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
           </div>
         </div>
       </CardHeader>
-      <CardContent className="space-y-4">
-        <Textarea
-          value={post.content}
-          onChange={(e) => onUpdate(index, e.target.value)}
-          rows={4}
-          placeholder="投稿内容を編集..."
-        />
+      <CardContent>
+        {isEditing ? (
+          <Textarea
+            value={editContent}
+            onChange={(e) => setEditContent(e.target.value)}
+            className="min-h-[120px]"
+          />
+        ) : (
+          <p className="whitespace-pre-wrap text-sm leading-relaxed">
+            {post.content}
+          </p>
+        )}
         
-        {/* 画像プレビュー */}
-        {post.images && post.images.length > 0 && (
-          <div className="space-y-2">
-            <div className="text-sm font-medium text-muted-foreground">添付画像:</div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {post.images.map((imageUrl, imageIndex) => (
-                <div key={imageIndex} className="relative">
-                  <img
-                    src={imageUrl}
-                    alt={`投稿画像 ${imageIndex + 1}`}
-                    className="w-full max-w-md mx-auto rounded-lg border object-cover"
-                    style={{ maxHeight: '300px' }}
-                    onError={(e) => {
-                      console.error('Failed to load image:', imageUrl);
-                      const target = e.target as HTMLImageElement;
-                      target.style.display = 'none';
-                    }}
-                  />
-                </div>
-              ))}
-            </div>
+        {post.hashtags && post.hashtags.length > 0 && (
+          <div className="flex flex-wrap gap-1 mt-3">
+            {post.hashtags.map((hashtag, hashtagIndex) => (
+              <Badge key={hashtagIndex} variant="secondary" className="text-xs">
+                #{hashtag}
+              </Badge>
+            ))}
           </div>
         )}
       </CardContent>

@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -23,6 +22,7 @@ import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import { useNavigate } from "react-router-dom";
 import {
   Select,
   SelectContent,
@@ -37,6 +37,7 @@ type Persona = Database['public']['Tables']['personas']['Row'];
 const CreatePosts = () => {
   const { user } = useAuth();
   const { toast } = useToast();
+  const navigate = useNavigate();
 
   const [selectedPersona, setSelectedPersona] = useState<Persona | null>(null);
   const [personas, setPersonas] = useState<Persona[]>([]);
@@ -154,36 +155,34 @@ const CreatePosts = () => {
 
       const result = response.data;
       
-      if (result.success) {
-        if (result.generated_count > 0) {
+      if (result.success && result.posts && result.posts.length > 0) {
+        toast({
+          title: "成功",
+          description: `${result.generated_count}件の投稿を生成しました。`,
+        });
+        
+        if (result.failed_count > 0) {
           toast({
-            title: "成功",
-            description: `${result.generated_count}件の投稿を生成しました。`,
-          });
-          
-          if (result.failed_count > 0) {
-            toast({
-              title: "一部失敗",
-              description: `${result.failed_count}件の投稿の生成に失敗しました。`,
-              variant: "destructive",
-            });
-          }
-        } else {
-          toast({
-            title: "エラー",
-            description: "投稿を生成できませんでした。APIキーが正しく設定されているか確認してください。",
+            title: "一部失敗",
+            description: `${result.failed_count}件の投稿の生成に失敗しました。`,
             variant: "destructive",
           });
         }
-        
-        // Reset form
-        setSelectedPersona(null);
-        setSelectedTopics([]);
-        setSelectedDates([]);
-        setSelectedTimes([]);
-        setCustomPrompt("");
+
+        // レビューページに遷移する際に、元の設定データも渡す
+        navigate("/review-posts", {
+          state: {
+            posts: result.posts,
+            persona: selectedPersona,
+            originalSettings: {
+              selectedDates: selectedDates,
+              selectedTimes: selectedTimes,
+              topics: selectedTopics
+            }
+          }
+        });
       } else {
-        throw new Error(result.error || '投稿の生成に失敗しました');
+        throw new Error(result.error || '投稿を生成できませんでした。APIキーが正しく設定されているか確認してください。');
       }
 
     } catch (error: any) {
