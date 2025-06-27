@@ -296,21 +296,30 @@ const CreatePosts = () => {
     if (generatedPosts.length === 0) return;
 
     try {
+      console.log('=== Saving posts with images ===');
+      
       // Update posts with uploaded or generated images
       const updatedPosts = await Promise.all(generatedPosts.map(async (post) => {
         let images: string[] = [];
 
-        // Check if there's an uploaded image
+        console.log(`Processing post ${post.id}:`);
+        console.log('- Has uploaded image:', !!postImagePreviews[post.id]);
+        console.log('- Has generated images:', post.images?.length || 0);
+
+        // Check if there's an uploaded image (takes priority)
         if (postImagePreviews[post.id]) {
           images = [postImagePreviews[post.id]];
+          console.log('- Using uploaded image');
         }
         // Check if there's a generated image
         else if (post.images && post.images.length > 0) {
           images = post.images;
+          console.log('- Using generated images:', images.length);
         }
 
         // Update the post in the database with the images
         if (images.length > 0) {
+          console.log('- Updating database with images');
           const { error } = await supabase
             .from('posts')
             .update({ images })
@@ -318,6 +327,8 @@ const CreatePosts = () => {
           
           if (error) {
             console.error('Error updating post images:', error);
+          } else {
+            console.log('- Database updated successfully');
           }
         }
 
@@ -329,6 +340,19 @@ const CreatePosts = () => {
 
       const selectedPersonaData = personas.find(p => p.id === selectedPersona);
       
+      console.log('=== Navigating to review-posts ===');
+      console.log('Updated posts:', updatedPosts.length);
+      console.log('Persona:', selectedPersonaData?.name);
+      
+      // Make sure we have valid data before navigation
+      if (!selectedPersonaData) {
+        throw new Error('Selected persona not found');
+      }
+
+      if (updatedPosts.length === 0) {
+        throw new Error('No posts to save');
+      }
+
       navigate("/review-posts", {
         state: {
           posts: updatedPosts,
@@ -339,7 +363,7 @@ const CreatePosts = () => {
       console.error('Error saving posts:', error);
       toast({
         title: "エラー",
-        description: "投稿の保存に失敗しました。",
+        description: `投稿の保存に失敗しました: ${error.message}`,
         variant: "destructive",
       });
     }

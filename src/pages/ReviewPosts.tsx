@@ -32,14 +32,26 @@ const ReviewPosts = () => {
   const [isScheduling, setIsScheduling] = useState(false);
 
   useEffect(() => {
+    console.log('=== ReviewPosts useEffect ===');
+    console.log('Location state:', location.state);
+    
     const state = location.state as ReviewPostsState;
-    if (state) {
+    if (state && state.posts && state.persona) {
+      console.log('Setting posts:', state.posts.length);
+      console.log('Setting persona:', state.persona.name);
+      
       setPosts(state.posts);
       setPersona(state.persona);
     } else {
+      console.error('Invalid state received:', state);
+      toast({
+        title: "エラー",
+        description: "投稿データの読み込みに失敗しました。",
+        variant: "destructive",
+      });
       navigate("/create-posts");
     }
-  }, [location.state, navigate]);
+  }, [location.state, navigate, toast]);
 
   const updatePost = (index: number, content: string) => {
     const updatedPosts = [...posts];
@@ -102,7 +114,7 @@ const ReviewPosts = () => {
     }
   };
 
-  if (!persona) {
+  if (!persona || posts.length === 0) {
     return (
       <div className="min-h-screen bg-background p-6">
         <div className="max-w-4xl mx-auto">
