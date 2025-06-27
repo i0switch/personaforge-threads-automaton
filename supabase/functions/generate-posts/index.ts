@@ -268,16 +268,15 @@ function generateTimeSlots(selectedDates: string[], selectedTimes: string[]): st
   const slots = [];
   
   for (const dateStr of selectedDates) {
-    // 日付文字列をそのままDate型に変換（ローカル時間として解釈）
-    const date = new Date(`${dateStr}T00:00:00`);
-    
     for (const timeStr of selectedTimes) {
       const [hour, minute] = timeStr.split(':').map(Number);
-      const scheduledDate = new Date(date);
-      scheduledDate.setHours(hour, minute, 0, 0);
       
-      // ローカル時間をUTCに変換せずそのまま使用
-      slots.push(scheduledDate.toISOString());
+      // 日本時間の日付時刻を作成
+      const jstDate = new Date(`${dateStr}T${timeStr}:00+09:00`);
+      
+      console.log(`JST input: ${dateStr} ${timeStr}, Created date: ${jstDate.toISOString()}`);
+      
+      slots.push(jstDate.toISOString());
     }
   }
   
@@ -370,11 +369,12 @@ function getTimeOfDay(scheduledTime?: string): string {
   if (!scheduledTime) return '一日中';
   
   const date = new Date(scheduledTime);
-  const hour = date.getHours();
+  // UTC時間をJST時間に変換して判定
+  const jstHour = (date.getUTCHours() + 9) % 24;
   
-  if (hour >= 5 && hour < 12) return '朝';
-  if (hour >= 12 && hour < 17) return '昼';
-  if (hour >= 17 && hour < 21) return '夕方';
+  if (jstHour >= 5 && jstHour < 12) return '朝';
+  if (jstHour >= 12 && jstHour < 17) return '昼';
+  if (jstHour >= 17 && jstHour < 21) return '夕方';
   return '夜';
 }
 
