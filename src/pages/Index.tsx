@@ -138,19 +138,6 @@ const Index = () => {
               <br />
               <span className="text-lg">🚀 革新的なThreads運用体験を提供</span>
             </p>
-            
-            {/* User Manual Button */}
-            <div className="flex justify-center">
-              <Button 
-                onClick={() => navigate("/user-manual")}
-                className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
-                size="lg"
-              >
-                <BookOpen className="h-5 w-5 mr-2" />
-                📚 ユーザーマニュアル
-                <ExternalLink className="h-4 w-4 ml-2" />
-              </Button>
-            </div>
           </div>
         </div>
 
