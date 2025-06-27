@@ -1,11 +1,83 @@
 
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const fallbackGeminiApiKey = Deno.env.get('GEMINI_API_KEY');
+
+const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+async function getUserApiKey(userId: string, keyName: string): Promise<string | null> {
+  try {
+    console.log(`Retrieving API key for user ${userId} with key name ${keyName}`);
+    
+    const { data, error } = await supabase
+      .from('user_api_keys')
+      .select('encrypted_key')
+      .eq('user_id', userId)
+      .eq('key_name', keyName)
+      .single();
+
+    if (error || !data) {
+      console.log('No user API key found:', error?.message);
+      return null;
+    }
+
+    console.log('Found encrypted API key, attempting decryption...');
+
+    // 復号化処理
+    const ENCRYPTION_KEY = Deno.env.get('ENCRYPTION_KEY');
+    if (!ENCRYPTION_KEY) {
+      console.error('ENCRYPTION_KEY not found in environment');
+      return null;
+    }
+    
+    try {
+      const encoder = new TextEncoder();
+      const decoder = new TextDecoder();
+      
+      // Base64デコード
+      const encryptedData = Uint8Array.from(atob(data.encrypted_key), c => c.charCodeAt(0));
+      
+      // IVと暗号化されたデータを分離
+      const iv = encryptedData.slice(0, 12);
+      const ciphertext = encryptedData.slice(12);
+
+      // 暗号化キーをCryptoKeyに変換
+      const keyMaterial = await crypto.subtle.importKey(
+        'raw',
+        encoder.encode(ENCRYPTION_KEY.padEnd(32, '0').slice(0, 32)),
+        { name: 'AES-GCM' },
+        false,
+        ['decrypt']
+      );
+
+      // データを復号化
+      const decryptedData = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: iv },
+        keyMaterial,
+        ciphertext
+      );
+
+      const decryptedKey = decoder.decode(decryptedData);
+      console.log('API key decryption successful');
+      return decryptedKey;
+    } catch (decryptError) {
+      console.error('Decryption failed:', decryptError);
+      return null;
+    }
+  } catch (error) {
+    console.error('Error retrieving user API key:', error);
+    return null;
+  }
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -13,15 +85,48 @@ serve(async (req) => {
   }
 
   try {
+    const authHeader = req.headers.get('authorization');
+    let userId = null;
+    
+    // 認証トークンがある場合はユーザーIDを取得
+    if (authHeader) {
+      try {
+        const token = authHeader.replace('Bearer ', '');
+        const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+        
+        if (!authError && user) {
+          userId = user.id;
+          console.log(`User authenticated: ${userId}`);
+        }
+      } catch (authError) {
+        console.log('Auth token invalid, using fallback API key');
+      }
+    }
+
     const { postContent, replyContent, persona } = await req.json();
 
     console.log('Generating auto-reply with data:', {
       postContent: postContent?.substring(0, 100) + '...',
       replyContent: replyContent?.substring(0, 100) + '...',
-      persona: persona?.name
+      persona: persona?.name,
+      userId: userId
     });
 
-    const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
+    // ユーザーのGemini APIキーを取得
+    let geminiApiKey = fallbackGeminiApiKey;
+    
+    if (userId) {
+      const userGeminiApiKey = await getUserApiKey(userId, 'GEMINI_API_KEY');
+      if (userGeminiApiKey) {
+        geminiApiKey = userGeminiApiKey;
+        console.log('Using user-specific Gemini API key');
+      } else {
+        console.log('Using fallback Gemini API key');
+      }
+    } else {
+      console.log('No user authentication, using fallback Gemini API key');
+    }
+
     if (!geminiApiKey) {
       throw new Error('GEMINI_API_KEY is not configured');
     }
