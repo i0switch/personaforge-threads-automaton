@@ -20,43 +20,49 @@ serve(async (req) => {
 
   try {
     console.log('Starting auto-scheduler...');
+    const now = new Date();
+    console.log('Current time:', now.toISOString());
 
-    // キューから処理待ちの投稿を取得
-    const { data: queueItems, error: queueError } = await supabase
-      .from('post_queue')
+    // 現在時刻を基準に処理対象を決定（5分の猶予を持たせる）
+    const scheduledTimeCutoff = new Date(now.getTime() + 5 * 60 * 1000); // 5分後まで
+    
+    // 予約済みで実行時間が来ている投稿を取得
+    const { data: postsData, error: postsError } = await supabase
+      .from('posts')
       .select(`
         *,
-        posts!inner(
-          *,
-          personas!inner(threads_access_token)
+        personas!inner(
+          threads_access_token,
+          name
         )
       `)
-      .eq('status', 'queued')
-      .lte('scheduled_for', new Date().toISOString())
-      .order('queue_position', { ascending: true })
-      .limit(5);
+      .eq('status', 'scheduled')
+      .lte('scheduled_for', scheduledTimeCutoff.toISOString())
+      .not('personas.threads_access_token', 'is', null)
+      .order('scheduled_for', { ascending: true })
+      .limit(10);
 
-    if (queueError) {
-      throw queueError;
+    if (postsError) {
+      throw postsError;
     }
 
-    console.log(`Found ${queueItems?.length || 0} posts to process`);
+    console.log(`Found ${postsData?.length || 0} posts to process`);
 
-    for (const queueItem of queueItems || []) {
+    for (const post of postsData || []) {
       try {
-        console.log(`Processing post ${queueItem.post_id}`);
+        console.log(`Processing post ${post.id} scheduled for ${post.scheduled_for}`);
 
-        // キューアイテムを処理中に更新
+        // 投稿を処理中に更新
         await supabase
-          .from('post_queue')
+          .from('posts')
           .update({ status: 'processing' })
-          .eq('id', queueItem.id);
+          .eq('id', post.id);
 
         // Threads投稿を実行
         const { error: postError } = await supabase.functions.invoke('threads-post', {
           body: {
-            postId: queueItem.post_id,
-            userId: queueItem.user_id
+            postId: post.id,
+            userId: post.user_id
           }
         });
 
@@ -64,19 +70,12 @@ serve(async (req) => {
           throw postError;
         }
 
-        // 成功時はキューアイテムを完了状態に更新
-        await supabase
-          .from('post_queue')
-          .update({ status: 'completed' })
-          .eq('id', queueItem.id);
-
-        console.log(`Successfully posted ${queueItem.post_id}`);
+        console.log(`Successfully posted ${post.id}`);
 
       } catch (error) {
-        console.error(`Error processing post ${queueItem.post_id}:`, error);
+        console.error(`Error processing post ${post.id}:`, error);
 
         // 失敗時の処理
-        const post = queueItem.posts;
         const newRetryCount = (post.retry_count || 0) + 1;
         const maxRetries = post.max_retries || 3;
 
@@ -88,21 +87,14 @@ serve(async (req) => {
           await supabase
             .from('posts')
             .update({
+              status: 'scheduled',
               retry_count: newRetryCount,
               last_retry_at: new Date().toISOString(),
               scheduled_for: nextRetryTime.toISOString()
             })
-            .eq('id', queueItem.post_id);
+            .eq('id', post.id);
 
-          await supabase
-            .from('post_queue')
-            .update({
-              status: 'queued',
-              scheduled_for: nextRetryTime.toISOString()
-            })
-            .eq('id', queueItem.id);
-
-          console.log(`Scheduled retry ${newRetryCount} for post ${queueItem.post_id}`);
+          console.log(`Scheduled retry ${newRetryCount} for post ${post.id} at ${nextRetryTime.toISOString()}`);
         } else {
           // 最大リトライ回数を超えた場合は失敗状態に
           await supabase
@@ -112,14 +104,9 @@ serve(async (req) => {
               retry_count: newRetryCount,
               last_retry_at: new Date().toISOString()
             })
-            .eq('id', queueItem.post_id);
+            .eq('id', post.id);
 
-          await supabase
-            .from('post_queue')
-            .update({ status: 'failed' })
-            .eq('id', queueItem.id);
-
-          console.log(`Post ${queueItem.post_id} failed after ${maxRetries} retries`);
+          console.log(`Post ${post.id} failed after ${maxRetries} retries`);
         }
       }
     }
@@ -127,7 +114,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         success: true,
-        processed: queueItems?.length || 0,
+        processed: postsData?.length || 0,
         message: 'Auto-scheduler completed successfully'
       }),
       { 
