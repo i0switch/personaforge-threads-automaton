@@ -21,7 +21,8 @@ import {
   Sparkles,
   Star,
   Rocket,
-  Brain
+  Brain,
+  BookOpen
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAccountStatus } from "@/hooks/useAccountStatus";
@@ -132,11 +133,24 @@ const Index = () => {
                 <Star className="h-5 w-5 text-amber-500 fill-amber-500" />
               </div>
             </div>
-            <p className="text-xl text-gray-700 max-w-3xl mx-auto leading-relaxed">
+            <p className="text-xl text-gray-700 max-w-3xl mx-auto leading-relaxed mb-6">
               <span className="font-semibold text-slate-700">Gemini搭載</span>次世代AI自動運用プラットフォーム
               <br />
               <span className="text-lg">🚀 革新的なThreads運用体験を提供</span>
             </p>
+            
+            {/* User Manual Button */}
+            <div className="flex justify-center">
+              <Button 
+                onClick={() => navigate("/user-manual")}
+                className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
+                size="lg"
+              >
+                <BookOpen className="h-5 w-5 mr-2" />
+                📚 ユーザーマニュアル
+                <ExternalLink className="h-4 w-4 ml-2" />
+              </Button>
+            </div>
           </div>
         </div>
 
