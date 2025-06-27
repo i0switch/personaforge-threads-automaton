@@ -1,3 +1,4 @@
+
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
@@ -217,7 +218,7 @@ serve(async (req) => {
 
     console.log(`Using persona: ${persona.name}`);
 
-    // Generate time slots from selected dates and times with proper JST handling
+    // Generate time slots from selected dates and times
     const timeSlots = generateTimeSlots(selectedDates, selectedTimes);
     console.log(`Generated ${timeSlots.length} time slots`);
 
@@ -316,21 +317,14 @@ function generateTimeSlots(selectedDates: string[], selectedTimes: string[]): st
   const slots = [];
   
   for (const dateStr of selectedDates) {
-    // 日付文字列から日本時間で正確な日付を作成
     const date = new Date(dateStr);
     
     for (const timeStr of selectedTimes) {
       const [hour, minute] = timeStr.split(':').map(Number);
+      const scheduledDate = new Date(date);
+      scheduledDate.setHours(hour, minute, 0, 0);
       
-      // 日本時間でのスケジュール時間を作成
-      const scheduledDate = new Date(date.getFullYear(), date.getMonth(), date.getDate(), hour, minute, 0, 0);
-      
-      // 日本時間をUTCに変換（9時間マイナス）
-      const utcTime = new Date(scheduledDate.getTime() - (9 * 60 * 60 * 1000));
-      
-      console.log(`JST time: ${scheduledDate.toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })}, UTC time: ${utcTime.toISOString()}`);
-      
-      slots.push(utcTime.toISOString());
+      slots.push(scheduledDate.toISOString());
     }
   }
   
@@ -422,10 +416,8 @@ ${persona.name}のキャラクターに沿って、上記の指示に従って�
 function getTimeOfDay(scheduledTime?: string): string {
   if (!scheduledTime) return '一日中';
   
-  // UTCからJSTに変換してから時間帯を判定
-  const utcDate = new Date(scheduledTime);
-  const jstDate = new Date(utcDate.getTime() + (9 * 60 * 60 * 1000));
-  const hour = jstDate.getHours();
+  const date = new Date(scheduledTime);
+  const hour = date.getHours();
   
   if (hour >= 5 && hour < 12) return '朝';
   if (hour >= 12 && hour < 17) return '昼';

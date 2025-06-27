@@ -36,13 +36,9 @@ export const PostEditCard = ({ post, index, onUpdate, onDelete }: PostEditCardPr
     if (!scheduledFor) return "未設定";
     
     try {
-      // UTCの時間を日本時間で表示
-      const utcDate = new Date(scheduledFor);
-      
-      // 日本時間に変換
-      const jstDate = new Date(utcDate.getTime() + (9 * 60 * 60 * 1000));
-      
-      return format(jstDate, "M月d日 HH:mm", { locale: ja });
+      const date = new Date(scheduledFor);
+      // 日本時間で表示
+      return format(date, "M月d日 HH:mm", { locale: ja });
     } catch (error) {
       console.error("Date formatting error:", error);
       return "日時エラー";
