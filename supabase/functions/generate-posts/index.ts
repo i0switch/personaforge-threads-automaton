@@ -1,4 +1,3 @@
-
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
@@ -95,13 +94,12 @@ serve(async (req) => {
     const { 
       personaId, 
       topics, 
-      selectedDates, 
-      selectedTimes,
+      scheduledDates,
       customPrompt
     } = await req.json();
 
-    if (!personaId || !topics || !selectedDates || !selectedTimes) {
-      throw new Error('Missing required fields: personaId, topics, selectedDates, selectedTimes');
+    if (!personaId || !topics || !scheduledDates) {
+      throw new Error('Missing required fields: personaId, topics, scheduledDates');
     }
 
     // ユーザーのGemini APIキーを取得
@@ -113,7 +111,7 @@ serve(async (req) => {
     }
 
     // Calculate total posts to generate
-    const postCount = selectedDates.length * selectedTimes.length;
+    const postCount = scheduledDates.length;
     console.log(`Generating ${postCount} posts for persona ${personaId} using ${userGeminiApiKey ? 'user' : 'fallback'} API key`);
 
     // Get persona details
@@ -130,16 +128,13 @@ serve(async (req) => {
 
     console.log(`Using persona: ${persona.name}`);
 
-    // Generate time slots from selected dates and times
-    const timeSlots = generateTimeSlots(selectedDates, selectedTimes);
-
     const posts = [];
 
-    for (let i = 0; i < timeSlots.length; i++) {
-      console.log(`Generating post ${i + 1}/${timeSlots.length}`);
+    for (let i = 0; i < scheduledDates.length; i++) {
+      console.log(`Generating post ${i + 1}/${scheduledDates.length}`);
 
       // Create prompt for Gemini with variety
-      const prompt = createPostPrompt(persona, topics, i + 1, timeSlots.length, customPrompt, timeSlots[i]);
+      const prompt = createPostPrompt(persona, topics, i + 1, scheduledDates.length, customPrompt, scheduledDates[i]);
 
       try {
         // Call Gemini API
@@ -207,7 +202,7 @@ serve(async (req) => {
           .insert([{
             content,
             hashtags,
-            scheduled_for: timeSlots[i],
+            scheduled_for: scheduledDates[i],
             persona_id: personaId,
             user_id: user.id,
             status: 'scheduled',
@@ -236,12 +231,12 @@ serve(async (req) => {
 
     console.log(`Successfully generated ${posts.length} posts`);
 
-        return new Response(
+    return new Response(
       JSON.stringify({ 
         posts,
         success: true,
         generated_count: posts.length,
-        requested_count: timeSlots.length
+        requested_count: scheduledDates.length
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
