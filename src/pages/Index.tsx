@@ -217,7 +217,7 @@ const Index = () => {
                   <CardContent className="pt-0">
                     <Button 
                       variant="outline" 
-                      className={`w-full h-12 border-2 font-semibold transition-all duration-300 ${
+                      className={`w-full h-12 border-2 font-semibold transition-all duration-300 flex items-center justify-center gap-2 ${
                         feature.disabled 
                           ? 'border-gray-300 text-gray-400' 
                           : `border-transparent bg-gradient-to-r ${feature.color} text-white hover:shadow-md hover:scale-105`
@@ -229,20 +229,20 @@ const Index = () => {
                       }}
                     >
                       {feature.disabled ? (
-                        <span className="flex items-center gap-2">
+                        <>
                           アクセス不可
-                        </span>
+                        </>
                       ) : feature.title === "ペルソナ設定" ? (
-                        <span className="flex items-center gap-2">
+                        <>
                           <Edit className="h-4 w-4" />
                           設定・編集
                           <Sparkles className="h-4 w-4" />
-                        </span>
+                        </>
                       ) : (
-                        <span className="flex items-center gap-2">
+                        <>
                           開始する
                           <Rocket className="h-4 w-4" />
-                        </span>
+                        </>
                       )}
                     </Button>
                   </CardContent>
