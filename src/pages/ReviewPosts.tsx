@@ -30,28 +30,58 @@ const ReviewPosts = () => {
   const [posts, setPosts] = useState<Post[]>([]);
   const [persona, setPersona] = useState<Persona | null>(null);
   const [isScheduling, setIsScheduling] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    console.log('=== ReviewPosts useEffect ===');
+    console.log('=== ReviewPosts useEffect START ===');
+    console.log('Location:', location);
+    console.log('Location pathname:', location.pathname);
     console.log('Location state:', location.state);
+    console.log('User:', user);
     
-    const state = location.state as ReviewPostsState;
-    if (state && state.posts && state.persona) {
-      console.log('Setting posts:', state.posts.length);
-      console.log('Setting persona:', state.persona.name);
+    try {
+      const state = location.state as ReviewPostsState;
+      console.log('Parsed state:', state);
       
-      setPosts(state.posts);
-      setPersona(state.persona);
-    } else {
-      console.error('Invalid state received:', state);
-      toast({
-        title: "エラー",
-        description: "投稿データの読み込みに失敗しました。",
-        variant: "destructive",
-      });
-      navigate("/create-posts");
+      if (state && state.posts && state.persona) {
+        console.log('Valid state received');
+        console.log('Posts count:', state.posts.length);
+        console.log('Posts data:', state.posts);
+        console.log('Persona name:', state.persona.name);
+        console.log('Persona data:', state.persona);
+        
+        setPosts(state.posts);
+        setPersona(state.persona);
+        setError(null);
+        console.log('State set successfully');
+      } else {
+        console.error('Invalid state received');
+        console.error('State exists:', !!state);
+        console.error('Posts exists:', !!state?.posts);
+        console.error('Persona exists:', !!state?.persona);
+        
+        const errorMsg = '投稿データの読み込みに失敗しました。';
+        setError(errorMsg);
+        toast({
+          title: "エラー",
+          description: errorMsg,
+          variant: "destructive",
+        });
+        
+        setTimeout(() => {
+          console.log('Navigating back to create-posts');
+          navigate("/create-posts");
+        }, 2000);
+      }
+    } catch (err) {
+      console.error('Error in useEffect:', err);
+      setError('データの処理中にエラーが発生しました。');
+    } finally {
+      setIsLoading(false);
+      console.log('=== ReviewPosts useEffect END ===');
     }
-  }, [location.state, navigate, toast]);
+  }, [location.state, navigate, toast, user]);
 
   const updatePost = (index: number, content: string) => {
     const updatedPosts = [...posts];
@@ -114,13 +144,53 @@ const ReviewPosts = () => {
     }
   };
 
-  if (!persona || posts.length === 0) {
+  console.log('=== ReviewPosts render ===');
+  console.log('isLoading:', isLoading);
+  console.log('error:', error);
+  console.log('persona:', persona);
+  console.log('posts length:', posts.length);
+
+  if (isLoading) {
     return (
       <div className="min-h-screen bg-background p-6">
         <div className="max-w-4xl mx-auto">
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-8 w-8 animate-spin mr-2" />
             <span>読み込み中...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-background p-6">
+        <div className="max-w-4xl mx-auto">
+          <div className="flex items-center justify-center py-12">
+            <div className="text-center">
+              <p className="text-red-600 mb-4">{error}</p>
+              <Button onClick={() => navigate("/create-posts")}>
+                投稿作成に戻る
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!persona || posts.length === 0) {
+    return (
+      <div className="min-h-screen bg-background p-6">
+        <div className="max-w-4xl mx-auto">
+          <div className="flex items-center justify-center py-12">
+            <div className="text-center">
+              <p className="text-gray-600 mb-4">投稿データがありません</p>
+              <Button onClick={() => navigate("/create-posts")}>
+                投稿作成に戻る
+              </Button>
+            </div>
           </div>
         </div>
       </div>
@@ -219,7 +289,7 @@ const ReviewPosts = () => {
           ))}
         </div>
 
-        {/* アクションボタン - 画像生成ボタンを削除 */}
+        {/* アクションボタン */}
         <div className="flex gap-4">
           <Button 
             onClick={scheduleAllPosts} 
