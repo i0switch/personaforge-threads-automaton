@@ -19,11 +19,21 @@ export const PostStatusBadge = ({ post }: PostStatusBadgeProps) => {
   if (post.status === 'published') {
     return <Badge variant="default">公開済み</Badge>;
   }
+  
+  if (post.status === 'failed') {
+    return <Badge variant="destructive">失敗</Badge>;
+  }
+  
+  if (post.status === 'processing') {
+    return <Badge variant="secondary">処理中</Badge>;
+  }
+  
   if (post.status === 'scheduled') {
     if (post.scheduled_for && isPast(new Date(post.scheduled_for))) {
       return <Badge variant="destructive">期限切れ</Badge>;
     }
     return <Badge variant="secondary">予約済み</Badge>;
   }
+  
   return <Badge variant="outline">下書き</Badge>;
 };

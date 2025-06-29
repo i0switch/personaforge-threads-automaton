@@ -31,6 +31,7 @@ const ScheduledPosts = () => {
   const [savingPost, setSavingPost] = useState<string | null>(null);
   const [selectedPosts, setSelectedPosts] = useState<string[]>([]);
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [testingScheduler, setTestingScheduler] = useState(false);
   
   // フィルタリングとソートの状態
   const [filters, setFilters] = useState<PostFilters>({
@@ -285,6 +286,37 @@ const ScheduledPosts = () => {
     }
   };
 
+  const testAutoScheduler = async () => {
+    setTestingScheduler(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('auto-scheduler');
+      
+      if (error) {
+        console.error('Auto-scheduler error:', error);
+        throw error;
+      }
+      
+      console.log('Auto-scheduler result:', data);
+      
+      toast({
+        title: "テスト完了",
+        description: `自動スケジューラーを実行しました。処理件数: ${data.processed || 0}`,
+      });
+      
+      // 投稿リストを再読み込み
+      loadScheduledPosts();
+    } catch (error) {
+      console.error('Error testing auto-scheduler:', error);
+      toast({
+        title: "エラー",
+        description: "自動スケジューラーのテストに失敗しました。",
+        variant: "destructive",
+      });
+    } finally {
+      setTestingScheduler(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background p-6">
@@ -306,12 +338,26 @@ const ScheduledPosts = () => {
             <ArrowLeft className="h-4 w-4 mr-2" />
             戻る
           </Button>
-          <div>
+          <div className="flex-1">
             <h1 className="text-3xl font-bold">予約投稿管理</h1>
             <p className="text-muted-foreground">
               スケジュール確認・編集・公開
             </p>
           </div>
+          <Button 
+            variant="outline" 
+            onClick={testAutoScheduler}
+            disabled={testingScheduler}
+          >
+            {testingScheduler ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                テスト中...
+              </>
+            ) : (
+              "自動スケジューラーテスト"
+            )}
+          </Button>
         </div>
 
         <Card>
