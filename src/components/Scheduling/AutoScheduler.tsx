@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, Calendar, Clock, RefreshCw } from "lucide-react";
+import { Loader2, Calendar, Clock, RefreshCw, Info } from "lucide-react";
 import type { Database } from "@/integrations/supabase/types";
 
 type Post = Database['public']['Tables']['posts']['Row'];
@@ -15,31 +15,44 @@ export const AutoScheduler = () => {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [draftPosts, setDraftPosts] = useState<Post[]>([]);
+  const [scheduledPosts, setScheduledPosts] = useState<Post[]>([]);
   const [scheduling, setScheduling] = useState(false);
 
   useEffect(() => {
-    loadDraftPosts();
+    loadPosts();
   }, [user]);
 
-  const loadDraftPosts = async () => {
+  const loadPosts = async () => {
     if (!user) return;
     
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      // 下書き投稿（未スケジュール）を取得
+      const { data: drafts, error: draftError } = await supabase
         .from('posts')
         .select('*')
         .eq('user_id', user.id)
         .eq('status', 'draft')
         .is('scheduled_for', null);
 
-      if (error) throw error;
-      setDraftPosts(data || []);
+      if (draftError) throw draftError;
+
+      // 予約済み投稿を取得
+      const { data: scheduled, error: scheduledError } = await supabase
+        .from('posts')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('status', 'scheduled');
+
+      if (scheduledError) throw scheduledError;
+
+      setDraftPosts(drafts || []);
+      setScheduledPosts(scheduled || []);
     } catch (error) {
-      console.error('Error loading draft posts:', error);
+      console.error('Error loading posts:', error);
       toast({
         title: "エラー",
-        description: "下書き投稿の読み込みに失敗しました。",
+        description: "投稿の読み込みに失敗しました。",
         variant: "destructive",
       });
     } finally {
@@ -120,7 +133,7 @@ export const AutoScheduler = () => {
         description: `${draftPosts.length}件の投稿を自動スケジュールしました。`,
       });
       
-      loadDraftPosts();
+      loadPosts();
     } catch (error) {
       console.error('Error auto-scheduling posts:', error);
       toast({
@@ -145,18 +158,39 @@ export const AutoScheduler = () => {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="flex items-center justify-between p-4 border rounded-lg">
-          <div>
-            <p className="font-medium">下書き投稿</p>
-            <p className="text-sm text-muted-foreground">
-              {loading ? "読み込み中..." : `${draftPosts.length}件の投稿が自動スケジュール待ちです`}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between p-4 border rounded-lg">
+            <div>
+              <p className="font-medium">下書き投稿（未スケジュール）</p>
+              <p className="text-sm text-muted-foreground">
+                {loading ? "読み込み中..." : `${draftPosts.length}件の投稿が自動スケジュール待ちです`}
+              </p>
+            </div>
+            <Button onClick={loadPosts} variant="outline" size="sm" disabled={loading}>
+              <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+              更新
+            </Button>
+          </div>
+
+          <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/50">
+            <div>
+              <p className="font-medium">予約済み投稿</p>
+              <p className="text-sm text-muted-foreground">
+                {loading ? "読み込み中..." : `${scheduledPosts.length}件の投稿が既にスケジュール済みです`}
+              </p>
+            </div>
+            <Info className="h-4 w-4 text-muted-foreground" />
+          </div>
+        </div>
+
+        {draftPosts.length === 0 && scheduledPosts.length > 0 && (
+          <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <p className="text-sm text-blue-800">
+              <Info className="h-4 w-4 inline mr-1" />
+              すべての投稿は既にスケジュール済みです。新しい下書き投稿を作成すると、ここに表示されます。
             </p>
           </div>
-          <Button onClick={loadDraftPosts} variant="outline" size="sm" disabled={loading}>
-            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-            更新
-          </Button>
-        </div>
+        )}
 
         <Button 
           onClick={autoSchedulePosts} 
