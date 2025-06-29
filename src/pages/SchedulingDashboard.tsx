@@ -2,12 +2,59 @@
 import { ArrowLeft } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { SchedulingSettings } from "@/components/Scheduling/SchedulingSettings";
 import { PostQueue } from "@/components/Scheduling/PostQueue";
 import { AutoScheduler } from "@/components/Scheduling/AutoScheduler";
+import { useAuth } from "@/contexts/AuthContext";
+import { useEffect, useState } from "react";
 
 const SchedulingDashboard = () => {
   const navigate = useNavigate();
+  const { user, loading } = useAuth();
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    // コンポーネントの初期化完了を待つ
+    const timer = setTimeout(() => {
+      setIsLoading(false);
+    }, 100);
+    
+    return () => clearTimeout(timer);
+  }, []);
+
+  console.log("SchedulingDashboard rendering, user:", user, "loading:", loading);
+
+  if (loading || isLoading) {
+    return (
+      <div className="min-h-screen bg-background p-6">
+        <div className="max-w-6xl mx-auto">
+          <div className="flex items-center justify-center py-12">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+              <p className="text-muted-foreground">読み込み中...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-background p-6">
+        <div className="max-w-6xl mx-auto">
+          <Card>
+            <CardContent className="pt-6">
+              <p className="text-center text-muted-foreground">
+                ログインが必要です。
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background p-6">
@@ -18,7 +65,7 @@ const SchedulingDashboard = () => {
             戻る
           </Button>
           <div>
-            <h1 className="text-3xl font-bold">スケジ ューリング管理</h1>
+            <h1 className="text-3xl font-bold">スケジューリング管理</h1>
             <p className="text-muted-foreground">
               自動投稿・キュー管理・リトライ設定
             </p>
