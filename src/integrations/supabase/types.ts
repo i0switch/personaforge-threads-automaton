@@ -429,6 +429,36 @@ export type Database = {
         }
         Relationships: []
       }
+      security_events: {
+        Row: {
+          created_at: string | null
+          details: Json | null
+          event_type: string
+          id: string
+          ip_address: string | null
+          user_agent: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          details?: Json | null
+          event_type: string
+          id?: string
+          ip_address?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          details?: Json | null
+          event_type?: string
+          id?: string
+          ip_address?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       thread_replies: {
         Row: {
           auto_reply_sent: boolean | null
@@ -635,6 +665,10 @@ export type Database = {
       }
     }
     Functions: {
+      authenticate_service_request: {
+        Args: { request_headers: Json }
+        Returns: boolean
+      }
       get_user_stats: {
         Args: Record<PropertyKey, never>
         Returns: {
