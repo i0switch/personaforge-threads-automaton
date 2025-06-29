@@ -289,27 +289,41 @@ const ScheduledPosts = () => {
   const testAutoScheduler = async () => {
     setTestingScheduler(true);
     try {
-      const { data, error } = await supabase.functions.invoke('auto-scheduler');
+      console.log('Testing auto-scheduler...');
+      
+      // タイムアウト処理を追加
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('タイムアウト: 30秒以内にレスポンスがありませんでした')), 30000)
+      );
+      
+      const schedulerPromise = supabase.functions.invoke('auto-scheduler');
+      
+      const result = await Promise.race([schedulerPromise, timeoutPromise]);
+      const { data, error } = result as any;
+      
+      console.log('Auto-scheduler raw result:', { data, error });
       
       if (error) {
         console.error('Auto-scheduler error:', error);
-        throw error;
+        throw new Error(`エラー: ${error.message || JSON.stringify(error)}`);
       }
       
-      console.log('Auto-scheduler result:', data);
+      console.log('Auto-scheduler success data:', data);
+      
+      const message = data?.message || `処理完了: ${data?.processed || 0}件処理`;
       
       toast({
         title: "テスト完了",
-        description: `自動スケジューラーを実行しました。処理件数: ${data.processed || 0}`,
+        description: message,
       });
       
       // 投稿リストを再読み込み
-      loadScheduledPosts();
-    } catch (error) {
+      await loadScheduledPosts();
+    } catch (error: any) {
       console.error('Error testing auto-scheduler:', error);
       toast({
         title: "エラー",
-        description: "自動スケジューラーのテストに失敗しました。",
+        description: error.message || "自動スケジューラーのテストに失敗しました。",
         variant: "destructive",
       });
     } finally {
