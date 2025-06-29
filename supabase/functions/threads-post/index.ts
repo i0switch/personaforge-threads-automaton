@@ -20,15 +20,20 @@ serve(async (req) => {
   }
 
   try {
-    console.log('Starting Threads post...');
+    console.log('Starting Threads post function...');
 
-    const { postId, userId } = await req.json();
+    const requestBody = await req.json();
+    console.log('Request body:', JSON.stringify(requestBody, null, 2));
+
+    const { postId, userId } = requestBody;
 
     if (!postId || !userId) {
-      throw new Error('Missing required fields: postId, userId');
+      const error = 'Missing required fields: postId, userId';
+      console.error(error, { postId, userId });
+      throw new Error(error);
     }
 
-    console.log(`Publishing post ${postId} to Threads`);
+    console.log(`Publishing post ${postId} to Threads for user ${userId}`);
 
     // Get post details with persona info
     const { data: post, error: postError } = await supabase
@@ -41,12 +46,30 @@ serve(async (req) => {
       .eq('user_id', userId)
       .single();
 
-    if (postError || !post) {
-      throw new Error('Post not found or access denied');
+    console.log('Post query result:', { post: post ? 'found' : 'not found', error: postError });
+
+    if (postError) {
+      console.error('Post query error:', postError);
+      throw new Error(`Post query failed: ${postError.message}`);
     }
 
+    if (!post) {
+      const error = 'Post not found or access denied';
+      console.error(error, { postId, userId });
+      throw new Error(error);
+    }
+
+    console.log('Post found:', {
+      id: post.id,
+      content: post.content.substring(0, 100) + '...',
+      hasPersona: !!post.personas,
+      hasToken: !!post.personas?.threads_access_token
+    });
+
     if (!post.personas?.threads_access_token) {
-      throw new Error('Threads access token not configured for this persona');
+      const error = 'Threads access token not configured for this persona';
+      console.error(error, { personaId: post.persona_id });
+      throw new Error(error);
     }
 
     const threadsAccessToken = post.personas.threads_access_token;
@@ -56,7 +79,7 @@ serve(async (req) => {
 
     // Check if post has images
     if (post.images && post.images.length > 0) {
-      console.log(`Post has ${post.images.length} images`);
+      console.log(`Post has ${post.images.length} images, creating image container`);
       
       // For image posts, create container with IMAGE media type
       const createContainerResponse = await fetch('https://graph.threads.net/v1.0/me/threads', {
@@ -72,17 +95,25 @@ serve(async (req) => {
         }),
       });
 
+      const responseText = await createContainerResponse.text();
+      console.log('Image container response:', {
+        status: createContainerResponse.status,
+        ok: createContainerResponse.ok,
+        body: responseText
+      });
+
       if (!createContainerResponse.ok) {
-        const errorText = await createContainerResponse.text();
-        console.error('Threads create image container error:', errorText);
-        throw new Error(`Failed to create Threads image container: ${createContainerResponse.status} ${errorText}`);
+        console.error('Threads create image container error:', responseText);
+        throw new Error(`Failed to create Threads image container: ${createContainerResponse.status} ${responseText}`);
       }
 
-      const containerData = await createContainerResponse.json();
+      const containerData = JSON.parse(responseText);
       console.log('Image container created:', containerData);
       containerId = containerData.id;
 
     } else {
+      console.log('Creating text-only container');
+      
       // For text-only posts
       const createContainerResponse = await fetch('https://graph.threads.net/v1.0/me/threads', {
         method: 'POST',
@@ -96,19 +127,27 @@ serve(async (req) => {
         }),
       });
 
+      const responseText = await createContainerResponse.text();
+      console.log('Text container response:', {
+        status: createContainerResponse.status,
+        ok: createContainerResponse.ok,
+        body: responseText
+      });
+
       if (!createContainerResponse.ok) {
-        const errorText = await createContainerResponse.text();
-        console.error('Threads create text container error:', errorText);
-        throw new Error(`Failed to create Threads text container: ${createContainerResponse.status} ${errorText}`);
+        console.error('Threads create text container error:', responseText);
+        throw new Error(`Failed to create Threads text container: ${createContainerResponse.status} ${responseText}`);
       }
 
-      const containerData = await createContainerResponse.json();
+      const containerData = JSON.parse(responseText);
       console.log('Text container created:', containerData);
       containerId = containerData.id;
     }
 
     if (!containerId) {
-      throw new Error('No container ID returned from Threads API');
+      const error = 'No container ID returned from Threads API';
+      console.error(error);
+      throw new Error(error);
     }
 
     // Wait longer for image processing
@@ -117,6 +156,7 @@ serve(async (req) => {
     await new Promise(resolve => setTimeout(resolve, waitTime));
 
     // Then publish the container (Step 2)
+    console.log('Publishing container:', containerId);
     const publishResponse = await fetch('https://graph.threads.net/v1.0/me/threads_publish', {
       method: 'POST',
       headers: {
@@ -128,16 +168,23 @@ serve(async (req) => {
       }),
     });
 
+    const publishResponseText = await publishResponse.text();
+    console.log('Publish response:', {
+      status: publishResponse.status,
+      ok: publishResponse.ok,
+      body: publishResponseText
+    });
+
     if (!publishResponse.ok) {
-      const errorText = await publishResponse.text();
-      console.error('Threads publish error:', errorText);
-      throw new Error(`Failed to publish to Threads: ${publishResponse.status} ${errorText}`);
+      console.error('Threads publish error:', publishResponseText);
+      throw new Error(`Failed to publish to Threads: ${publishResponse.status} ${publishResponseText}`);
     }
 
-    const publishData = await publishResponse.json();
-    console.log('Post published:', publishData);
+    const publishData = JSON.parse(publishResponseText);
+    console.log('Post published successfully:', publishData);
 
     // Update post status in database
+    console.log('Updating post status in database...');
     const { error: updateError } = await supabase
       .from('posts')
       .update({
@@ -150,6 +197,8 @@ serve(async (req) => {
     if (updateError) {
       console.error('Error updating post status:', updateError);
       // Don't throw here as the post was successfully published
+    } else {
+      console.log('Post status updated successfully');
     }
 
     console.log(`Post ${postId} successfully published to Threads`);
@@ -168,6 +217,7 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('Error in threads-post function:', error);
+    console.error('Error stack:', error.stack);
     return new Response(
       JSON.stringify({ 
         error: error.message,

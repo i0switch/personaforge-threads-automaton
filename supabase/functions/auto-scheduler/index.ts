@@ -27,6 +27,8 @@ serve(async (req) => {
     // キューから処理待ちの投稿を取得（時間範囲を少し広げる）
     const timeBuffer = new Date(now.getTime() + 5 * 60 * 1000); // 5分後まで
     
+    console.log(`Fetching queue items scheduled before: ${timeBuffer.toISOString()}`);
+    
     const { data: queueItems, error: queueError } = await supabase
       .from('post_queue')
       .select(`
@@ -47,6 +49,12 @@ serve(async (req) => {
     }
 
     console.log(`Found ${queueItems?.length || 0} posts to process`);
+    console.log('Queue items:', queueItems?.map(item => ({
+      id: item.id,
+      post_id: item.post_id,
+      scheduled_for: item.scheduled_for,
+      status: item.status
+    })));
 
     let processedCount = 0;
     let successCount = 0;
@@ -54,7 +62,7 @@ serve(async (req) => {
 
     for (const queueItem of queueItems || []) {
       try {
-        console.log(`Processing post ${queueItem.post_id}, scheduled for: ${queueItem.scheduled_for}`);
+        console.log(`Processing queue item ${queueItem.id} for post ${queueItem.post_id}, scheduled for: ${queueItem.scheduled_for}`);
         processedCount++;
 
         // 投稿時刻をチェック
@@ -64,18 +72,26 @@ serve(async (req) => {
         console.log(`Time difference: ${timeDiff}ms (${Math.round(timeDiff / 1000 / 60)} minutes)`);
 
         // キューアイテムを処理中に更新
-        await supabase
+        console.log('Updating queue item to processing status...');
+        const { error: updateQueueError } = await supabase
           .from('post_queue')
           .update({ status: 'processing' })
           .eq('id', queueItem.id);
 
+        if (updateQueueError) {
+          console.error('Error updating queue status:', updateQueueError);
+        }
+
         // Threads投稿を実行
+        console.log('Invoking threads-post function...');
         const { data: postResult, error: postError } = await supabase.functions.invoke('threads-post', {
           body: {
             postId: queueItem.post_id,
             userId: queueItem.user_id
           }
         });
+
+        console.log('Threads post result:', { postResult, postError });
 
         if (postError) {
           console.error(`Threads post error for ${queueItem.post_id}:`, postError);
@@ -85,11 +101,13 @@ serve(async (req) => {
         console.log(`Threads post result for ${queueItem.post_id}:`, postResult);
 
         // 成功時はキューアイテムと投稿を完了状態に更新
+        console.log('Updating queue item to completed status...');
         await supabase
           .from('post_queue')
           .update({ status: 'completed' })
           .eq('id', queueItem.id);
 
+        console.log('Updating post status to published...');
         await supabase
           .from('posts')
           .update({ 
@@ -103,6 +121,7 @@ serve(async (req) => {
 
       } catch (error) {
         console.error(`Error processing post ${queueItem.post_id}:`, error);
+        console.error('Error details:', error.message, error.stack);
         failedCount++;
 
         // 失敗時の処理
@@ -110,10 +129,14 @@ serve(async (req) => {
         const newRetryCount = (post.retry_count || 0) + 1;
         const maxRetries = post.max_retries || 3;
 
+        console.log(`Retry count: ${newRetryCount}/${maxRetries}`);
+
         if (newRetryCount <= maxRetries) {
           // リトライ回数内の場合は再スケジュール
           const nextRetryTime = new Date();
           nextRetryTime.setMinutes(nextRetryTime.getMinutes() + (newRetryCount * 15)); // 15分後にリトライ
+
+          console.log(`Scheduling retry ${newRetryCount} for post ${queueItem.post_id} at ${nextRetryTime.toISOString()}`);
 
           await supabase
             .from('posts')
@@ -135,6 +158,8 @@ serve(async (req) => {
           console.log(`Scheduled retry ${newRetryCount} for post ${queueItem.post_id} at ${nextRetryTime.toISOString()}`);
         } else {
           // 最大リトライ回数を超えた場合は失敗状態に
+          console.log(`Post ${queueItem.post_id} failed after ${maxRetries} retries`);
+
           await supabase
             .from('posts')
             .update({
@@ -163,7 +188,12 @@ serve(async (req) => {
         processed: processedCount,
         successful: successCount,
         failed: failedCount,
-        message: message
+        message: message,
+        details: queueItems?.map(item => ({
+          queue_id: item.id,
+          post_id: item.post_id,
+          scheduled_for: item.scheduled_for
+        }))
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -173,10 +203,12 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('Error in auto-scheduler:', error);
+    console.error('Error stack:', error.stack);
     return new Response(
       JSON.stringify({ 
         error: error.message,
-        success: false 
+        success: false,
+        stack: error.stack
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }, 

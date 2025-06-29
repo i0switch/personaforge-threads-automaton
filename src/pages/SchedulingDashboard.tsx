@@ -16,26 +16,24 @@ const SchedulingDashboard = () => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    console.log("SchedulingDashboard useEffect - user:", user, "loading:", loading);
+    console.log("SchedulingDashboard mounted - user:", user, "loading:", loading);
     
-    // 認証状態の確認
     if (!loading) {
       if (!user) {
-        console.log("No user found, should show login message");
+        console.log("No user found in SchedulingDashboard");
         setError("ログインが必要です。");
       } else {
-        console.log("User found:", user.id);
+        console.log("User authenticated in SchedulingDashboard:", user.id);
         setError(null);
       }
       setIsLoading(false);
     }
   }, [user, loading]);
 
-  console.log("SchedulingDashboard rendering - user:", user, "loading:", loading, "isLoading:", isLoading, "error:", error);
+  console.log("SchedulingDashboard render - user:", !!user, "loading:", loading, "isLoading:", isLoading, "error:", error);
 
   // 初期ローディング状態
   if (loading || isLoading) {
-    console.log("Showing loading state");
     return (
       <div className="min-h-screen bg-background p-6">
         <div className="max-w-6xl mx-auto">
@@ -52,7 +50,6 @@ const SchedulingDashboard = () => {
 
   // エラー状態または未認証
   if (error || !user) {
-    console.log("Showing error/login state");
     return (
       <div className="min-h-screen bg-background p-6">
         <div className="max-w-6xl mx-auto">
@@ -83,7 +80,6 @@ const SchedulingDashboard = () => {
   }
 
   // メインコンテンツ
-  console.log("Rendering main content");
   return (
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-6xl mx-auto space-y-6">
