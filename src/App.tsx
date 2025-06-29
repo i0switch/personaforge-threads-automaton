@@ -12,6 +12,7 @@ import Auth from "@/pages/Auth";
 import PersonaSetup from "@/pages/PersonaSetup";
 import CreatePosts from "@/pages/CreatePosts";
 import ScheduledPosts from "@/pages/ScheduledPosts";
+import SchedulingDashboard from "@/pages/SchedulingDashboard";
 import AutoReply from "@/pages/AutoReply";
 import Settings from "@/pages/Settings";
 import AdminDashboard from "@/pages/AdminDashboard";
@@ -57,6 +58,14 @@ function App() {
                     element={
                       <ProtectedRoute>
                         <ScheduledPosts />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/scheduling-dashboard"
+                    element={
+                      <ProtectedRoute>
+                        <SchedulingDashboard />
                       </ProtectedRoute>
                     }
                   />
