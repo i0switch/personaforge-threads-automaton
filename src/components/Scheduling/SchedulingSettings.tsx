@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, Settings, Clock } from "lucide-react";
+import { Loader2, Settings, Clock, AlertCircle } from "lucide-react";
 
 interface SchedulingSettings {
   id?: string;
@@ -25,6 +25,7 @@ export const SchedulingSettings = () => {
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [settings, setSettings] = useState<SchedulingSettings>({
     optimal_hours: [9, 12, 15, 18, 21],
     timezone: 'Asia/Tokyo',
@@ -34,16 +35,25 @@ export const SchedulingSettings = () => {
   });
 
   useEffect(() => {
+    console.log("SchedulingSettings useEffect - user:", user);
     if (user) {
       loadSettings();
+    } else {
+      setLoading(false);
+      setError("ユーザー情報が見つかりません。");
     }
   }, [user]);
 
   const loadSettings = async () => {
-    if (!user) return;
+    if (!user) {
+      setError("ユーザー情報が見つかりません。");
+      setLoading(false);
+      return;
+    }
     
     console.log("Loading scheduling settings for user:", user.id);
     setLoading(true);
+    setError(null);
     
     try {
       const { data, error } = await supabase
@@ -52,8 +62,12 @@ export const SchedulingSettings = () => {
         .eq('user_id', user.id)
         .maybeSingle();
 
-      if (error && error.code !== 'PGRST116') {
-        throw error;
+      console.log("Settings query result:", { data, error });
+
+      if (error) {
+        console.error('Error loading settings:', error);
+        setError(`設定の読み込みエラー: ${error.message}`);
+        return;
       }
 
       if (data) {
@@ -70,19 +84,22 @@ export const SchedulingSettings = () => {
         console.log("No existing settings found, using defaults");
       }
     } catch (error) {
-      console.error('Error loading settings:', error);
-      toast({
-        title: "エラー",
-        description: "設定の読み込みに失敗しました。",
-        variant: "destructive",
-      });
+      console.error('Unexpected error loading settings:', error);
+      setError(`予期しないエラー: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setLoading(false);
     }
   };
 
   const saveSettings = async () => {
-    if (!user) return;
+    if (!user) {
+      toast({
+        title: "エラー",
+        description: "ユーザー情報が見つかりません。",
+        variant: "destructive",
+      });
+      return;
+    }
     
     setSaving(true);
     try {
@@ -94,6 +111,8 @@ export const SchedulingSettings = () => {
         queue_limit: settings.queue_limit,
         retry_enabled: settings.retry_enabled,
       };
+
+      console.log("Saving settings:", settingsData);
 
       if (settings.id) {
         const { error } = await supabase
@@ -121,7 +140,7 @@ export const SchedulingSettings = () => {
       console.error('Error saving settings:', error);
       toast({
         title: "エラー",
-        description: "設定の保存に失敗しました。",
+        description: `設定の保存に失敗しました: ${error instanceof Error ? error.message : 'Unknown error'}`,
         variant: "destructive",
       });
     } finally {
@@ -144,6 +163,22 @@ export const SchedulingSettings = () => {
         <CardContent className="flex items-center justify-center py-12">
           <Loader2 className="h-6 w-6 animate-spin mr-2" />
           <span>設定を読み込み中...</span>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (error) {
+    return (
+      <Card>
+        <CardContent className="py-12">
+          <div className="text-center">
+            <AlertCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
+            <p className="text-destructive mb-4">{error}</p>
+            <Button onClick={loadSettings} variant="outline">
+              再試行
+            </Button>
+          </div>
         </CardContent>
       </Card>
     );

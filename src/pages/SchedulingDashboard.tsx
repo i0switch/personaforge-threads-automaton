@@ -13,19 +13,29 @@ const SchedulingDashboard = () => {
   const navigate = useNavigate();
   const { user, loading } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // コンポーネントの初期化完了を待つ
-    const timer = setTimeout(() => {
-      setIsLoading(false);
-    }, 100);
+    console.log("SchedulingDashboard useEffect - user:", user, "loading:", loading);
     
-    return () => clearTimeout(timer);
-  }, []);
+    // 認証状態の確認
+    if (!loading) {
+      if (!user) {
+        console.log("No user found, should show login message");
+        setError("ログインが必要です。");
+      } else {
+        console.log("User found:", user.id);
+        setError(null);
+      }
+      setIsLoading(false);
+    }
+  }, [user, loading]);
 
-  console.log("SchedulingDashboard rendering, user:", user, "loading:", loading);
+  console.log("SchedulingDashboard rendering - user:", user, "loading:", loading, "isLoading:", isLoading, "error:", error);
 
+  // 初期ローディング状態
   if (loading || isLoading) {
+    console.log("Showing loading state");
     return (
       <div className="min-h-screen bg-background p-6">
         <div className="max-w-6xl mx-auto">
@@ -40,15 +50,31 @@ const SchedulingDashboard = () => {
     );
   }
 
-  if (!user) {
+  // エラー状態または未認証
+  if (error || !user) {
+    console.log("Showing error/login state");
     return (
       <div className="min-h-screen bg-background p-6">
         <div className="max-w-6xl mx-auto">
+          <div className="flex items-center gap-4 mb-6">
+            <Button variant="outline" size="sm" onClick={() => navigate("/")}>
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              戻る
+            </Button>
+            <h1 className="text-3xl font-bold">スケジューリング管理</h1>
+          </div>
           <Card>
             <CardContent className="pt-6">
               <p className="text-center text-muted-foreground">
-                ログインが必要です。
+                {error || "ログインが必要です。"}
               </p>
+              {!user && (
+                <div className="text-center mt-4">
+                  <Button onClick={() => navigate("/auth")}>
+                    ログインページへ
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -56,6 +82,8 @@ const SchedulingDashboard = () => {
     );
   }
 
+  // メインコンテンツ
+  console.log("Rendering main content");
   return (
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-6xl mx-auto space-y-6">
