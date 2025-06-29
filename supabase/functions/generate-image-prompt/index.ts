@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 
 const corsHeaders = {
@@ -28,25 +29,26 @@ serve(async (req) => {
 
     console.log('Generating image prompt for post:', postContent)
 
-    const prompt = `以下の投稿内容を分析して、写真的な画像生成プロンプトを英語で作成してください：
+    const prompt = `【命令】
 
+次の Twitter 投稿内容を分析し、投稿者本人がスマホのフロントカメラで自撮りした写真をBRAv7で生成するための**英語プロンプト**を出力せよ。
+
+投稿内容：
 "${postContent}"
 
-要件：
-1. 投稿の時間帯・場所・状況を正確に反映すること
-2. 投稿内容に含まれる具体的な要素（カフェ、朝、仕事、アプリ等）を含めること  
-3. 50トークン以内で簡潔に
-4. カンマ区切りで構成
-5. 写真的表現を含める（photograph, professional photo等）
-6. 適切な照明・背景・ポーズを指定
+【出力仕様】
+Positive prompt
+カンマ区切り・改行以外の余計な文字は不要
+Compelを使用するためトークン数は気にしなくてよい
 
-例：
-- 朝活・カフェ → morning light, cafe setting, coffee
-- 夜・都市 → evening, city lights, urban
-- 仕事・PC → working, laptop, business casual
+【Positiveの雛形】
+Cinematic photo, (best quality:1.1), ultra-realistic, photorealistic of [DESCRIPTORS], natural skin texture, bokeh, standing, front view, full body shot, Canon EOS R5, 85 mm, f/1.4, ISO 200, 1/160 s, RAW
 
-システム固定プロンプト（追加不要）:
-(masterpiece:1.2), best quality, high quality, 8k, high resolution, photorealistic, realistic, super detail, RAW photo, film grain, cinematic lighting, textured skin
+【[DESCRIPTORS] 生成ルール】
+- 先頭に**selfie**を必ず置く
+- 人物属性 → 行動／小物 → 場所 → 時間帯 → 照明 → ポーズ → カメラ語句
+- 例）
+  selfie, young app developer, checking analytics on laptop, rooftop cafe in Shibuya, golden hour glow, relaxed smile, smartphone front camera ƒ/1.8
 
 回答は生成プロンプトのみ出力してください。`
 
