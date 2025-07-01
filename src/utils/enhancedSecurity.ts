@@ -6,7 +6,7 @@ export interface SecurityEvent {
   user_id?: string;
   ip_address?: string;
   user_agent?: string;
-  details?: any;
+  details?: Record<string, any>;
 }
 
 export interface LoginAttempt {
@@ -49,7 +49,7 @@ export const enhancedSecurity = {
         .select('*')
         .eq('event_type', 'login_failed')
         .gte('created_at', fifteenMinutesAgo.toISOString())
-        .like('details->email', `%${email}%`);
+        .filter('details->email', 'eq', email);
 
       if (error) {
         console.error('Error checking brute force attempts:', error);
@@ -101,8 +101,8 @@ export const enhancedSecurity = {
         .select('*')
         .eq('event_type', 'api_request')
         .gte('created_at', oneMinuteAgo.toISOString())
-        .eq('details->endpoint', endpoint)
-        .eq('details->identifier', identifier);
+        .filter('details->endpoint', 'eq', endpoint)
+        .filter('details->identifier', 'eq', identifier);
 
       if (error) {
         console.error('Rate limit check error:', error);
