@@ -47,9 +47,9 @@ const PersonaSetup = () => {
     }
   }, [user]);
 
-  // limitInfoが更新されたときにボタンの状態を再評価
+  // limitInfoが更新されたときにログ出力（デバッグ用）
   useEffect(() => {
-    console.log('Limit info updated:', limitInfo);
+    console.log('Limit info in PersonaSetup updated:', limitInfo);
   }, [limitInfo]);
 
   const loadPersonas = async () => {
@@ -63,8 +63,10 @@ const PersonaSetup = () => {
       if (error) throw error;
       setPersonas(data || []);
       
-      // Refresh limit info after loading personas to ensure consistency
-      await refetchLimit();
+      // ペルソナ読み込み後にリミット情報を強制的に再取得
+      setTimeout(() => {
+        refetchLimit();
+      }, 100);
     } catch (error) {
       console.error("Error loading personas:", error);
       toast({
@@ -260,38 +262,41 @@ const PersonaSetup = () => {
   };
 
   const handleCreateNew = async () => {
-    // 新規作成時のペルソナ上限チェック（最新の情報で再確認）
+    // 新規作成前に最新の情報を取得
     await refetchLimit();
     
-    // 現在のペルソナ数を直接確認
-    const { data: currentPersonas, error: countError } = await supabase
-      .from("personas")
-      .select("id")
-      .eq("user_id", user?.id);
+    // 最新の情報を待つため少し遅延
+    setTimeout(async () => {
+      // 現在のペルソナ数を直接確認
+      const { data: currentPersonas, error: countError } = await supabase
+        .from("personas")
+        .select("id")
+        .eq("user_id", user?.id);
 
-    if (countError) {
-      console.error("Error checking current persona count:", countError);
-      toast({
-        title: "エラー",
-        description: "ペルソナ数の確認に失敗しました。",
-        variant: "destructive",
-      });
-      return;
-    }
+      if (countError) {
+        console.error("Error checking current persona count:", countError);
+        toast({
+          title: "エラー",
+          description: "ペルソナ数の確認に失敗しました。",
+          variant: "destructive",
+        });
+        return;
+      }
 
-    const currentCount = currentPersonas?.length || 0;
-    const limit = limitInfo?.personaLimit || 1;
+      const currentCount = currentPersonas?.length || 0;
+      const limit = limitInfo?.personaLimit || 1;
 
-    console.log(`Create new check: ${currentCount}/${limit} personas`);
+      console.log(`Create new check: ${currentCount}/${limit} personas`);
 
-    if (currentCount >= limit) {
-      console.log('Persona limit reached, showing dialog');
-      setShowLimitDialog(true);
-      return;
-    }
-    
-    setEditingPersona(null);
-    setIsEditing(true);
+      if (currentCount >= limit) {
+        console.log('Persona limit reached, showing dialog');
+        setShowLimitDialog(true);
+        return;
+      }
+      
+      setEditingPersona(null);
+      setIsEditing(true);
+    }, 200);
   };
 
   if (loading || limitLoading) {
@@ -319,12 +324,19 @@ const PersonaSetup = () => {
               AIペルソナの管理とThreads API設定
             </p>
             {limitInfo && (
-              <p className="text-sm text-muted-foreground mt-1">
-                ペルソナ: {limitInfo.currentCount} / {limitInfo.personaLimit}
-                {!limitInfo.canCreate && (
-                  <span className="text-destructive ml-2">(上限に達しています)</span>
+              <div className="mt-2">
+                <p className="text-sm text-muted-foreground">
+                  ペルソナ: {limitInfo.currentCount} / {limitInfo.personaLimit}
+                  {!limitInfo.canCreate && (
+                    <span className="text-destructive ml-2">(上限に達しています)</span>
+                  )}
+                </p>
+                {process.env.NODE_ENV === 'development' && (
+                  <p className="text-xs text-gray-400 mt-1">
+                    Debug: canCreate={limitInfo.canCreate ? 'true' : 'false'}
+                  </p>
                 )}
-              </p>
+              </div>
             )}
           </div>
           {!isEditing && (

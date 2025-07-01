@@ -24,7 +24,7 @@ export const usePersonaLimit = () => {
     try {
       console.log(`Checking persona limit for user: ${user.id}`);
       
-      // First, get a fresh count of personas directly
+      // 最新のペルソナ数を取得
       const { data: personasData, error: personasError } = await supabase
         .from('personas')
         .select('id')
@@ -38,46 +38,38 @@ export const usePersonaLimit = () => {
       const actualPersonaCount = personasData?.length || 0;
       console.log(`Direct persona count: ${actualPersonaCount}`);
 
-      // Then get the user's persona limit
+      // 最新のアカウント状態を取得（重複を避けるため DISTINCT ON を使用）
       const { data: accountData, error: accountError } = await supabase
         .from('user_account_status')
         .select('persona_limit')
         .eq('user_id', user.id)
         .order('updated_at', { ascending: false })
-        .limit(1)
-        .single();
+        .limit(1);
+
+      let personaLimit = 1; // デフォルト値
 
       if (accountError) {
         console.error('Error fetching account status:', accountError);
-        // If no record exists, use default
-        setLimitInfo({
-          currentCount: actualPersonaCount,
-          personaLimit: 1,
-          canCreate: actualPersonaCount < 1
-        });
-        return;
+        // エラーの場合はデフォルト値を使用
+      } else if (accountData && accountData.length > 0) {
+        personaLimit = accountData[0].persona_limit || 1;
+        console.log('Account data:', accountData[0]);
+      } else {
+        console.log('No account status found, using default limit');
       }
 
-      console.log('Account data:', accountData);
-
-      const personaLimit = accountData.persona_limit || 1;
       const canCreate = actualPersonaCount < personaLimit;
       
       console.log(`User ${user.id}: ${actualPersonaCount}/${personaLimit} personas, can create: ${canCreate}`);
       
-      setLimitInfo({
+      const newLimitInfo = {
         currentCount: actualPersonaCount,
         personaLimit,
         canCreate
-      });
+      };
 
-      // Also call the RPC function for comparison
-      const { data: rpcData, error: rpcError } = await supabase
-        .rpc('check_persona_limit', { user_id_param: user.id });
-
-      if (!rpcError && rpcData && rpcData.length > 0) {
-        console.log('RPC result for comparison:', rpcData[0]);
-      }
+      setLimitInfo(newLimitInfo);
+      console.log('Updated limit info:', newLimitInfo);
 
     } catch (err) {
       console.error('Unexpected error:', err);
@@ -96,7 +88,7 @@ export const usePersonaLimit = () => {
       .on(
         'postgres_changes',
         {
-          event: 'UPDATE',
+          event: '*',
           schema: 'public',
           table: 'user_account_status',
           filter: `user_id=eq.${user?.id}`
@@ -121,7 +113,8 @@ export const usePersonaLimit = () => {
         },
         (payload) => {
           console.log('Personas updated:', payload);
-          checkPersonaLimit();
+          // ペルソナの変更時は少し遅延を入れてからチェック
+          setTimeout(checkPersonaLimit, 500);
         }
       )
       .subscribe();
