@@ -57,7 +57,7 @@ export const PersonaLimitManager = () => {
 
       console.log("Profiles data:", profilesData);
 
-      // Try to get all personas using the check_persona_limit function for each user
+      // Use the check_persona_limit function for each user to get accurate counts
       const usersWithPersonaCount = await Promise.all(
         userAccountData.map(async (account) => {
           console.log(`Processing user: ${account.user_id}`);
@@ -65,29 +65,16 @@ export const PersonaLimitManager = () => {
           // Find corresponding profile
           const profile = profilesData?.find(p => p.user_id === account.user_id);
           
-          // Use the check_persona_limit function which should bypass RLS
+          // Use the updated check_persona_limit function
           const { data: limitData, error: limitError } = await supabase
             .rpc('check_persona_limit', { user_id_param: account.user_id });
 
           let personaCount = 0;
           if (limitError) {
             console.error(`Error checking persona limit for user ${account.user_id}:`, limitError);
-            
-            // Fallback: Try direct query (may be limited by RLS)
-            const { data: userPersonas, error: personasError } = await supabase
-              .from('personas')
-              .select('id, user_id, name')
-              .eq('user_id', account.user_id);
-
-            if (personasError) {
-              console.error(`Error fetching personas for user ${account.user_id}:`, personasError);
-            } else {
-              personaCount = userPersonas?.length || 0;
-              console.log(`Fallback query - User ${account.user_id} has ${personaCount} personas:`, userPersonas);
-            }
           } else if (limitData && limitData.length > 0) {
             personaCount = Number(limitData[0].current_count);
-            console.log(`RPC query - User ${account.user_id} (${profile?.display_name}) has ${personaCount} personas via check_persona_limit`);
+            console.log(`User ${account.user_id} (${profile?.display_name}) has ${personaCount} personas`);
           }
 
           return {
@@ -140,6 +127,7 @@ export const PersonaLimitManager = () => {
         description: "ペルソナ上限を更新しました。",
       });
 
+      // Reload the data to reflect changes
       await loadUsers();
     } catch (error) {
       console.error('Error updating persona limit:', error);
@@ -192,6 +180,14 @@ export const PersonaLimitManager = () => {
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
+          <Button 
+            onClick={loadUsers} 
+            variant="outline" 
+            className="mb-4"
+            disabled={loading}
+          >
+            データを再読み込み
+          </Button>
           {users.map((user) => (
             <div key={user.user_id} className="flex items-center justify-between p-4 border rounded-lg">
               <div className="flex-1">

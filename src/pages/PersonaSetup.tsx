@@ -61,6 +61,9 @@ const PersonaSetup = () => {
 
       if (error) throw error;
       setPersonas(data || []);
+      
+      // Refresh limit info after loading personas to ensure consistency
+      await refetchLimit();
     } catch (error) {
       console.error("Error loading personas:", error);
       toast({
