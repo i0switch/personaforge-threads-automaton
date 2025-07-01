@@ -57,7 +57,7 @@ export const PersonaLimitManager = () => {
 
       console.log("Profiles data:", profilesData);
 
-      // Process each user and get their persona count individually to ensure accuracy
+      // Try to get all personas using the check_persona_limit function for each user
       const usersWithPersonaCount = await Promise.all(
         userAccountData.map(async (account) => {
           console.log(`Processing user: ${account.user_id}`);
@@ -65,19 +65,30 @@ export const PersonaLimitManager = () => {
           // Find corresponding profile
           const profile = profilesData?.find(p => p.user_id === account.user_id);
           
-          // Get persona count for this specific user with a fresh query
-          const { data: userPersonas, error: personasError } = await supabase
-            .from('personas')
-            .select('id, user_id, name')
-            .eq('user_id', account.user_id);
+          // Use the check_persona_limit function which should bypass RLS
+          const { data: limitData, error: limitError } = await supabase
+            .rpc('check_persona_limit', { user_id_param: account.user_id });
 
-          if (personasError) {
-            console.error(`Error fetching personas for user ${account.user_id}:`, personasError);
+          let personaCount = 0;
+          if (limitError) {
+            console.error(`Error checking persona limit for user ${account.user_id}:`, limitError);
+            
+            // Fallback: Try direct query (may be limited by RLS)
+            const { data: userPersonas, error: personasError } = await supabase
+              .from('personas')
+              .select('id, user_id, name')
+              .eq('user_id', account.user_id);
+
+            if (personasError) {
+              console.error(`Error fetching personas for user ${account.user_id}:`, personasError);
+            } else {
+              personaCount = userPersonas?.length || 0;
+              console.log(`Fallback query - User ${account.user_id} has ${personaCount} personas:`, userPersonas);
+            }
+          } else if (limitData && limitData.length > 0) {
+            personaCount = Number(limitData[0].current_count);
+            console.log(`RPC query - User ${account.user_id} (${profile?.display_name}) has ${personaCount} personas via check_persona_limit`);
           }
-
-          const personaCount = userPersonas?.length || 0;
-          
-          console.log(`User ${account.user_id} (${profile?.display_name}) has ${personaCount} personas:`, userPersonas);
 
           return {
             user_id: account.user_id,
