@@ -67,6 +67,28 @@ export const usePersonaLimit = () => {
 
   useEffect(() => {
     checkPersonaLimit();
+
+    // user_account_statusテーブルの変更をリアルタイムで監視
+    const channel = supabase
+      .channel('user_account_status_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'user_account_status',
+          filter: `user_id=eq.${user?.id}`
+        },
+        (payload) => {
+          console.log('Account status updated:', payload);
+          checkPersonaLimit();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [user]);
 
   return {

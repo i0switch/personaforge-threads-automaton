@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -47,6 +46,11 @@ const PersonaSetup = () => {
     }
   }, [user]);
 
+  // limitInfoが更新されたときにボタンの状態を再評価
+  useEffect(() => {
+    console.log('Limit info updated:', limitInfo);
+  }, [limitInfo]);
+
   const loadPersonas = async () => {
     try {
       const { data, error } = await supabase
@@ -72,11 +76,14 @@ const PersonaSetup = () => {
   const handleSubmit = async (formData: any) => {
     if (!user) return;
 
-    // 新規作成時のペルソナ上限チェック
-    if (!editingPersona && limitInfo && !limitInfo.canCreate) {
-      console.log('Persona limit reached, showing dialog');
-      setShowLimitDialog(true);
-      return;
+    // 新規作成時のペルソナ上限チェック（最新の情報で再確認）
+    if (!editingPersona) {
+      await refetchLimit();
+      if (limitInfo && !limitInfo.canCreate) {
+        console.log('Persona limit reached after refetch, showing dialog');
+        setShowLimitDialog(true);
+        return;
+      }
     }
 
     try {
@@ -226,10 +233,11 @@ const PersonaSetup = () => {
     setEditingPersona(null);
   };
 
-  const handleCreateNew = () => {
-    // 新規作成時のペルソナ上限チェック
+  const handleCreateNew = async () => {
+    // 新規作成時のペルソナ上限チェック（最新の情報で再確認）
+    await refetchLimit();
     if (limitInfo && !limitInfo.canCreate) {
-      console.log('Persona limit reached, showing dialog');
+      console.log('Persona limit reached after refetch, showing dialog');
       setShowLimitDialog(true);
       return;
     }
@@ -265,6 +273,9 @@ const PersonaSetup = () => {
             {limitInfo && (
               <p className="text-sm text-muted-foreground mt-1">
                 ペルソナ: {limitInfo.currentCount} / {limitInfo.personaLimit}
+                {!limitInfo.canCreate && (
+                  <span className="text-destructive ml-2">(上限に達しています)</span>
+                )}
               </p>
             )}
           </div>
