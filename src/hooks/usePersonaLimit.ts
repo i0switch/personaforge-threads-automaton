@@ -24,39 +24,61 @@ export const usePersonaLimit = () => {
     try {
       console.log(`Checking persona limit for user: ${user.id}`);
       
-      const { data, error: fetchError } = await supabase
-        .rpc('check_persona_limit', { user_id_param: user.id });
+      // First, get a fresh count of personas directly
+      const { data: personasData, error: personasError } = await supabase
+        .from('personas')
+        .select('id')
+        .eq('user_id', user.id);
 
-      if (fetchError) {
-        console.error('Error checking persona limit:', fetchError);
-        setError('ペルソナ上限の確認に失敗しました');
+      if (personasError) {
+        console.error('Error fetching personas:', personasError);
+        throw personasError;
+      }
+
+      const actualPersonaCount = personasData?.length || 0;
+      console.log(`Direct persona count: ${actualPersonaCount}`);
+
+      // Then get the user's persona limit
+      const { data: accountData, error: accountError } = await supabase
+        .from('user_account_status')
+        .select('persona_limit')
+        .eq('user_id', user.id)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (accountError) {
+        console.error('Error fetching account status:', accountError);
+        // If no record exists, use default
+        setLimitInfo({
+          currentCount: actualPersonaCount,
+          personaLimit: 1,
+          canCreate: actualPersonaCount < 1
+        });
         return;
       }
 
-      console.log('Persona limit check result:', data);
+      console.log('Account data:', accountData);
 
-      if (data && data.length > 0) {
-        const limitData = data[0];
-        const currentCount = Number(limitData.current_count);
-        const personaLimit = limitData.persona_limit;
-        const canCreate = currentCount < personaLimit;
-        
-        console.log(`User ${user.id}: ${currentCount}/${personaLimit} personas, can create: ${canCreate}`);
-        
-        setLimitInfo({
-          currentCount,
-          personaLimit,
-          canCreate
-        });
-      } else {
-        // デフォルト値を設定
-        console.log('No limit data found, setting defaults');
-        setLimitInfo({
-          currentCount: 0,
-          personaLimit: 1,
-          canCreate: true
-        });
+      const personaLimit = accountData.persona_limit || 1;
+      const canCreate = actualPersonaCount < personaLimit;
+      
+      console.log(`User ${user.id}: ${actualPersonaCount}/${personaLimit} personas, can create: ${canCreate}`);
+      
+      setLimitInfo({
+        currentCount: actualPersonaCount,
+        personaLimit,
+        canCreate
+      });
+
+      // Also call the RPC function for comparison
+      const { data: rpcData, error: rpcError } = await supabase
+        .rpc('check_persona_limit', { user_id_param: user.id });
+
+      if (!rpcError && rpcData && rpcData.length > 0) {
+        console.log('RPC result for comparison:', rpcData[0]);
       }
+
     } catch (err) {
       console.error('Unexpected error:', err);
       setError('予期しないエラーが発生しました');
@@ -69,7 +91,7 @@ export const usePersonaLimit = () => {
     checkPersonaLimit();
 
     // user_account_statusテーブルの変更をリアルタイムで監視
-    const channel = supabase
+    const accountChannel = supabase
       .channel('user_account_status_changes')
       .on(
         'postgres_changes',
@@ -86,8 +108,27 @@ export const usePersonaLimit = () => {
       )
       .subscribe();
 
+    // personasテーブルの変更も監視
+    const personasChannel = supabase
+      .channel('personas_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'personas',
+          filter: `user_id=eq.${user?.id}`
+        },
+        (payload) => {
+          console.log('Personas updated:', payload);
+          checkPersonaLimit();
+        }
+      )
+      .subscribe();
+
     return () => {
-      supabase.removeChannel(channel);
+      supabase.removeChannel(accountChannel);
+      supabase.removeChannel(personasChannel);
     };
   }, [user]);
 

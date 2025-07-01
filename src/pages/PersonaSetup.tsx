@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -82,8 +83,30 @@ const PersonaSetup = () => {
     // 新規作成時のペルソナ上限チェック（最新の情報で再確認）
     if (!editingPersona) {
       await refetchLimit();
-      if (limitInfo && !limitInfo.canCreate) {
-        console.log('Persona limit reached after refetch, showing dialog');
+      
+      // 再度現在のペルソナ数を直接確認
+      const { data: currentPersonas, error: countError } = await supabase
+        .from("personas")
+        .select("id")
+        .eq("user_id", user.id);
+
+      if (countError) {
+        console.error("Error checking current persona count:", countError);
+        toast({
+          title: "エラー",
+          description: "ペルソナ数の確認に失敗しました。",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const currentCount = currentPersonas?.length || 0;
+      const limit = limitInfo?.personaLimit || 1;
+
+      console.log(`Before creation: ${currentCount}/${limit} personas`);
+
+      if (currentCount >= limit) {
+        console.log('Persona limit reached, showing dialog');
         setShowLimitDialog(true);
         return;
       }
@@ -239,8 +262,30 @@ const PersonaSetup = () => {
   const handleCreateNew = async () => {
     // 新規作成時のペルソナ上限チェック（最新の情報で再確認）
     await refetchLimit();
-    if (limitInfo && !limitInfo.canCreate) {
-      console.log('Persona limit reached after refetch, showing dialog');
+    
+    // 現在のペルソナ数を直接確認
+    const { data: currentPersonas, error: countError } = await supabase
+      .from("personas")
+      .select("id")
+      .eq("user_id", user?.id);
+
+    if (countError) {
+      console.error("Error checking current persona count:", countError);
+      toast({
+        title: "エラー",
+        description: "ペルソナ数の確認に失敗しました。",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const currentCount = currentPersonas?.length || 0;
+    const limit = limitInfo?.personaLimit || 1;
+
+    console.log(`Create new check: ${currentCount}/${limit} personas`);
+
+    if (currentCount >= limit) {
+      console.log('Persona limit reached, showing dialog');
       setShowLimitDialog(true);
       return;
     }
