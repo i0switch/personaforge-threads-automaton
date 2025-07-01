@@ -31,16 +31,10 @@ export const PersonaLimitManager = () => {
     try {
       console.log("Loading users for persona limit management...");
       
-      // Get user account status with profiles in a single query
+      // Get user account status first
       const { data: userAccountData, error: accountError } = await supabase
         .from('user_account_status')
-        .select(`
-          user_id, 
-          persona_limit, 
-          is_approved, 
-          subscription_status,
-          profiles!inner(display_name)
-        `)
+        .select('user_id, persona_limit, is_approved, subscription_status')
         .order('persona_limit', { ascending: false });
 
       if (accountError) {
@@ -48,12 +42,27 @@ export const PersonaLimitManager = () => {
         throw accountError;
       }
 
-      console.log("User account data with profiles:", userAccountData);
+      console.log("User account data:", userAccountData);
+
+      // Get profiles data separately
+      const { data: profilesData, error: profilesError } = await supabase
+        .from('profiles')
+        .select('user_id, display_name');
+
+      if (profilesError) {
+        console.error('Error fetching profiles:', profilesError);
+        throw profilesError;
+      }
+
+      console.log("Profiles data:", profilesData);
 
       // Process each user
       const usersWithPersonaCount = await Promise.all(
-        userAccountData.map(async (account: any) => {
+        userAccountData.map(async (account) => {
           console.log(`Processing user: ${account.user_id}`);
+          
+          // Find corresponding profile
+          const profile = profilesData.find(p => p.user_id === account.user_id);
           
           // Get persona count
           const { data: personas, error: personasError } = await supabase
@@ -71,7 +80,7 @@ export const PersonaLimitManager = () => {
           return {
             user_id: account.user_id,
             email: 'Email not available', // Skip email for now due to auth admin issues
-            display_name: account.profiles?.display_name || 'Unknown',
+            display_name: profile?.display_name || 'Unknown',
             persona_limit: account.persona_limit,
             current_personas: personaCount,
             is_approved: account.is_approved,
