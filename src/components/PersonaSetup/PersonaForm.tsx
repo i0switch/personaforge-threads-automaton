@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { Bot, MessageSquare, Settings, User } from "lucide-react";
+import { AvatarUpload } from "./AvatarUpload";
 
 interface PersonaFormProps {
   editingPersona: any;
@@ -69,6 +70,13 @@ export const PersonaForm = ({ editingPersona, onSubmit, onCancel }: PersonaFormP
     setFormData(prev => ({
       ...prev,
       [field]: value
+    }));
+  };
+
+  const handleAvatarChange = (url: string) => {
+    setFormData(prev => ({
+      ...prev,
+      avatar_url: url
     }));
   };
 
@@ -155,15 +163,12 @@ export const PersonaForm = ({ editingPersona, onSubmit, onCancel }: PersonaFormP
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="avatar_url">アバター画像URL</Label>
-              <Input
-                id="avatar_url"
-                value={formData.avatar_url}
-                onChange={(e) => handleInputChange("avatar_url", e.target.value)}
-                placeholder="https://example.com/avatar.jpg"
-              />
-            </div>
+            {/* アバターアップロード */}
+            <AvatarUpload
+              personaId={editingPersona?.id}
+              currentAvatarUrl={formData.avatar_url}
+              onAvatarChange={handleAvatarChange}
+            />
 
             <Separator />
 

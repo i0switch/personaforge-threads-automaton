@@ -1,3 +1,4 @@
+
 -- Create storage bucket for persona avatars
 INSERT INTO storage.buckets (id, name, public) VALUES ('persona-avatars', 'persona-avatars', true);
 
