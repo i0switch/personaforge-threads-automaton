@@ -30,36 +30,65 @@ export const PersonaLimitManager = () => {
 
   const loadUsers = async () => {
     try {
-      // First get user account status
+      console.log("Loading users for persona limit management...");
+      
+      // Get user account status
       const { data: userAccountData, error: accountError } = await supabase
         .from('user_account_status')
         .select('user_id, persona_limit, is_approved, subscription_status')
         .order('persona_limit', { ascending: false });
 
-      if (accountError) throw accountError;
+      if (accountError) {
+        console.error('Error fetching user account status:', accountError);
+        throw accountError;
+      }
 
-      // Then get profiles separately and merge the data
+      console.log("User account data:", userAccountData);
+
+      // Process each user
       const usersWithPersonaCount = await Promise.all(
         userAccountData.map(async (account) => {
+          console.log(`Processing user: ${account.user_id}`);
+          
           // Get profile data
-          const { data: profile } = await supabase
+          const { data: profile, error: profileError } = await supabase
             .from('profiles')
             .select('display_name')
             .eq('user_id', account.user_id)
             .single();
 
+          if (profileError) {
+            console.error(`Error fetching profile for user ${account.user_id}:`, profileError);
+          }
+
           // Get persona count
-          const { data: personas } = await supabase
+          const { data: personas, error: personasError } = await supabase
             .from('personas')
             .select('id')
             .eq('user_id', account.user_id);
 
-          // Get email from auth
-          const { data: authUser } = await supabase.auth.admin.getUserById(account.user_id);
+          if (personasError) {
+            console.error(`Error fetching personas for user ${account.user_id}:`, personasError);
+          }
+
+          console.log(`User ${account.user_id} has ${personas?.length || 0} personas`);
+
+          // Get email from auth.users via service role
+          let email = 'Unknown';
+          try {
+            const { data: authUser, error: authError } = await supabase.auth.admin.getUserById(account.user_id);
+            if (authError) {
+              console.error(`Error fetching auth user ${account.user_id}:`, authError);
+            } else {
+              email = authUser.user?.email || 'Unknown';
+            }
+          } catch (error) {
+            console.error(`Auth admin error for user ${account.user_id}:`, error);
+          }
 
           return {
             user_id: account.user_id,
-            email: authUser.user?.email || 'Unknown',
+            email: email,
             display_name: profile?.display_name || 'Unknown',
             persona_limit: account.persona_limit,
             current_personas: personas?.length || 0,
@@ -69,6 +98,7 @@ export const PersonaLimitManager = () => {
         })
       );
 
+      console.log("Final users with persona count:", usersWithPersonaCount);
       setUsers(usersWithPersonaCount);
     } catch (error) {
       console.error('Error loading users:', error);
