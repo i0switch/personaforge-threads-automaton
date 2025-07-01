@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -56,38 +57,41 @@ export const PersonaLimitManager = () => {
 
       console.log("Profiles data:", profilesData);
 
+      // Get all personas data in one query for efficiency
+      const { data: allPersonas, error: personasError } = await supabase
+        .from('personas')
+        .select('id, user_id');
+
+      if (personasError) {
+        console.error('Error fetching personas:', personasError);
+        throw personasError;
+      }
+
+      console.log("All personas data:", allPersonas);
+
       // Process each user
-      const usersWithPersonaCount = await Promise.all(
-        userAccountData.map(async (account) => {
-          console.log(`Processing user: ${account.user_id}`);
-          
-          // Find corresponding profile
-          const profile = profilesData.find(p => p.user_id === account.user_id);
-          
-          // Get persona count
-          const { data: personas, error: personasError } = await supabase
-            .from('personas')
-            .select('id')
-            .eq('user_id', account.user_id);
+      const usersWithPersonaCount = userAccountData.map((account) => {
+        console.log(`Processing user: ${account.user_id}`);
+        
+        // Find corresponding profile
+        const profile = profilesData?.find(p => p.user_id === account.user_id);
+        
+        // Count personas for this user
+        const userPersonas = allPersonas?.filter(p => p.user_id === account.user_id) || [];
+        const personaCount = userPersonas.length;
+        
+        console.log(`User ${account.user_id} has ${personaCount} personas:`, userPersonas);
 
-          if (personasError) {
-            console.error(`Error fetching personas for user ${account.user_id}:`, personasError);
-          }
-
-          const personaCount = personas?.length || 0;
-          console.log(`User ${account.user_id} has ${personaCount} personas`);
-
-          return {
-            user_id: account.user_id,
-            email: 'Email not available', // Skip email for now due to auth admin issues
-            display_name: profile?.display_name || 'Unknown',
-            persona_limit: account.persona_limit,
-            current_personas: personaCount,
-            is_approved: account.is_approved,
-            subscription_status: account.subscription_status || 'free'
-          };
-        })
-      );
+        return {
+          user_id: account.user_id,
+          email: 'Email not available', // Skip email for now due to auth admin issues
+          display_name: profile?.display_name || 'Unknown',
+          persona_limit: account.persona_limit,
+          current_personas: personaCount,
+          is_approved: account.is_approved,
+          subscription_status: account.subscription_status || 'free'
+        };
+      });
 
       console.log("Final users with persona count:", usersWithPersonaCount);
       setUsers(usersWithPersonaCount);
