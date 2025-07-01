@@ -1,10 +1,12 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Shield, Users } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ArrowLeft, Shield, Users, Settings } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { UserManagementTable } from "@/components/Admin/UserManagementTable";
 import { AdminStats } from "@/components/Admin/AdminStats";
+import { PersonaLimitManager } from "@/components/Admin/PersonaLimitManager";
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
@@ -30,20 +32,39 @@ const AdminDashboard = () => {
 
         <AdminStats />
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5" />
+        <Tabs defaultValue="users" className="space-y-6">
+          <TabsList>
+            <TabsTrigger value="users" className="flex items-center gap-2">
+              <Users className="h-4 w-4" />
               ユーザー管理
-            </CardTitle>
-            <CardDescription>
-              ユーザーアカウントの承認、有効化/無効化、課金ステータスの管理
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <UserManagementTable />
-          </CardContent>
-        </Card>
+            </TabsTrigger>
+            <TabsTrigger value="persona-limits" className="flex items-center gap-2">
+              <Settings className="h-4 w-4" />
+              ペルソナ上限管理
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="users">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Users className="h-5 w-5" />
+                  ユーザー管理
+                </CardTitle>
+                <CardDescription>
+                  ユーザーアカウントの承認、有効化/無効化、課金ステータスの管理
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <UserManagementTable />
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="persona-limits">
+            <PersonaLimitManager />
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   );

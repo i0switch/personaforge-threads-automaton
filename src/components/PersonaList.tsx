@@ -9,6 +9,8 @@ import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { usePersonaLimit } from "@/hooks/usePersonaLimit";
+import { PersonaLimitDialog } from "@/components/PersonaLimit/PersonaLimitDialog";
 
 interface Persona {
   id: string;
@@ -26,8 +28,10 @@ export const PersonaList = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user } = useAuth();
+  const { limitInfo, loading: limitLoading, refetch: refetchLimit } = usePersonaLimit();
   const [personas, setPersonas] = useState<Persona[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showLimitDialog, setShowLimitDialog] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -60,6 +64,14 @@ export const PersonaList = () => {
     }
   };
 
+  const handleCreatePersona = () => {
+    if (limitInfo && !limitInfo.canCreate) {
+      setShowLimitDialog(true);
+      return;
+    }
+    navigate("/persona-setup");
+  };
+
   const deletePersona = async (personaId: string) => {
     if (!confirm('このペルソナを削除しますか？')) return;
 
@@ -78,6 +90,7 @@ export const PersonaList = () => {
       });
 
       await loadPersonas();
+      await refetchLimit();
     } catch (error) {
       console.error('Error deleting persona:', error);
       toast({
@@ -88,7 +101,7 @@ export const PersonaList = () => {
     }
   };
 
-  if (loading) {
+  if (loading || limitLoading) {
     return (
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {[...Array(3)].map((_, i) => (
@@ -118,10 +131,17 @@ export const PersonaList = () => {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold">ペルソナ一覧</h2>
+          <div className="flex items-center gap-2 mb-2">
+            <h2 className="text-2xl font-bold">ペルソナ一覧</h2>
+            {limitInfo && (
+              <Badge variant={limitInfo.canCreate ? "default" : "destructive"}>
+                {limitInfo.currentCount} / {limitInfo.personaLimit}
+              </Badge>
+            )}
+          </div>
           <p className="text-muted-foreground">作成済みのペルソナを管理できます</p>
         </div>
-        <Button onClick={() => navigate("/persona-setup")}>
+        <Button onClick={handleCreatePersona} disabled={limitInfo && !limitInfo.canCreate}>
           <Plus className="h-4 w-4 mr-2" />
           新規ペルソナ作成
         </Button>
@@ -135,7 +155,7 @@ export const PersonaList = () => {
             <p className="text-muted-foreground mb-4">
               まずは最初のペルソナを作成してください
             </p>
-            <Button onClick={() => navigate("/persona-setup")}>
+            <Button onClick={handleCreatePersona} disabled={limitInfo && !limitInfo.canCreate}>
               <Plus className="h-4 w-4 mr-2" />
               ペルソナを作成
             </Button>
@@ -200,6 +220,13 @@ export const PersonaList = () => {
           ))}
         </div>
       )}
+
+      <PersonaLimitDialog
+        open={showLimitDialog}
+        onOpenChange={setShowLimitDialog}
+        currentCount={limitInfo?.currentCount || 0}
+        limit={limitInfo?.personaLimit || 1}
+      />
     </div>
   );
 };

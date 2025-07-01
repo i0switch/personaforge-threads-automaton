@@ -520,6 +520,7 @@ export type Database = {
           id: string
           is_active: boolean
           is_approved: boolean
+          persona_limit: number
           subscription_status: string | null
           updated_at: string
           user_id: string
@@ -531,6 +532,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           is_approved?: boolean
+          persona_limit?: number
           subscription_status?: string | null
           updated_at?: string
           user_id: string
@@ -542,6 +544,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           is_approved?: boolean
+          persona_limit?: number
           subscription_status?: string | null
           updated_at?: string
           user_id?: string
@@ -668,6 +671,14 @@ export type Database = {
       authenticate_service_request: {
         Args: { request_headers: Json }
         Returns: boolean
+      }
+      check_persona_limit: {
+        Args: { user_id_param: string }
+        Returns: {
+          current_count: number
+          persona_limit: number
+          can_create: boolean
+        }[]
       }
       get_user_stats: {
         Args: Record<PropertyKey, never>
