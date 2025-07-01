@@ -30,38 +30,41 @@ export const PersonaLimitManager = () => {
 
   const loadUsers = async () => {
     try {
-      const { data: usersData, error } = await supabase
+      // First get user account status
+      const { data: userAccountData, error: accountError } = await supabase
         .from('user_account_status')
-        .select(`
-          user_id,
-          persona_limit,
-          is_approved,
-          subscription_status,
-          profiles!inner(display_name)
-        `)
+        .select('user_id, persona_limit, is_approved, subscription_status')
         .order('persona_limit', { ascending: false });
 
-      if (error) throw error;
+      if (accountError) throw accountError;
 
-      // ユーザーごとのペルソナ数を取得
+      // Then get profiles separately and merge the data
       const usersWithPersonaCount = await Promise.all(
-        usersData.map(async (user) => {
+        userAccountData.map(async (account) => {
+          // Get profile data
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('display_name')
+            .eq('user_id', account.user_id)
+            .single();
+
+          // Get persona count
           const { data: personas } = await supabase
             .from('personas')
             .select('id')
-            .eq('user_id', user.user_id);
+            .eq('user_id', account.user_id);
 
-          // メールアドレスを取得
-          const { data: authUser } = await supabase.auth.admin.getUserById(user.user_id);
+          // Get email from auth
+          const { data: authUser } = await supabase.auth.admin.getUserById(account.user_id);
 
           return {
-            user_id: user.user_id,
+            user_id: account.user_id,
             email: authUser.user?.email || 'Unknown',
-            display_name: user.profiles?.display_name || 'Unknown',
-            persona_limit: user.persona_limit,
+            display_name: profile?.display_name || 'Unknown',
+            persona_limit: account.persona_limit,
             current_personas: personas?.length || 0,
-            is_approved: user.is_approved,
-            subscription_status: user.subscription_status || 'free'
+            is_approved: account.is_approved,
+            subscription_status: account.subscription_status || 'free'
           };
         })
       );
