@@ -672,6 +672,10 @@ export type Database = {
         Args: { request_headers: Json }
         Returns: boolean
       }
+      check_login_attempts: {
+        Args: { user_email: string }
+        Returns: boolean
+      }
       check_persona_limit: {
         Args: { user_id_param: string }
         Returns: {
@@ -699,6 +703,20 @@ export type Database = {
       is_admin: {
         Args: { _user_id: string }
         Returns: boolean
+      }
+      log_security_event: {
+        Args: {
+          p_event_type: string
+          p_user_id?: string
+          p_ip_address?: string
+          p_user_agent?: string
+          p_details?: Json
+        }
+        Returns: undefined
+      }
+      validate_password_strength: {
+        Args: { password: string }
+        Returns: Json
       }
     }
     Enums: {
