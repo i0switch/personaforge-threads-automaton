@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -8,6 +7,8 @@ import { ArrowLeft } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { PersonaForm } from "@/components/PersonaSetup/PersonaForm";
 import { PersonaList } from "@/components/PersonaSetup/PersonaList";
+import { PersonaWebhookSettings } from "@/components/ReplyMonitoring/PersonaWebhookSettings";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface Persona {
   id: string;
@@ -257,17 +258,34 @@ const PersonaSetup = () => {
           />
         )}
 
-        {/* Personas List Section */}
-        <div className="space-y-4">
-          <h2 className="text-2xl font-semibold">登録済みペルソナ</h2>
-          <PersonaList
-            personas={personas}
-            onEdit={handleEdit}
-            onDelete={handleDelete}
-            onToggleActive={toggleActive}
-            onCreateNew={handleCreateNew}
-          />
-        </div>
+        {/* Main Content with Tabs */}
+        {!isEditing && (
+          <Tabs defaultValue="personas" className="space-y-4">
+            <TabsList>
+              <TabsTrigger value="personas">ペルソナ一覧</TabsTrigger>
+              <TabsTrigger value="webhooks">Webhook設定</TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="personas" className="space-y-4">
+              <h2 className="text-2xl font-semibold">登録済みペルソナ</h2>
+              <PersonaList
+                personas={personas}
+                onEdit={handleEdit}
+                onDelete={handleDelete}
+                onToggleActive={toggleActive}
+                onCreateNew={handleCreateNew}
+              />
+            </TabsContent>
+            
+            <TabsContent value="webhooks" className="space-y-4">
+              <h2 className="text-2xl font-semibold">Webhook設定</h2>
+              <p className="text-muted-foreground">
+                各ペルソナ専用のWebhook URLとVerify Tokenを確認できます。Meta for DevelopersでWebhook設定を行う際に使用してください。
+              </p>
+              <PersonaWebhookSettings />
+            </TabsContent>
+          </Tabs>
+        )}
       </div>
     </div>
   );
