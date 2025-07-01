@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -9,6 +10,8 @@ import { PersonaForm } from "@/components/PersonaSetup/PersonaForm";
 import { PersonaList } from "@/components/PersonaSetup/PersonaList";
 import { PersonaWebhookSettings } from "@/components/ReplyMonitoring/PersonaWebhookSettings";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { usePersonaLimit } from "@/hooks/usePersonaLimit";
+import { PersonaLimitDialog } from "@/components/PersonaLimit/PersonaLimitDialog";
 
 interface Persona {
   id: string;
@@ -31,10 +34,12 @@ const PersonaSetup = () => {
   const { user } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
+  const { limitInfo, loading: limitLoading, refetch: refetchLimit } = usePersonaLimit();
   const [personas, setPersonas] = useState<Persona[]>([]);
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [editingPersona, setEditingPersona] = useState<Persona | null>(null);
+  const [showLimitDialog, setShowLimitDialog] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -66,6 +71,13 @@ const PersonaSetup = () => {
 
   const handleSubmit = async (formData: any) => {
     if (!user) return;
+
+    // 新規作成時のペルソナ上限チェック
+    if (!editingPersona && limitInfo && !limitInfo.canCreate) {
+      console.log('Persona limit reached, showing dialog');
+      setShowLimitDialog(true);
+      return;
+    }
 
     try {
       const expertiseArray = formData.expertise.split(',').map((item: string) => item.trim()).filter(Boolean);
@@ -140,7 +152,8 @@ const PersonaSetup = () => {
       }
 
       handleCancel();
-      loadPersonas();
+      await loadPersonas();
+      await refetchLimit();
     } catch (error) {
       console.error("Error saving persona:", error);
       toast({
@@ -172,7 +185,8 @@ const PersonaSetup = () => {
         title: "成功",
         description: "ペルソナが削除されました。",
       });
-      loadPersonas();
+      await loadPersonas();
+      await refetchLimit();
     } catch (error) {
       console.error("Error deleting persona:", error);
       toast({
@@ -213,11 +227,18 @@ const PersonaSetup = () => {
   };
 
   const handleCreateNew = () => {
+    // 新規作成時のペルソナ上限チェック
+    if (limitInfo && !limitInfo.canCreate) {
+      console.log('Persona limit reached, showing dialog');
+      setShowLimitDialog(true);
+      return;
+    }
+    
     setEditingPersona(null);
     setIsEditing(true);
   };
 
-  if (loading) {
+  if (loading || limitLoading) {
     return (
       <div className="min-h-screen bg-background">
         <div className="container mx-auto p-6">
@@ -241,9 +262,18 @@ const PersonaSetup = () => {
             <p className="text-muted-foreground mt-1">
               AIペルソナの管理とThreads API設定
             </p>
+            {limitInfo && (
+              <p className="text-sm text-muted-foreground mt-1">
+                ペルソナ: {limitInfo.currentCount} / {limitInfo.personaLimit}
+              </p>
+            )}
           </div>
           {!isEditing && (
-            <Button onClick={handleCreateNew} size="lg">
+            <Button 
+              onClick={handleCreateNew} 
+              size="lg"
+              disabled={limitInfo && !limitInfo.canCreate}
+            >
               新しいペルソナを作成
             </Button>
           )}
@@ -286,6 +316,13 @@ const PersonaSetup = () => {
             </TabsContent>
           </Tabs>
         )}
+
+        <PersonaLimitDialog
+          open={showLimitDialog}
+          onOpenChange={setShowLimitDialog}
+          currentCount={limitInfo?.currentCount || 0}
+          limit={limitInfo?.personaLimit || 1}
+        />
       </div>
     </div>
   );

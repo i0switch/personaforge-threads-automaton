@@ -22,6 +22,8 @@ export const usePersonaLimit = () => {
     }
 
     try {
+      console.log(`Checking persona limit for user: ${user.id}`);
+      
       const { data, error: fetchError } = await supabase
         .rpc('check_persona_limit', { user_id_param: user.id });
 
@@ -31,15 +33,24 @@ export const usePersonaLimit = () => {
         return;
       }
 
+      console.log('Persona limit check result:', data);
+
       if (data && data.length > 0) {
         const limitData = data[0];
+        const currentCount = Number(limitData.current_count);
+        const personaLimit = limitData.persona_limit;
+        const canCreate = currentCount < personaLimit;
+        
+        console.log(`User ${user.id}: ${currentCount}/${personaLimit} personas, can create: ${canCreate}`);
+        
         setLimitInfo({
-          currentCount: Number(limitData.current_count),
-          personaLimit: limitData.persona_limit,
-          canCreate: limitData.can_create
+          currentCount,
+          personaLimit,
+          canCreate
         });
       } else {
         // デフォルト値を設定
+        console.log('No limit data found, setting defaults');
         setLimitInfo({
           currentCount: 0,
           personaLimit: 1,
