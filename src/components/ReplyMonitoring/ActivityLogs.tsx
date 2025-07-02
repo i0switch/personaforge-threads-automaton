@@ -133,9 +133,29 @@ export const ActivityLogs = () => {
                           <summary className="text-blue-600 hover:text-blue-800">
                             詳細を見る
                           </summary>
-                          <pre className="mt-2 text-xs bg-gray-50 p-2 rounded overflow-auto max-w-xs">
-                            {JSON.stringify(log.metadata, null, 2)}
-                          </pre>
+                          <div className="mt-2 space-y-2 max-w-xs">
+                            {Object.entries(log.metadata as Record<string, any>).map(([key, value]) => (
+                              <div key={key} className="bg-gray-50 p-2 rounded text-xs">
+                                <div className="font-semibold text-gray-700 mb-1">
+                                  {key === 'reply_id' ? 'リプライID' :
+                                   key === 'reply_text' ? 'リプライ内容' :
+                                   key === 'author' ? '投稿者' :
+                                   key === 'threads_id' ? 'Threads ID' :
+                                   key === 'generated_reply' ? 'AI返信内容' :
+                                   key === 'reply_to' ? '返信先内容' :
+                                   key === 'original_post' ? '元投稿' :
+                                   key}:
+                                </div>
+                                <div className="text-gray-600 break-words">
+                                  {typeof value === 'string' ? (
+                                    value.length > 100 ? `${value.substring(0, 100)}...` : value
+                                  ) : (
+                                    JSON.stringify(value, null, 2)
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
                         </details>
                       )}
                     </TableCell>
