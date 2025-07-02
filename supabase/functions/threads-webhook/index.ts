@@ -283,10 +283,25 @@ serve(async (req) => {
       
       console.log('Processing webhook payload structure:', {
         hasEntry: !!payload.entry,
-        entryLength: payload.entry ? payload.entry.length : 0,
-        firstEntry: payload.entry ? payload.entry[0] : null
+        hasValues: !!payload.values,
+        valuesLength: payload.values ? payload.values.length : 0,
+        firstValue: payload.values ? payload.values[0] : null
       })
       
+      // Threads Webhookの新しい構造（values配列）をチェック
+      if (payload.values && Array.isArray(payload.values)) {
+        for (const valueItem of payload.values) {
+          console.log('Processing value item:', JSON.stringify(valueItem, null, 2))
+          
+          if (valueItem.field === 'replies' && valueItem.value) {
+            console.log('Processing reply data for field:', valueItem.field, 'with value:', valueItem.value)
+            const processed = await processReplyData(supabase, persona_id, [valueItem.value])
+            repliesProcessed += processed
+          }
+        }
+      }
+      
+      // 従来のentry構造もサポート（後方互換性）
       if (payload.entry && Array.isArray(payload.entry)) {
         for (const entry of payload.entry) {
           console.log('Processing entry:', JSON.stringify(entry, null, 2))
@@ -298,7 +313,6 @@ serve(async (req) => {
                 valueType: typeof change.value
               })
               
-              // mentions以外のフィールドもチェック
               if ((change.field === 'mentions' || change.field === 'replies' || change.field === 'comments') && change.value) {
                 console.log('Processing reply data for field:', change.field, 'with value:', change.value)
                 const processed = await processReplyData(supabase, persona_id, change.value)
