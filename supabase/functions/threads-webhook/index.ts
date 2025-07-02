@@ -568,6 +568,8 @@ async function processReplyData(supabase: any, persona_id: string, replyData: an
             } else {
               console.log(`Failed to fetch original post: ${postResponse.status}`)
             }
+          } else {
+            console.log('No root_post.id available for original post content fetch')
           }
         } catch (error) {
           console.error(`Error fetching original post content:`, error)
