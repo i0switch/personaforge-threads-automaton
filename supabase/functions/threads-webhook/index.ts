@@ -18,151 +18,284 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    // セキュリティ情報収集
-    const userAgent = req.headers.get('user-agent') || 'unknown'
-    const clientIP = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || 'unknown'
-    const signature = req.headers.get('x-hub-signature-256')
-    const contentType = req.headers.get('content-type')
-    const timestamp = Date.now()
+    const url = new URL(req.url)
+    const persona_id = url.searchParams.get('persona_id')
 
-    // 基本的なセキュリティチェック
-    if (!signature) {
-      await logSecurityEvent(supabase, {
-        event_type: 'webhook_verification_failed',
-        ip_address: clientIP,
-        user_agent: userAgent,
-        details: {
-          reason: 'missing_signature',
-          timestamp: new Date().toISOString(),
-          content_type: contentType
-        }
+    // Meta for Developers Webhook検証処理（GET リクエスト）
+    if (req.method === 'GET') {
+      const hubMode = url.searchParams.get('hub.mode')
+      const hubChallenge = url.searchParams.get('hub.challenge')
+      const hubVerifyToken = url.searchParams.get('hub.verify_token')
+
+      console.log('Webhook verification request:', {
+        persona_id,
+        hubMode,
+        hubVerifyToken: hubVerifyToken ? '[PRESENT]' : '[MISSING]',
+        hubChallenge: hubChallenge ? '[PRESENT]' : '[MISSING]'
       })
 
-      return new Response(
-        JSON.stringify({ error: 'Signature required' }),
-        { 
-          status: 401, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      )
-    }
-
-    // Rate limiting - IPアドレス毎の制限
-    const isRateLimited = await checkRateLimit(supabase, clientIP)
-    if (isRateLimited) {
-      await logSecurityEvent(supabase, {
-        event_type: 'rate_limit_exceeded',
-        ip_address: clientIP,
-        user_agent: userAgent,
-        details: {
-          reason: 'too_many_requests',
-          timestamp: new Date().toISOString()
-        }
-      })
-
-      return new Response(
-        JSON.stringify({ error: 'Rate limit exceeded. Please try again later.' }),
-        { 
-          status: 429, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      )
-    }
-
-    // リクエストボディを取得
-    const body = await req.text()
-    
-    // ボディサイズ制限（1MB）
-    if (body.length > 1024 * 1024) {
-      await logSecurityEvent(supabase, {
-        event_type: 'webhook_security_violation',
-        ip_address: clientIP,
-        details: {
-          reason: 'payload_too_large',
-          size: body.length,
-          timestamp: new Date().toISOString()
-        }
-      })
-
-      return new Response(
-        JSON.stringify({ error: 'Payload too large' }),
-        { 
-          status: 413, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      )
-    }
-
-    // Webhook署名検証
-    let payload
-    try {
-      payload = JSON.parse(body)
-    } catch (error) {
-      await logSecurityEvent(supabase, {
-        event_type: 'webhook_security_violation',
-        ip_address: clientIP,
-        details: {
-          reason: 'invalid_json',
-          error: error.message,
-          timestamp: new Date().toISOString()
-        }
-      })
-
-      return new Response(
-        JSON.stringify({ error: 'Invalid JSON payload' }),
-        { 
+      if (!persona_id) {
+        console.error('Missing persona_id in verification request')
+        return new Response('Missing persona_id parameter', { 
           status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      )
-    }
-
-    // 入力検証とサニタイゼーション
-    const validationResult = validateWebhookPayload(payload)
-    if (!validationResult.valid) {
-      await logSecurityEvent(supabase, {
-        event_type: 'webhook_validation_failed',
-        ip_address: clientIP,
-        details: {
-          reason: 'invalid_payload',
-          errors: validationResult.errors,
-          timestamp: new Date().toISOString()
-        }
-      })
-
-      return new Response(
-        JSON.stringify({ error: 'Invalid payload format' }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      )
-    }
-
-    // 成功した場合のログ記録
-    await logSecurityEvent(supabase, {
-      event_type: 'webhook_processed',
-      ip_address: clientIP,
-      user_agent: userAgent,
-      details: {
-        content_type: contentType,
-        payload_size: body.length,
-        timestamp: new Date().toISOString(),
-        processing_time: Date.now() - timestamp
+          headers: corsHeaders 
+        })
       }
-    })
 
-    // Webhookペイロードの処理
-    console.log('Processing secure webhook payload:', JSON.stringify(payload, null, 2))
+      if (hubMode === 'subscribe') {
+        // ペルソナのWebhook Verify Tokenを取得
+        const { data: persona, error } = await supabase
+          .from('personas')
+          .select('webhook_verify_token')
+          .eq('id', persona_id)
+          .single()
+
+        if (error || !persona) {
+          console.error('Persona not found:', error)
+          await logSecurityEvent(supabase, {
+            event_type: 'webhook_verification_failed',
+            details: {
+              reason: 'persona_not_found',
+              persona_id,
+              timestamp: new Date().toISOString()
+            }
+          })
+          return new Response('Persona not found', { 
+            status: 404, 
+            headers: corsHeaders 
+          })
+        }
+
+        if (!persona.webhook_verify_token) {
+          console.error('Webhook verify token not configured for persona:', persona_id)
+          await logSecurityEvent(supabase, {
+            event_type: 'webhook_verification_failed',
+            details: {
+              reason: 'verify_token_not_configured',
+              persona_id,
+              timestamp: new Date().toISOString()
+            }
+          })
+          return new Response('Webhook verify token not configured', { 
+            status: 400, 
+            headers: corsHeaders 
+          })
+        }
+
+        console.log('Comparing tokens:', {
+          received: hubVerifyToken,
+          expected: persona.webhook_verify_token,
+          match: hubVerifyToken === persona.webhook_verify_token
+        })
+
+        if (hubVerifyToken === persona.webhook_verify_token) {
+          console.log('Webhook verification successful for persona:', persona_id)
+          await logSecurityEvent(supabase, {
+            event_type: 'webhook_verification_success',
+            details: {
+              persona_id,
+              timestamp: new Date().toISOString()
+            }
+          })
+          return new Response(hubChallenge, { 
+            status: 200, 
+            headers: { ...corsHeaders, 'Content-Type': 'text/plain' } 
+          })
+        } else {
+          console.error('Webhook verify token mismatch')
+          await logSecurityEvent(supabase, {
+            event_type: 'webhook_verification_failed',
+            details: {
+              reason: 'token_mismatch',
+              persona_id,
+              timestamp: new Date().toISOString()
+            }
+          })
+          return new Response('Forbidden', { 
+            status: 403, 
+            headers: corsHeaders 
+          })
+        }
+      }
+
+      return new Response('Bad Request', { 
+        status: 400, 
+        headers: corsHeaders 
+      })
+    }
+
+    // POST リクエスト - Webhook データ処理
+    if (req.method === 'POST') {
+      const userAgent = req.headers.get('user-agent') || 'unknown'
+      const clientIP = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || 'unknown'
+      const signature = req.headers.get('x-hub-signature-256')
+      const contentType = req.headers.get('content-type')
+      const timestamp = Date.now()
+
+      if (!persona_id) {
+        return new Response(
+          JSON.stringify({ error: 'Missing persona_id parameter' }),
+          { 
+            status: 400, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          }
+        )
+      }
+
+      // 基本的なセキュリティチェック
+      if (!signature) {
+        await logSecurityEvent(supabase, {
+          event_type: 'webhook_verification_failed',
+          ip_address: clientIP,
+          user_agent: userAgent,
+          details: {
+            reason: 'missing_signature',
+            persona_id,
+            timestamp: new Date().toISOString(),
+            content_type: contentType
+          }
+        })
+
+        return new Response(
+          JSON.stringify({ error: 'Signature required' }),
+          { 
+            status: 401, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          }
+        )
+      }
+
+      // Rate limiting - IPアドレス毎の制限
+      const isRateLimited = await checkRateLimit(supabase, clientIP)
+      if (isRateLimited) {
+        await logSecurityEvent(supabase, {
+          event_type: 'rate_limit_exceeded',
+          ip_address: clientIP,
+          user_agent: userAgent,
+          details: {
+            reason: 'too_many_requests',
+            persona_id,
+            timestamp: new Date().toISOString()
+          }
+        })
+
+        return new Response(
+          JSON.stringify({ error: 'Rate limit exceeded. Please try again later.' }),
+          { 
+            status: 429, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          }
+        )
+      }
+
+      // リクエストボディを取得
+      const body = await req.text()
+      
+      // ボディサイズ制限（1MB）
+      if (body.length > 1024 * 1024) {
+        await logSecurityEvent(supabase, {
+          event_type: 'webhook_security_violation',
+          ip_address: clientIP,
+          details: {
+            reason: 'payload_too_large',
+            size: body.length,
+            persona_id,
+            timestamp: new Date().toISOString()
+          }
+        })
+
+        return new Response(
+          JSON.stringify({ error: 'Payload too large' }),
+          { 
+            status: 413, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          }
+        )
+      }
+
+      // Webhook署名検証
+      let payload
+      try {
+        payload = JSON.parse(body)
+      } catch (error) {
+        await logSecurityEvent(supabase, {
+          event_type: 'webhook_security_violation',
+          ip_address: clientIP,
+          details: {
+            reason: 'invalid_json',
+            error: error.message,
+            persona_id,
+            timestamp: new Date().toISOString()
+          }
+        })
+
+        return new Response(
+          JSON.stringify({ error: 'Invalid JSON payload' }),
+          { 
+            status: 400, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          }
+        )
+      }
+
+      // 入力検証とサニタイゼーション
+      const validationResult = validateWebhookPayload(payload)
+      if (!validationResult.valid) {
+        await logSecurityEvent(supabase, {
+          event_type: 'webhook_validation_failed',
+          ip_address: clientIP,
+          details: {
+            reason: 'invalid_payload',
+            errors: validationResult.errors,
+            persona_id,
+            timestamp: new Date().toISOString()
+          }
+        })
+
+        return new Response(
+          JSON.stringify({ error: 'Invalid payload format' }),
+          { 
+            status: 400, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          }
+        )
+      }
+
+      // 成功した場合のログ記録
+      await logSecurityEvent(supabase, {
+        event_type: 'webhook_processed',
+        ip_address: clientIP,
+        user_agent: userAgent,
+        details: {
+          content_type: contentType,
+          payload_size: body.length,
+          persona_id,
+          timestamp: new Date().toISOString(),
+          processing_time: Date.now() - timestamp
+        }
+      })
+
+      // Webhookペイロードの処理
+      console.log('Processing webhook payload for persona:', persona_id, JSON.stringify(payload, null, 2))
+
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          message: 'Webhook processed successfully',
+          timestamp: new Date().toISOString(),
+          persona_id
+        }),
+        { 
+          status: 200, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      )
+    }
 
     return new Response(
-      JSON.stringify({ 
-        success: true, 
-        message: 'Webhook processed successfully',
-        timestamp: new Date().toISOString()
-      }),
+      JSON.stringify({ error: 'Method not allowed' }),
       { 
-        status: 200, 
+        status: 405, 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       }
     )
