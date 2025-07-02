@@ -281,11 +281,26 @@ serve(async (req) => {
       // リプライデータの処理
       let repliesProcessed = 0
       
+      console.log('Processing webhook payload structure:', {
+        hasEntry: !!payload.entry,
+        entryLength: payload.entry ? payload.entry.length : 0,
+        firstEntry: payload.entry ? payload.entry[0] : null
+      })
+      
       if (payload.entry && Array.isArray(payload.entry)) {
         for (const entry of payload.entry) {
+          console.log('Processing entry:', JSON.stringify(entry, null, 2))
           if (entry.changes && Array.isArray(entry.changes)) {
             for (const change of entry.changes) {
-              if (change.field === 'mentions' && change.value) {
+              console.log('Processing change:', {
+                field: change.field,
+                hasValue: !!change.value,
+                valueType: typeof change.value
+              })
+              
+              // mentions以外のフィールドもチェック
+              if ((change.field === 'mentions' || change.field === 'replies' || change.field === 'comments') && change.value) {
+                console.log('Processing reply data for field:', change.field, 'with value:', change.value)
                 const processed = await processReplyData(supabase, persona_id, change.value)
                 repliesProcessed += processed
               }
