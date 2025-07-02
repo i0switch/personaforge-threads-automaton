@@ -457,7 +457,7 @@ async function processReplyData(supabase: any, persona_id: string, replyData: an
     // ペルソナ情報を取得
     const { data: persona, error: personaError } = await supabase
       .from('personas')
-      .select('id, name, user_id, ai_auto_reply_enabled, threads_username')
+      .select('id, name, user_id, ai_auto_reply_enabled, threads_username, threads_access_token')
       .eq('id', persona_id)
       .single()
 
@@ -478,8 +478,9 @@ async function processReplyData(supabase: any, persona_id: string, replyData: an
         replyId: reply.id,
         username: reply.username,
         text: reply.text,
-        rootPostOwner: reply.root_post?.username,
-        rootPostOwnerId: reply.root_post?.owner_id
+        rootPostData: reply.root_post,
+        repliedToData: reply.replied_to,
+        fullReplyData: JSON.stringify(reply, null, 2)
       })
 
       // 自分自身のリプライをスキップ
