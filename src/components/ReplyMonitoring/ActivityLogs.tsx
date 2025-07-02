@@ -5,15 +5,14 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, RefreshCw } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 interface ActivityLog {
   id: string;
   action_type: string;
   description: string;
-  created_at: string;
   metadata: any;
+  created_at: string;
   personas: {
     name: string;
   } | null;
@@ -44,7 +43,6 @@ export const ActivityLogs = () => {
           )
         `)
         .eq('user_id', user!.id)
-        .in('action_type', ['auto_reply_sent', 'reply_received', 'webhook_received'])
         .order('created_at', { ascending: false })
         .limit(100);
 
@@ -65,11 +63,11 @@ export const ActivityLogs = () => {
   const getActionTypeLabel = (actionType: string) => {
     switch (actionType) {
       case 'auto_reply_sent':
-        return '自動返信送信';
-      case 'reply_received':
-        return 'リプライ受信';
-      case 'webhook_received':
-        return 'Webhook受信';
+        return 'AI自動返信';
+      case 'post_created':
+        return '投稿作成';
+      case 'post_published':
+        return '投稿公開';
       default:
         return actionType;
     }
@@ -79,76 +77,72 @@ export const ActivityLogs = () => {
     switch (actionType) {
       case 'auto_reply_sent':
         return 'default';
-      case 'reply_received':
+      case 'post_created':
         return 'secondary';
-      case 'webhook_received':
+      case 'post_published':
         return 'outline';
       default:
-        return 'outline';
+        return 'secondary';
     }
   };
 
   if (loading && logs.length === 0) {
-    return (
-      <div className="flex items-center justify-center py-8">
-        <Loader2 className="h-6 w-6 animate-spin mr-2" />
-        <span>読み込み中...</span>
-      </div>
-    );
+    return <div>読み込み中...</div>;
   }
 
   return (
     <div className="space-y-4">
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center justify-between">
-            <span>アクティビティログ</span>
-            <Button onClick={fetchLogs} size="sm" variant="outline">
-              <RefreshCw className="h-4 w-4 mr-2" />
-              更新
-            </Button>
-          </CardTitle>
+          <CardTitle>アクティビティログ</CardTitle>
         </CardHeader>
         <CardContent>
           {logs.length === 0 ? (
-            <p className="text-gray-500 text-center py-8">アクティビティログはありません</p>
+            <p className="text-gray-500">まだアクティビティがありません</p>
           ) : (
-            <div className="space-y-3">
-              {logs.map((log) => (
-                <div key={log.id} className="border border-gray-200 rounded-lg p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center space-x-2">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>日時</TableHead>
+                  <TableHead>ペルソナ</TableHead>
+                  <TableHead>アクション</TableHead>
+                  <TableHead>説明</TableHead>
+                  <TableHead>詳細</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {logs.map((log) => (
+                  <TableRow key={log.id}>
+                    <TableCell className="text-sm">
+                      {new Date(log.created_at).toLocaleString()}
+                    </TableCell>
+                    <TableCell>
+                      {log.personas?.name || '-'}
+                    </TableCell>
+                    <TableCell>
                       <Badge variant={getActionTypeBadgeVariant(log.action_type)}>
                         {getActionTypeLabel(log.action_type)}
                       </Badge>
-                      {log.personas && (
-                        <Badge variant="outline">
-                          {log.personas.name}
-                        </Badge>
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {log.description}
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {log.metadata && (
+                        <details className="cursor-pointer">
+                          <summary className="text-blue-600 hover:text-blue-800">
+                            詳細を見る
+                          </summary>
+                          <pre className="mt-2 text-xs bg-gray-50 p-2 rounded overflow-auto max-w-xs">
+                            {JSON.stringify(log.metadata, null, 2)}
+                          </pre>
+                        </details>
                       )}
-                    </div>
-                    <span className="text-sm text-gray-500">
-                      {new Date(log.created_at).toLocaleString('ja-JP')}
-                    </span>
-                  </div>
-                  
-                  {log.description && (
-                    <p className="text-gray-700 mb-2">{log.description}</p>
-                  )}
-                  
-                  {log.metadata && (
-                    <details className="text-xs text-gray-500">
-                      <summary className="cursor-pointer hover:text-gray-700">
-                        詳細情報を表示
-                      </summary>
-                      <pre className="mt-2 p-2 bg-gray-50 rounded overflow-x-auto">
-                        {JSON.stringify(log.metadata, null, 2)}
-                      </pre>
-                    </details>
-                  )}
-                </div>
-              ))}
-            </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           )}
         </CardContent>
       </Card>
