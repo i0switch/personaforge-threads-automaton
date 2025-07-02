@@ -278,12 +278,38 @@ serve(async (req) => {
       // Webhookペイロードの処理
       console.log('Processing webhook payload for persona:', persona_id, JSON.stringify(payload, null, 2))
 
+      // リプライデータの処理
+      let repliesProcessed = 0
+      
+      if (payload.entry && Array.isArray(payload.entry)) {
+        for (const entry of payload.entry) {
+          if (entry.changes && Array.isArray(entry.changes)) {
+            for (const change of entry.changes) {
+              if (change.field === 'mentions' && change.value) {
+                const processed = await processReplyData(supabase, persona_id, change.value)
+                repliesProcessed += processed
+              }
+            }
+          }
+        }
+      }
+
+      await logSecurityEvent(supabase, {
+        event_type: 'webhook_replies_processed',
+        details: {
+          persona_id,
+          replies_processed: repliesProcessed,
+          timestamp: new Date().toISOString()
+        }
+      })
+
       return new Response(
         JSON.stringify({ 
           success: true, 
           message: 'Webhook processed successfully',
           timestamp: new Date().toISOString(),
-          persona_id
+          persona_id,
+          replies_processed: repliesProcessed
         }),
         { 
           status: 200, 
@@ -391,6 +417,124 @@ async function checkRateLimit(supabase: any, clientIP: string): Promise<boolean>
   } catch (error) {
     console.error('Rate limiting error:', error)
     return false
+  }
+}
+
+// リプライデータ処理
+async function processReplyData(supabase: any, persona_id: string, replyData: any): Promise<number> {
+  try {
+    console.log('Processing reply data:', replyData)
+    
+    // ペルソナ情報を取得
+    const { data: persona, error: personaError } = await supabase
+      .from('personas')
+      .select('id, name, user_id, ai_auto_reply_enabled, threads_username')
+      .eq('id', persona_id)
+      .single()
+
+    if (personaError || !persona) {
+      console.error('Failed to fetch persona:', personaError)
+      return 0
+    }
+
+    let repliesProcessed = 0
+
+    // リプライデータの配列を処理
+    const replies = Array.isArray(replyData) ? replyData : [replyData]
+    
+    for (const reply of replies) {
+      // 自分自身のリプライをスキップ
+      if (reply.username === persona.threads_username || reply.username === persona.name) {
+        console.log(`Skipping self-reply from ${reply.username}`)
+        continue
+      }
+
+      // 重複チェック
+      const { data: existingReply } = await supabase
+        .from('thread_replies')
+        .select('id')
+        .eq('reply_id', reply.id || reply.reply_id)
+        .maybeSingle()
+
+      if (existingReply) {
+        console.log(`Reply already exists: ${reply.id}`)
+        continue
+      }
+
+      // リプライを保存
+      const { error: insertError } = await supabase
+        .from('thread_replies')
+        .insert({
+          user_id: persona.user_id,
+          persona_id: persona.id,
+          original_post_id: reply.parent_id || reply.original_post_id || 'unknown',
+          reply_id: reply.id || reply.reply_id,
+          reply_text: reply.text || reply.message || '',
+          reply_author_id: reply.user_id || reply.author_id || reply.username,
+          reply_author_username: reply.username || reply.author_username,
+          reply_timestamp: new Date(reply.timestamp || reply.created_time || Date.now()).toISOString(),
+          auto_reply_sent: false
+        })
+
+      if (insertError) {
+        console.error('Failed to insert reply:', insertError)
+        continue
+      }
+
+      repliesProcessed++
+      console.log(`Reply saved: ${reply.id}`)
+
+      // アクティビティログを記録
+      await supabase
+        .from('activity_logs')
+        .insert({
+          user_id: persona.user_id,
+          persona_id: persona.id,
+          action_type: 'reply_received',
+          description: `新しいリプライを受信: @${reply.username}`,
+          metadata: {
+            reply_id: reply.id,
+            reply_text: reply.text?.substring(0, 100),
+            author: reply.username
+          }
+        })
+
+      // AI自動返信の処理
+      if (persona.ai_auto_reply_enabled) {
+        console.log(`Triggering AI auto-reply for reply: ${reply.id}`)
+        
+        try {
+          const { data: autoReplyResponse, error: autoReplyError } = await supabase.functions.invoke('threads-auto-reply', {
+            body: {
+              replyContent: reply.text || reply.message,
+              replyId: reply.id || reply.reply_id,
+              personaId: persona.id,
+              userId: persona.user_id,
+              replyAuthor: reply.username
+            }
+          })
+
+          if (autoReplyError) {
+            console.error(`Auto-reply error for ${reply.id}:`, autoReplyError)
+          } else {
+            console.log(`Auto-reply triggered for ${reply.id}`)
+            
+            // auto_reply_sentフラグを更新
+            await supabase
+              .from('thread_replies')
+              .update({ auto_reply_sent: true })
+              .eq('reply_id', reply.id || reply.reply_id)
+          }
+        } catch (autoReplyErr) {
+          console.error(`Failed to trigger auto-reply for ${reply.id}:`, autoReplyErr)
+        }
+      }
+    }
+
+    return repliesProcessed
+  } catch (error) {
+    console.error('Error processing reply data:', error)
+    return 0
   }
 }
 
