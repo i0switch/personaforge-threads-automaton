@@ -459,10 +459,15 @@ async function processReplyData(supabase: any, persona_id: string, replyData: an
       .from('personas')
       .select('id, name, user_id, ai_auto_reply_enabled, threads_username, threads_access_token')
       .eq('id', persona_id)
-      .single()
+      .maybeSingle()
 
-    if (personaError || !persona) {
-      console.error('Failed to fetch persona:', personaError)
+    if (personaError) {
+      console.error('Database error fetching persona:', personaError)
+      return 0
+    }
+
+    if (!persona) {
+      console.error('Persona not found for ID:', persona_id)
       return 0
     }
 
