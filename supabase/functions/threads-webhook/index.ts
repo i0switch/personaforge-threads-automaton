@@ -466,23 +466,45 @@ async function processReplyData(supabase: any, persona_id: string, replyData: an
       return 0
     }
 
+    console.log('Processing replies for persona:', persona.name, 'username:', persona.threads_username)
+
     let repliesProcessed = 0
 
     // リプライデータの配列を処理
     const replies = Array.isArray(replyData) ? replyData : [replyData]
     
     for (const reply of replies) {
+      console.log('Processing individual reply:', {
+        replyId: reply.id,
+        username: reply.username,
+        text: reply.text,
+        rootPostOwner: reply.root_post?.username,
+        rootPostOwnerId: reply.root_post?.owner_id
+      })
+
       // 自分自身のリプライをスキップ
       if (reply.username === persona.threads_username || reply.username === persona.name) {
         console.log(`Skipping self-reply from ${reply.username}`)
         continue
       }
 
+      // このリプライが現在のペルソナ宛てかチェック
+      // root_post.usernameまたはreplied_toで判定
+      const isForThisPersona = reply.root_post?.username === persona.threads_username || 
+                              reply.root_post?.username === persona.name
+
+      if (!isForThisPersona) {
+        console.log(`Reply not for this persona. Root post owner: ${reply.root_post?.username}, persona: ${persona.threads_username}/${persona.name}`)
+        continue
+      }
+
+      console.log(`Processing reply for persona ${persona.name}:`, reply.text)
+
       // 重複チェック
       const { data: existingReply } = await supabase
         .from('thread_replies')
         .select('id')
-        .eq('reply_id', reply.id || reply.reply_id)
+        .eq('reply_id', reply.id)
         .maybeSingle()
 
       if (existingReply) {
@@ -496,12 +518,12 @@ async function processReplyData(supabase: any, persona_id: string, replyData: an
         .insert({
           user_id: persona.user_id,
           persona_id: persona.id,
-          original_post_id: reply.parent_id || reply.original_post_id || 'unknown',
-          reply_id: reply.id || reply.reply_id,
-          reply_text: reply.text || reply.message || '',
-          reply_author_id: reply.user_id || reply.author_id || reply.username,
-          reply_author_username: reply.username || reply.author_username,
-          reply_timestamp: new Date(reply.timestamp || reply.created_time || Date.now()).toISOString(),
+          original_post_id: reply.replied_to?.id || reply.root_post?.id || 'unknown',
+          reply_id: reply.id,
+          reply_text: reply.text || '',
+          reply_author_id: reply.username,
+          reply_author_username: reply.username,
+          reply_timestamp: new Date(reply.timestamp || Date.now()).toISOString(),
           auto_reply_sent: false
         })
 
@@ -511,7 +533,7 @@ async function processReplyData(supabase: any, persona_id: string, replyData: an
       }
 
       repliesProcessed++
-      console.log(`Reply saved: ${reply.id}`)
+      console.log(`Reply saved for persona ${persona.name}: ${reply.id}`)
 
       // アクティビティログを記録
       await supabase
@@ -535,8 +557,8 @@ async function processReplyData(supabase: any, persona_id: string, replyData: an
         try {
           const { data: autoReplyResponse, error: autoReplyError } = await supabase.functions.invoke('threads-auto-reply', {
             body: {
-              replyContent: reply.text || reply.message,
-              replyId: reply.id || reply.reply_id,
+              replyContent: reply.text,
+              replyId: reply.id,
               personaId: persona.id,
               userId: persona.user_id,
               replyAuthor: reply.username
@@ -552,7 +574,7 @@ async function processReplyData(supabase: any, persona_id: string, replyData: an
             await supabase
               .from('thread_replies')
               .update({ auto_reply_sent: true })
-              .eq('reply_id', reply.id || reply.reply_id)
+              .eq('reply_id', reply.id)
           }
         } catch (autoReplyErr) {
           console.error(`Failed to trigger auto-reply for ${reply.id}:`, autoReplyErr)
