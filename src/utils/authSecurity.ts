@@ -75,9 +75,10 @@ export const authSecurity = {
         };
       }
 
+      const result = data as { valid: boolean; errors: string[] };
       return {
-        valid: data.valid,
-        errors: data.errors || []
+        valid: result.valid,
+        errors: result.errors || []
       };
     } catch (error) {
       console.error('Password strength validation error:', error);

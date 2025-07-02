@@ -37,34 +37,32 @@ export const useSecureAuth = () => {
 
       // 実際のログイン試行
       const result = await signIn(email, password);
+      const success = !result.error;
       
       // ログイン試行を記録
       await authSecurity.recordLoginAttempt({
         email,
-        success: result.success,
+        success,
         timestamp: new Date(),
         user_agent: navigator.userAgent
       });
 
-      if (result.success) {
+      if (success) {
         toast({
           title: "ログイン成功",
           description: "ようこそ！",
         });
         
-        // セッション監視開始
-        if (result.user) {
-          await authSecurity.monitorSession(result.user.id, 'login_success');
-        }
+        return { success: true };
       } else {
         toast({
           title: "ログインに失敗しました",
-          description: result.error || "メールアドレスまたはパスワードが正しくありません。",
+          description: result.error?.message || "メールアドレスまたはパスワードが正しくありません。",
           variant: "destructive",
         });
+        
+        return { success: false, error: result.error?.message };
       }
-
-      return result;
     } catch (error) {
       console.error('Secure sign in error:', error);
       
@@ -110,26 +108,24 @@ export const useSecureAuth = () => {
 
       // 実際のサインアップ
       const result = await signUp(email, password, displayName);
+      const success = !result.error;
       
-      if (result.success) {
+      if (success) {
         toast({
           title: "アカウント作成成功",
           description: "確認メールをお送りしました。メールボックスをご確認ください。",
         });
         
-        // セッション監視開始
-        if (result.user) {
-          await authSecurity.monitorSession(result.user.id, 'signup_success');
-        }
+        return { success: true };
       } else {
         toast({
           title: "アカウント作成に失敗しました",
-          description: result.error || "アカウント作成中にエラーが発生しました。",
+          description: result.error?.message || "アカウント作成中にエラーが発生しました。",
           variant: "destructive",
         });
+        
+        return { success: false, error: result.error?.message };
       }
-
-      return result;
     } catch (error) {
       console.error('Secure sign up error:', error);
       
