@@ -554,9 +554,28 @@ async function processReplyData(supabase: any, persona_id: string, replyData: an
       if (persona.ai_auto_reply_enabled) {
         console.log(`Triggering AI auto-reply for reply: ${reply.id}`)
         
+        // 元の投稿内容を取得
+        let originalPostContent = ''
+        try {
+          if (reply.root_post?.id) {
+            console.log(`Fetching original post content for post ID: ${reply.root_post.id}`)
+            const postResponse = await fetch(`https://graph.threads.net/v1.0/${reply.root_post.id}?fields=text&access_token=${persona.threads_access_token}`)
+            if (postResponse.ok) {
+              const postData = await postResponse.json()
+              originalPostContent = postData.text || ''
+              console.log(`Original post content retrieved: "${originalPostContent.substring(0, 100)}..."`)
+            } else {
+              console.log(`Failed to fetch original post: ${postResponse.status}`)
+            }
+          }
+        } catch (error) {
+          console.error(`Error fetching original post content:`, error)
+        }
+        
         try {
           const { data: autoReplyResponse, error: autoReplyError } = await supabase.functions.invoke('threads-auto-reply', {
             body: {
+              postContent: originalPostContent,
               replyContent: reply.text,
               replyId: reply.id,
               personaId: persona.id,
