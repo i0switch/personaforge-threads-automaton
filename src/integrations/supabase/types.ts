@@ -520,6 +520,7 @@ export type Database = {
           id: string
           is_active: boolean
           is_approved: boolean
+          park_user_link: string | null
           persona_limit: number
           subscription_status: string | null
           updated_at: string
@@ -532,6 +533,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           is_approved?: boolean
+          park_user_link?: string | null
           persona_limit?: number
           subscription_status?: string | null
           updated_at?: string
@@ -544,6 +546,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           is_approved?: boolean
+          park_user_link?: string | null
           persona_limit?: number
           subscription_status?: string | null
           updated_at?: string

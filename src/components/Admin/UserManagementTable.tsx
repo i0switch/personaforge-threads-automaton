@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
-import { Search, UserCheck, UserX, Loader2, Trash2 } from "lucide-react";
+import { Search, UserCheck, UserX, Loader2, Trash2, ExternalLink, Edit } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -14,10 +14,10 @@ interface UserAccount {
   email: string;
   display_name: string;
   is_approved: boolean;
-  is_active: boolean;
   subscription_status: string;
   created_at: string;
   approved_at: string | null;
+  park_user_link: string | null;
 }
 
 export const UserManagementTable = () => {
@@ -28,6 +28,8 @@ export const UserManagementTable = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [updating, setUpdating] = useState<string | null>(null);
+  const [editingParkLink, setEditingParkLink] = useState<string | null>(null);
+  const [parkLinkInputs, setParkLinkInputs] = useState<Record<string, string>>({});
 
   useEffect(() => {
     loadUsers();
@@ -52,7 +54,7 @@ export const UserManagementTable = () => {
       // アカウント状態を取得
       const { data: accountStatusData, error: statusError } = await supabase
         .from('user_account_status')
-        .select('user_id, is_approved, is_active, subscription_status, approved_at');
+        .select('user_id, is_approved, subscription_status, approved_at, park_user_link');
 
       // 管理者のメールアドレス取得
       const { data: emailData, error: emailError } = await supabase
@@ -85,16 +87,23 @@ export const UserManagementTable = () => {
             email: userEmail?.email || `user-${shortUserId}@internal.app`,
             display_name: profile.display_name || `User ${shortUserId}`,
             is_approved: accountStatus?.is_approved ?? false,
-            is_active: accountStatus?.is_active ?? false,
             subscription_status: accountStatus?.subscription_status || 'free',
             created_at: profile.created_at,
-            approved_at: accountStatus?.approved_at || null
+            approved_at: accountStatus?.approved_at || null,
+            park_user_link: accountStatus?.park_user_link || null
           };
         });
       }
 
       console.log('Final combined user data:', combinedData);
       setUsers(combinedData);
+      
+      // Initialize park link inputs with current values
+      const initialParkLinks: Record<string, string> = {};
+      combinedData.forEach(user => {
+        initialParkLinks[user.user_id] = user.park_user_link || '';
+      });
+      setParkLinkInputs(initialParkLinks);
     } catch (error) {
       console.error('Error loading users:', error);
       toast({
@@ -107,8 +116,8 @@ export const UserManagementTable = () => {
     }
   };
 
-  const updateUserStatus = async (userId: string, field: 'is_approved' | 'is_active', value: boolean) => {
-    console.log(`Updating user ${userId} ${field} to ${value}`);
+  const updateUserStatus = async (userId: string, value: boolean) => {
+    console.log(`Updating user ${userId} approval to ${value}`);
     setUpdating(userId);
     
     try {
@@ -116,29 +125,19 @@ export const UserManagementTable = () => {
       const updateData: any = {
         user_id: userId,
         subscription_status: currentUser?.subscription_status || 'free',
+        is_approved: value,
       };
       
-      // 承認の場合の特別処理
-      if (field === 'is_approved') {
-        updateData.is_approved = value;
-        if (value) {
-          updateData.approved_at = new Date().toISOString();
-          updateData.approved_by = user?.id;
-          // 承認時は必ずアクティブにする
-          updateData.is_active = true;
-        } else {
-          updateData.approved_at = null;
-          updateData.approved_by = null;
-          updateData.is_active = currentUser?.is_active ?? false;
-        }
+      if (value) {
+        updateData.approved_at = new Date().toISOString();
+        updateData.approved_by = user?.id;
       } else {
-        updateData.is_approved = currentUser?.is_approved ?? false;
-        updateData.is_active = value;
+        updateData.approved_at = null;
+        updateData.approved_by = null;
       }
 
       console.log('Update data being sent:', updateData);
 
-      // upsertを使用して確実にデータを更新
       const { error } = await supabase
         .from('user_account_status')
         .upsert(updateData, {
@@ -150,28 +149,19 @@ export const UserManagementTable = () => {
         throw error;
       }
 
-      console.log('Status updated successfully');
-
       toast({
         title: "成功",
-        description: `ユーザーの${field === 'is_approved' ? '承認' : 'アクティブ'}状態を更新しました。`,
+        description: "ユーザーの承認状態を更新しました。",
       });
 
-      // ローカル状態を即座に更新
       setUsers(prevUsers => 
         prevUsers.map(u => {
           if (u.user_id === userId) {
-            const updatedUser = { ...u };
-            if (field === 'is_approved') {
-              updatedUser.is_approved = value;
-              updatedUser.approved_at = value ? new Date().toISOString() : null;
-              if (value) {
-                updatedUser.is_active = true; // 承認時は自動的にアクティブ
-              }
-            } else {
-              updatedUser.is_active = value;
-            }
-            return updatedUser;
+            return {
+              ...u,
+              is_approved: value,
+              approved_at: value ? new Date().toISOString() : null
+            };
           }
           return u;
         })
@@ -200,7 +190,6 @@ export const UserManagementTable = () => {
         .upsert({
           user_id: userId,
           is_approved: currentUser?.is_approved ?? false,
-          is_active: currentUser?.is_active ?? false,
           subscription_status: subscriptionStatus
         }, {
           onConflict: 'user_id'
@@ -268,6 +257,58 @@ export const UserManagementTable = () => {
     }
   };
 
+  const updateParkUserLink = async (userId: string, parkLink: string) => {
+    setUpdating(userId);
+    
+    try {
+      const currentUser = users.find(u => u.user_id === userId);
+      const { error } = await supabase
+        .from('user_account_status')
+        .upsert({
+          user_id: userId,
+          is_approved: currentUser?.is_approved ?? false,
+          subscription_status: currentUser?.subscription_status || 'free',
+          park_user_link: parkLink || null
+        }, {
+          onConflict: 'user_id'
+        });
+
+      if (error) throw error;
+
+      toast({
+        title: "成功",
+        description: "Parkユーザーリンクを更新しました。",
+      });
+
+      setUsers(prevUsers => 
+        prevUsers.map(u => 
+          u.user_id === userId 
+            ? { ...u, park_user_link: parkLink || null }
+            : u
+        )
+      );
+
+      setEditingParkLink(null);
+
+    } catch (error) {
+      console.error('Error updating park user link:', error);
+      toast({
+        title: "エラー",
+        description: "Parkユーザーリンクの更新に失敗しました。",
+        variant: "destructive",
+      });
+    } finally {
+      setUpdating(null);
+    }
+  };
+
+  const handleParkLinkInputChange = (userId: string, value: string) => {
+    setParkLinkInputs(prev => ({
+      ...prev,
+      [userId]: value
+    }));
+  };
+
   const filteredUsers = users.filter(user => {
     const matchesSearch = user.display_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          user.email.toLowerCase().includes(searchTerm.toLowerCase());
@@ -275,8 +316,6 @@ export const UserManagementTable = () => {
     if (statusFilter === "all") return matchesSearch;
     if (statusFilter === "approved") return matchesSearch && user.is_approved;
     if (statusFilter === "pending") return matchesSearch && !user.is_approved;
-    if (statusFilter === "active") return matchesSearch && user.is_active;
-    if (statusFilter === "inactive") return matchesSearch && !user.is_active;
     
     return matchesSearch;
   });
@@ -311,8 +350,6 @@ export const UserManagementTable = () => {
             <SelectItem value="all">すべて</SelectItem>
             <SelectItem value="approved">承認済み</SelectItem>
             <SelectItem value="pending">承認待ち</SelectItem>
-            <SelectItem value="active">アクティブ</SelectItem>
-            <SelectItem value="inactive">非アクティブ</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -326,8 +363,8 @@ export const UserManagementTable = () => {
               <TableHead>ユーザー名</TableHead>
               <TableHead>メールアドレス</TableHead>
               <TableHead>承認状態</TableHead>
-              <TableHead>アクティブ状態</TableHead>
               <TableHead>課金ステータス</TableHead>
+              <TableHead>Parkユーザーリンク</TableHead>
               <TableHead>登録日</TableHead>
               <TableHead>操作</TableHead>
             </TableRow>
@@ -342,11 +379,6 @@ export const UserManagementTable = () => {
                 <TableCell>
                   <Badge variant={userAccount.is_approved ? "default" : "secondary"}>
                     {userAccount.is_approved ? "承認済み" : "承認待ち"}
-                  </Badge>
-                </TableCell>
-                <TableCell>
-                  <Badge variant={userAccount.is_active ? "default" : "destructive"}>
-                    {userAccount.is_active ? "アクティブ" : "非アクティブ"}
                   </Badge>
                 </TableCell>
                 <TableCell>
@@ -367,6 +399,66 @@ export const UserManagementTable = () => {
                   </Select>
                 </TableCell>
                 <TableCell>
+                  <div className="flex items-center gap-2">
+                    {editingParkLink === userAccount.user_id ? (
+                      <>
+                        <Input
+                          value={parkLinkInputs[userAccount.user_id] || ''}
+                          onChange={(e) => handleParkLinkInputChange(userAccount.user_id, e.target.value)}
+                          placeholder="Parkユーザーリンク"
+                          className="w-40"
+                          disabled={updating === userAccount.user_id}
+                        />
+                        <Button
+                          size="sm"
+                          onClick={() => updateParkUserLink(userAccount.user_id, parkLinkInputs[userAccount.user_id] || '')}
+                          disabled={updating === userAccount.user_id}
+                        >
+                          保存
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setEditingParkLink(null);
+                            setParkLinkInputs(prev => ({
+                              ...prev,
+                              [userAccount.user_id]: userAccount.park_user_link || ''
+                            }));
+                          }}
+                          disabled={updating === userAccount.user_id}
+                        >
+                          キャンセル
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        {userAccount.park_user_link ? (
+                          <a
+                            href={userAccount.park_user_link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1 text-primary hover:underline"
+                          >
+                            Parkリンク
+                            <ExternalLink className="h-3 w-3" />
+                          </a>
+                        ) : (
+                          <span className="text-muted-foreground text-sm">未設定</span>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setEditingParkLink(userAccount.user_id)}
+                          disabled={updating === userAccount.user_id}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </TableCell>
+                <TableCell>
                   {new Date(userAccount.created_at).toLocaleDateString('ja-JP')}
                 </TableCell>
                 <TableCell>
@@ -374,7 +466,7 @@ export const UserManagementTable = () => {
                     <Button
                       size="sm"
                       variant={userAccount.is_approved ? "outline" : "default"}
-                      onClick={() => updateUserStatus(userAccount.user_id, 'is_approved', !userAccount.is_approved)}
+                      onClick={() => updateUserStatus(userAccount.user_id, !userAccount.is_approved)}
                       disabled={updating === userAccount.user_id}
                     >
                       {updating === userAccount.user_id ? (
@@ -388,26 +480,6 @@ export const UserManagementTable = () => {
                         <>
                           <UserCheck className="h-4 w-4 mr-1" />
                           承認
-                        </>
-                      )}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant={userAccount.is_active ? "destructive" : "default"}
-                      onClick={() => updateUserStatus(userAccount.user_id, 'is_active', !userAccount.is_active)}
-                      disabled={updating === userAccount.user_id}
-                    >
-                      {updating === userAccount.user_id ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : userAccount.is_active ? (
-                        <>
-                          <UserX className="h-4 w-4 mr-1" />
-                          無効化
-                        </>
-                      ) : (
-                        <>
-                          <UserCheck className="h-4 w-4 mr-1" />
-                          有効化
                         </>
                       )}
                     </Button>
