@@ -684,6 +684,13 @@ export type Database = {
           can_create: boolean
         }[]
       }
+      get_user_emails_for_admin: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          user_id: string
+          email: string
+        }[]
+      }
       get_user_stats: {
         Args: Record<PropertyKey, never>
         Returns: {

@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
-import { Search, UserCheck, UserX, Loader2 } from "lucide-react";
+import { Search, UserCheck, UserX, Loader2, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -39,7 +39,8 @@ export const UserManagementTable = () => {
       // プロフィール情報を取得
       const { data: profilesData, error: profilesError } = await supabase
         .from('profiles')
-        .select('user_id, display_name, created_at');
+        .select('user_id, display_name, created_at')
+        .order('created_at', { ascending: true });
 
       if (profilesError) {
         console.error('Profiles error:', profilesError);
@@ -53,12 +54,22 @@ export const UserManagementTable = () => {
         .from('user_account_status')
         .select('user_id, is_approved, is_active, subscription_status, approved_at');
 
+      // 管理者のメールアドレス取得
+      const { data: emailData, error: emailError } = await supabase
+        .rpc('get_user_emails_for_admin');
+
       if (statusError) {
         console.error('Account status error:', statusError);
         throw statusError;
       }
 
+      if (emailError) {
+        console.error('Email error:', emailError);
+        throw emailError;
+      }
+
       console.log('Account status data:', accountStatusData);
+      console.log('Email data:', emailData);
 
       let combinedData: UserAccount[] = [];
 
@@ -66,12 +77,12 @@ export const UserManagementTable = () => {
       if (profilesData) {
         combinedData = profilesData.map(profile => {
           const accountStatus = accountStatusData?.find(s => s.user_id === profile.user_id);
+          const userEmail = emailData?.find(e => e.user_id === profile.user_id);
           const shortUserId = profile.user_id.slice(0, 8);
           
           return {
             user_id: profile.user_id,
-            // メールアドレスはuser-{shortId}@internal.app形式で表示
-            email: `user-${shortUserId}@internal.app`,
+            email: userEmail?.email || `user-${shortUserId}@internal.app`,
             display_name: profile.display_name || `User ${shortUserId}`,
             is_approved: accountStatus?.is_approved ?? false,
             is_active: accountStatus?.is_active ?? false,
@@ -222,6 +233,41 @@ export const UserManagementTable = () => {
     }
   };
 
+  const deleteUser = async (userId: string) => {
+    if (!confirm('このユーザーを完全に削除しますか？この操作は取り消せません。')) {
+      return;
+    }
+
+    setUpdating(userId);
+    try {
+      // Delete from profiles table (this will cascade due to foreign keys)
+      const { error } = await supabase
+        .from('profiles')
+        .delete()
+        .eq('user_id', userId);
+
+      if (error) throw error;
+
+      toast({
+        title: "成功",
+        description: "ユーザーを削除しました。",
+      });
+
+      // Remove from local state
+      setUsers(prevUsers => prevUsers.filter(u => u.user_id !== userId));
+
+    } catch (error) {
+      console.error('Error deleting user:', error);
+      toast({
+        title: "エラー",
+        description: "ユーザー削除に失敗しました。",
+        variant: "destructive",
+      });
+    } finally {
+      setUpdating(null);
+    }
+  };
+
   const filteredUsers = users.filter(user => {
     const matchesSearch = user.display_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          user.email.toLowerCase().includes(searchTerm.toLowerCase());
@@ -271,13 +317,6 @@ export const UserManagementTable = () => {
         </Select>
       </div>
 
-      {/* Notice about email display */}
-      <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
-        <p className="text-sm text-blue-700">
-          <strong>注意:</strong> セキュリティ上の理由により、実際のメールアドレスは表示されません。
-          内部識別用のIDが代替表示されています。
-        </p>
-      </div>
 
       {/* Users table */}
       <div className="border rounded-md">
@@ -285,7 +324,7 @@ export const UserManagementTable = () => {
           <TableHeader>
             <TableRow>
               <TableHead>ユーザー名</TableHead>
-              <TableHead>内部ID</TableHead>
+              <TableHead>メールアドレス</TableHead>
               <TableHead>承認状態</TableHead>
               <TableHead>アクティブ状態</TableHead>
               <TableHead>課金ステータス</TableHead>
@@ -369,6 +408,21 @@ export const UserManagementTable = () => {
                         <>
                           <UserCheck className="h-4 w-4 mr-1" />
                           有効化
+                        </>
+                      )}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => deleteUser(userAccount.user_id)}
+                      disabled={updating === userAccount.user_id}
+                    >
+                      {updating === userAccount.user_id ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <>
+                          <Trash2 className="h-4 w-4 mr-1" />
+                          削除
                         </>
                       )}
                     </Button>

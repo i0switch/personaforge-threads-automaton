@@ -16,6 +16,7 @@ interface UserWithPersonaLimit {
   current_personas: number;
   is_approved: boolean;
   subscription_status: string;
+  created_at: string;
 }
 
 export const PersonaLimitManager = () => {
@@ -23,6 +24,7 @@ export const PersonaLimitManager = () => {
   const [users, setUsers] = useState<UserWithPersonaLimit[]>([]);
   const [loading, setLoading] = useState(true);
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
+  const [limitInputs, setLimitInputs] = useState<Record<string, number>>({});
 
   useEffect(() => {
     loadUsers();
@@ -35,8 +37,8 @@ export const PersonaLimitManager = () => {
       // Get user account status first
       const { data: userAccountData, error: accountError } = await supabase
         .from('user_account_status')
-        .select('user_id, persona_limit, is_approved, subscription_status')
-        .order('persona_limit', { ascending: false });
+        .select('user_id, persona_limit, is_approved, subscription_status, created_at')
+        .order('created_at', { ascending: true });
 
       if (accountError) {
         console.error('Error fetching user account status:', accountError);
@@ -50,20 +52,31 @@ export const PersonaLimitManager = () => {
         .from('profiles')
         .select('user_id, display_name');
 
+      // Get user emails for admin
+      const { data: emailData, error: emailError } = await supabase
+        .rpc('get_user_emails_for_admin');
+
       if (profilesError) {
         console.error('Error fetching profiles:', profilesError);
         throw profilesError;
       }
 
+      if (emailError) {
+        console.error('Error fetching emails:', emailError);
+        throw emailError;
+      }
+
       console.log("Profiles data:", profilesData);
+      console.log("Email data:", emailData);
 
       // Use the check_persona_limit function for each user to get accurate counts
       const usersWithPersonaCount = await Promise.all(
         userAccountData.map(async (account) => {
           console.log(`Processing user: ${account.user_id}`);
           
-          // Find corresponding profile
+          // Find corresponding profile and email
           const profile = profilesData?.find(p => p.user_id === account.user_id);
+          const userEmail = emailData?.find(e => e.user_id === account.user_id);
           
           // Use the updated check_persona_limit function
           const { data: limitData, error: limitError } = await supabase
@@ -79,18 +92,26 @@ export const PersonaLimitManager = () => {
 
           return {
             user_id: account.user_id,
-            email: 'Email not available', // Skip email for now due to auth admin issues
+            email: userEmail?.email || 'Email not available',
             display_name: profile?.display_name || 'Unknown',
             persona_limit: account.persona_limit,
             current_personas: personaCount,
             is_approved: account.is_approved,
-            subscription_status: account.subscription_status || 'free'
+            subscription_status: account.subscription_status || 'free',
+            created_at: account.created_at
           };
         })
       );
 
       console.log("Final users with persona count:", usersWithPersonaCount);
       setUsers(usersWithPersonaCount);
+      
+      // Initialize limit inputs with current values
+      const initialLimits: Record<string, number> = {};
+      usersWithPersonaCount.forEach(user => {
+        initialLimits[user.user_id] = user.persona_limit;
+      });
+      setLimitInputs(initialLimits);
     } catch (error) {
       console.error('Error loading users:', error);
       toast({
@@ -141,11 +162,12 @@ export const PersonaLimitManager = () => {
     }
   };
 
-  const handleLimitChange = (userId: string, value: string) => {
-    const newLimit = parseInt(value);
-    if (!isNaN(newLimit)) {
-      updatePersonaLimit(userId, newLimit);
-    }
+  const handleLimitInputChange = (userId: string, value: string) => {
+    const newLimit = parseInt(value) || 1;
+    setLimitInputs(prev => ({
+      ...prev,
+      [userId]: newLimit
+    }));
   };
 
   if (loading) {
@@ -215,16 +237,16 @@ export const PersonaLimitManager = () => {
                 <Input
                   type="number"
                   min="1"
-                  value={user.persona_limit}
-                  onChange={(e) => handleLimitChange(user.user_id, e.target.value)}
+                  value={limitInputs[user.user_id] || user.persona_limit}
+                  onChange={(e) => handleLimitInputChange(user.user_id, e.target.value)}
                   className="w-20"
                   disabled={updatingUserId === user.user_id}
                 />
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => updatePersonaLimit(user.user_id, user.persona_limit)}
-                  disabled={updatingUserId === user.user_id}
+                  onClick={() => updatePersonaLimit(user.user_id, limitInputs[user.user_id] || user.persona_limit)}
+                  disabled={updatingUserId === user.user_id || limitInputs[user.user_id] === user.persona_limit}
                 >
                   {updatingUserId === user.user_id ? "更新中..." : "更新"}
                 </Button>
