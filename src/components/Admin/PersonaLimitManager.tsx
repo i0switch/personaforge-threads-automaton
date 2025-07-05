@@ -69,7 +69,7 @@ export const PersonaLimitManager = () => {
       console.log("Profiles data:", profilesData);
       console.log("Email data:", emailData);
 
-      // Use the check_persona_limit function for each user to get accurate counts
+      // Get persona counts directly from personas table for each user
       const usersWithPersonaCount = await Promise.all(
         userAccountData.map(async (account) => {
           console.log(`Processing user: ${account.user_id}`);
@@ -78,15 +78,17 @@ export const PersonaLimitManager = () => {
           const profile = profilesData?.find(p => p.user_id === account.user_id);
           const userEmail = emailData?.find(e => e.user_id === account.user_id);
           
-          // Use the updated check_persona_limit function
-          const { data: limitData, error: limitError } = await supabase
-            .rpc('check_persona_limit', { user_id_param: account.user_id });
+          // Get persona count directly from personas table
+          const { data: personasData, error: personasError } = await supabase
+            .from('personas')
+            .select('id')
+            .eq('user_id', account.user_id);
 
           let personaCount = 0;
-          if (limitError) {
-            console.error(`Error checking persona limit for user ${account.user_id}:`, limitError);
-          } else if (limitData && limitData.length > 0) {
-            personaCount = Number(limitData[0].current_count);
+          if (personasError) {
+            console.error(`Error fetching personas for user ${account.user_id}:`, personasError);
+          } else {
+            personaCount = personasData?.length || 0;
             console.log(`User ${account.user_id} (${profile?.display_name}) has ${personaCount} personas`);
           }
 
