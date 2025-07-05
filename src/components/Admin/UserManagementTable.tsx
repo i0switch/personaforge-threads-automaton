@@ -126,6 +126,7 @@ export const UserManagementTable = () => {
         user_id: userId,
         subscription_status: currentUser?.subscription_status || 'free',
         is_approved: value,
+        is_active: value, // 承認時にアクティブ状態も設定
       };
       
       if (value) {
@@ -190,6 +191,7 @@ export const UserManagementTable = () => {
         .upsert({
           user_id: userId,
           is_approved: currentUser?.is_approved ?? false,
+          is_active: currentUser?.is_approved ?? false, // 承認状態と同期
           subscription_status: subscriptionStatus
         }, {
           onConflict: 'user_id'
@@ -267,6 +269,7 @@ export const UserManagementTable = () => {
         .upsert({
           user_id: userId,
           is_approved: currentUser?.is_approved ?? false,
+          is_active: currentUser?.is_approved ?? false, // 承認状態と同期
           subscription_status: currentUser?.subscription_status || 'free',
           park_user_link: parkLink || null
         }, {

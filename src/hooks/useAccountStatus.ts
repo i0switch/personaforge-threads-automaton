@@ -26,11 +26,14 @@ export const useAccountStatus = () => {
       }
 
       try {
+        // 最新のレコードを取得（重複がある場合に備えて）
         const { data, error: fetchError } = await supabase
           .from('user_account_status')
           .select('is_active, is_approved, subscription_status, approved_at')
           .eq('user_id', user.id)
-          .single();
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
 
         if (fetchError) {
           console.error('Error fetching account status:', fetchError);
@@ -38,6 +41,18 @@ export const useAccountStatus = () => {
           return;
         }
 
+        if (!data) {
+          console.log('No account status found for user:', user.id);
+          // デフォルト値を設定
+          setAccountStatus({
+            is_active: false,
+            is_approved: false,
+            subscription_status: 'free'
+          });
+          return;
+        }
+
+        console.log('Account status loaded:', data);
         setAccountStatus(data);
 
         // Realtimeチャンネルの設定（静的なチャンネル名を使用）
