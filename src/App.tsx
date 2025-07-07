@@ -17,6 +17,7 @@ import SchedulingDashboard from "@/pages/SchedulingDashboard";
 import AutoReply from "@/pages/AutoReply";
 import Settings from "@/pages/Settings";
 import AdminDashboard from "@/pages/AdminDashboard";
+import SecurityManagement from "@/pages/SecurityManagement";
 
 const queryClient = new QueryClient();
 
@@ -107,6 +108,14 @@ function App() {
                     element={
                       <ProtectedAdminRoute>
                         <AdminDashboard />
+                      </ProtectedAdminRoute>
+                    }
+                  />
+                  <Route
+                    path="/security-management"
+                    element={
+                      <ProtectedAdminRoute>
+                        <SecurityManagement />
                       </ProtectedAdminRoute>
                     }
                   />
