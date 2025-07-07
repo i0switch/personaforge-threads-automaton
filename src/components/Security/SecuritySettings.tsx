@@ -11,6 +11,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { securityAudit } from "@/utils/securityAudit";
 import { SecurityEventMonitor } from "./SecurityEventMonitor";
+import { ZapScanResults } from "./ZapScanResults";
 
 export const SecuritySettings = () => {
   const { user } = useAuth();
@@ -359,6 +360,8 @@ export const SecuritySettings = () => {
       )}
 
       <SecurityEventMonitor />
+
+      <ZapScanResults />
 
       <Alert>
         <AlertTriangle className="h-4 w-4" />
