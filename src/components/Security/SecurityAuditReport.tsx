@@ -3,255 +3,352 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertTriangle, Shield, CheckCircle, ExternalLink } from "lucide-react";
-import { securityAudit } from "@/utils/securityAudit";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Shield, FileText, TrendingUp, AlertTriangle, CheckCircle, Download } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
+import { securityAudit, SecurityScanResult } from "@/utils/securityAudit";
+import { ZapScanResults } from "./ZapScanResults";
 
-interface SecurityIssue {
-  id: string;
-  title: string;
-  level: 'WARN' | 'ERROR' | 'INFO';
-  description: string;
-  remediation?: string;
-  category: string;
-  resolved: boolean;
+interface AuditSummary {
+  totalIssues: number;
+  resolvedIssues: number;
+  securityScore: number;
+  lastAuditDate: string;
+  trends: {
+    weeklyChange: number;
+    monthlyChange: number;
+  };
 }
 
 export const SecurityAuditReport = () => {
   const { user } = useAuth();
-  const [issues, setIssues] = useState<SecurityIssue[]>([]);
+  const { toast } = useToast();
+  const [auditSummary, setAuditSummary] = useState<AuditSummary | null>(null);
+  const [scanResult, setScanResult] = useState<SecurityScanResult | null>(null);
   const [loading, setLoading] = useState(true);
-  const [scanResult, setScanResult] = useState<any>(null);
+  const [generating, setGenerating] = useState(false);
 
   useEffect(() => {
     if (user) {
-      performSecurityAudit();
+      loadAuditData();
     }
   }, [user]);
 
-  const performSecurityAudit = async () => {
+  const loadAuditData = async () => {
     if (!user) return;
-    
-    setLoading(true);
+
     try {
-      // 実際のセキュリティスキャンを実行
+      setLoading(true);
+      
+      // セキュリティスキャン実行
       const result = await securityAudit.performSecurityScan(user.id);
       setScanResult(result);
 
-      // 既知のセキュリティ問題をマップ
-      const knownIssues: SecurityIssue[] = [
-        {
-          id: 'auth_otp_long_expiry',
-          title: 'OTP有効期限が長すぎます',
-          level: 'WARN',
-          description: 'OTP（ワンタイムパスワード）の有効期限が1時間を超えています。セキュリティ強化のため1時間未満に設定することを推奨します。',
-          remediation: 'Supabaseダッシュボード > Authentication > Settings でOTP有効期限を短縮してください。',
-          category: 'AUTHENTICATION',
-          resolved: false
-        },
-        {
-          id: 'auth_leaked_password_protection',
-          title: '漏洩パスワード保護が無効です',
-          level: 'WARN',
-          description: 'HaveIBeenPwned.orgと連携した漏洩パスワードチェックが無効になっています。',
-          remediation: 'Supabaseダッシュボード > Authentication > Settings で漏洩パスワード保護を有効にしてください。',
-          category: 'AUTHENTICATION',
-          resolved: false
-        },
-        {
-          id: 'database_functions_secured',
-          title: 'データベース関数のセキュリティ強化完了',
-          level: 'INFO',
-          description: 'すべてのデータベース関数でsearch_pathが適切に設定され、SQL Injection攻撃から保護されています。',
-          category: 'DATABASE',
-          resolved: true
+      // 監査サマリー作成
+      const totalVulns = result.vulnerabilities.high + result.vulnerabilities.medium + result.vulnerabilities.low;
+      const securityScore = Math.max(0, 100 - (totalVulns * 10));
+      
+      const summary: AuditSummary = {
+        totalIssues: totalVulns,
+        resolvedIssues: 0, // 実際の実装では解決済み問題数を計算
+        securityScore,
+        lastAuditDate: new Date().toISOString(),
+        trends: {
+          weeklyChange: -5, // 実際の実装では週間変化を計算
+          monthlyChange: -12 // 実際の実装では月間変化を計算
         }
-      ];
+      };
 
-      setIssues(knownIssues);
+      setAuditSummary(summary);
     } catch (error) {
-      console.error('Security audit failed:', error);
+      console.error('Failed to load audit data:', error);
+      toast({
+        title: "エラー",
+        description: "監査データの読み込みに失敗しました",
+        variant: "destructive",
+      });
     } finally {
       setLoading(false);
     }
   };
 
-  const getIssueIcon = (level: string) => {
-    switch (level) {
-      case 'ERROR':
-        return <AlertTriangle className="h-5 w-5 text-red-500" />;
-      case 'WARN':
-        return <AlertTriangle className="h-5 w-5 text-yellow-500" />;
-      case 'INFO':
-        return <CheckCircle className="h-5 w-5 text-green-500" />;
-      default:
-        return <Shield className="h-5 w-5 text-blue-500" />;
+  const generateFullReport = async () => {
+    if (!user || !auditSummary || !scanResult) return;
+
+    setGenerating(true);
+    try {
+      // レポート生成
+      const reportData = {
+        summary: auditSummary,
+        vulnerabilities: scanResult.vulnerabilities,
+        recommendations: scanResult.recommendations,
+        generatedAt: new Date().toISOString(),
+        userId: user.id
+      };
+
+      // JSONレポートとしてダウンロード
+      const blob = new Blob([JSON.stringify(reportData, null, 2)], { 
+        type: 'application/json' 
+      });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = url;
+      a.download = `security_audit_report_${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+
+      toast({
+        title: "レポート生成完了",
+        description: "セキュリティ監査レポートをダウンロードしました",
+      });
+    } catch (error) {
+      console.error('Failed to generate report:', error);
+      toast({
+        title: "エラー",
+        description: "レポート生成に失敗しました",
+        variant: "destructive",
+      });
+    } finally {
+      setGenerating(false);
     }
   };
 
-  const getIssueBadgeVariant = (level: string) => {
-    switch (level) {
-      case 'ERROR':
-        return 'destructive';
-      case 'WARN':
-        return 'secondary';
-      case 'INFO':
-        return 'default';
-      default:
-        return 'outline';
-    }
+  const getScoreColor = (score: number) => {
+    if (score >= 80) return "text-green-600";
+    if (score >= 60) return "text-yellow-600";
+    return "text-red-600";
+  };
+
+  const getTrendIcon = (change: number) => {
+    if (change > 0) return <TrendingUp className="h-4 w-4 text-red-500" />;
+    if (change < 0) return <TrendingUp className="h-4 w-4 text-green-500 rotate-180" />;
+    return <div className="h-4 w-4" />;
   };
 
   if (loading) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Shield className="h-5 w-5" />
-            セキュリティ監査
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-center py-8">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-            <span className="ml-2">セキュリティスキャン実行中...</span>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="flex items-center justify-center p-8">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
     );
   }
 
-  const errorCount = issues.filter(i => i.level === 'ERROR' && !i.resolved).length;
-  const warnCount = issues.filter(i => i.level === 'WARN' && !i.resolved).length;
-  const resolvedCount = issues.filter(i => i.resolved).length;
-
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Shield className="h-5 w-5" />
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold flex items-center gap-2">
+            <Shield className="h-6 w-6" />
             セキュリティ監査レポート
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-            <div className="text-center p-4 bg-red-50 rounded-lg">
-              <div className="text-2xl font-bold text-red-600">{errorCount}</div>
-              <div className="text-sm text-red-600">重要な問題</div>
-            </div>
-            <div className="text-center p-4 bg-yellow-50 rounded-lg">
-              <div className="text-2xl font-bold text-yellow-600">{warnCount}</div>
-              <div className="text-sm text-yellow-600">警告</div>
-            </div>
-            <div className="text-center p-4 bg-green-50 rounded-lg">
-              <div className="text-2xl font-bold text-green-600">{resolvedCount}</div>
-              <div className="text-sm text-green-600">解決済み</div>
-            </div>
-          </div>
+          </h2>
+          <p className="text-muted-foreground">
+            システムの包括的なセキュリティ分析結果
+          </p>
+        </div>
+        <Button onClick={generateFullReport} disabled={generating}>
+          <Download className={`h-4 w-4 mr-2 ${generating ? 'animate-spin' : ''}`} />
+          {generating ? 'レポート生成中...' : 'レポート生成'}
+        </Button>
+      </div>
 
-          <Button 
-            onClick={performSecurityAudit}
-            className="mb-4"
-          >
-            <Shield className="h-4 w-4 mr-2" />
-            再スキャン実行
-          </Button>
-
-          {scanResult && scanResult.recommendations && (
-            <Alert className="mb-4">
-              <AlertTriangle className="h-4 w-4" />
-              <AlertDescription>
-                <strong>推奨事項:</strong>
-                <ul className="mt-2 space-y-1">
-                  {scanResult.recommendations.map((rec: string, index: number) => (
-                    <li key={index} className="text-sm">• {rec}</li>
-                  ))}
-                </ul>
-              </AlertDescription>
-            </Alert>
-          )}
-        </CardContent>
-      </Card>
-
-      <div className="space-y-4">
-        {issues.map((issue) => (
-          <Card key={issue.id} className={issue.resolved ? 'opacity-75' : ''}>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  {getIssueIcon(issue.level)}
-                  <div>
-                    <CardTitle className="text-lg">{issue.title}</CardTitle>
-                    <div className="flex items-center gap-2 mt-1">
-                      <Badge variant={getIssueBadgeVariant(issue.level)}>
-                        {issue.level}
-                      </Badge>
-                      <Badge variant="outline">{issue.category}</Badge>
-                      {issue.resolved && (
-                        <Badge variant="default" className="bg-green-100 text-green-800">
-                          解決済み
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
+      {auditSummary && (
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">セキュリティスコア</CardTitle>
+              <Shield className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <p className="text-sm text-muted-foreground mb-4">
-                {issue.description}
-              </p>
-              
-              {issue.remediation && !issue.resolved && (
-                <div className="bg-blue-50 p-4 rounded-lg">
-                  <h4 className="font-medium text-blue-900 mb-2">対処方法:</h4>
-                  <p className="text-sm text-blue-800">{issue.remediation}</p>
-                  
-                  {issue.id.includes('auth_') && (
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="mt-3"
-                      onClick={() => window.open('https://supabase.com/dashboard/project/tqcgbsnoiarnawnppwia/auth/providers', '_blank')}
-                    >
-                      <ExternalLink className="h-4 w-4 mr-2" />
-                      Supabaseダッシュボードを開く
-                    </Button>
-                  )}
-                </div>
+              <div className={`text-2xl font-bold ${getScoreColor(auditSummary.securityScore)}`}>
+                {auditSummary.securityScore}/100
+              </div>
+              <Progress value={auditSummary.securityScore} className="mt-2" />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">検出問題</CardTitle>
+              <AlertTriangle className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{auditSummary.totalIssues}</div>
+              <div className="flex items-center text-xs text-muted-foreground">
+                {getTrendIcon(auditSummary.trends.weeklyChange)}
+                <span className="ml-1">週間変化: {auditSummary.trends.weeklyChange}</span>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">解決済み</CardTitle>
+              <CheckCircle className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-green-600">{auditSummary.resolvedIssues}</div>
+              <div className="text-xs text-muted-foreground">
+                解決率: {auditSummary.totalIssues > 0 ? 
+                  Math.round((auditSummary.resolvedIssues / auditSummary.totalIssues) * 100) : 100}%
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">最終監査</CardTitle>
+              <FileText className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-sm font-medium">
+                {new Date(auditSummary.lastAuditDate).toLocaleDateString('ja-JP')}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                {new Date(auditSummary.lastAuditDate).toLocaleTimeString('ja-JP')}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      <Tabs defaultValue="overview" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="overview">概要</TabsTrigger>
+          <TabsTrigger value="vulnerabilities">脆弱性</TabsTrigger>
+          <TabsTrigger value="recommendations">推奨事項</TabsTrigger>
+          <TabsTrigger value="zap-scan">ZAPスキャン</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="overview">
+          <Card>
+            <CardHeader>
+              <CardTitle>監査概要</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {scanResult && (
+                <>
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="text-center p-4 border rounded-lg">
+                      <div className="text-2xl font-bold text-red-600">
+                        {scanResult.vulnerabilities.high}
+                      </div>
+                      <div className="text-sm text-muted-foreground">重要な脆弱性</div>
+                    </div>
+                    <div className="text-center p-4 border rounded-lg">
+                      <div className="text-2xl font-bold text-yellow-600">
+                        {scanResult.vulnerabilities.medium}
+                      </div>
+                      <div className="text-sm text-muted-foreground">中程度の脆弱性</div>
+                    </div>
+                    <div className="text-center p-4 border rounded-lg">
+                      <div className="text-2xl font-bold text-blue-600">
+                        {scanResult.vulnerabilities.low}
+                      </div>
+                      <div className="text-sm text-muted-foreground">軽微な脆弱性</div>
+                    </div>
+                  </div>
+
+                  <Alert>
+                    <CheckCircle className="h-4 w-4" />
+                    <AlertDescription>
+                      最新のセキュリティスキャンが完了しました。
+                      詳細な結果は各タブで確認できます。
+                    </AlertDescription>
+                  </Alert>
+                </>
               )}
             </CardContent>
           </Card>
-        ))}
-      </div>
+        </TabsContent>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>セキュリティ設定の確認</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3 text-sm">
-            <div className="flex items-center gap-2">
-              <CheckCircle className="h-4 w-4 text-green-500" />
-              <span>データベース関数のセキュリティ強化完了</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <CheckCircle className="h-4 w-4 text-green-500" />
-              <span>Row Level Security (RLS) ポリシー適用済み</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <CheckCircle className="h-4 w-4 text-green-500" />
-              <span>API キーの暗号化保存</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <CheckCircle className="h-4 w-4 text-green-500" />
-              <span>自己返信フィルタリング実装済み</span>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+        <TabsContent value="vulnerabilities">
+          <Card>
+            <CardHeader>
+              <CardTitle>検出された脆弱性</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {scanResult ? (
+                <div className="space-y-4">
+                  {scanResult.vulnerabilities.high > 0 && (
+                    <Alert variant="destructive">
+                      <AlertTriangle className="h-4 w-4" />
+                      <AlertDescription>
+                        <strong>{scanResult.vulnerabilities.high}件の重要な脆弱性</strong>が検出されています。
+                        直ちに対応が必要です。
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                  
+                  {scanResult.vulnerabilities.medium > 0 && (
+                    <Alert>
+                      <AlertTriangle className="h-4 w-4" />
+                      <AlertDescription>
+                        <strong>{scanResult.vulnerabilities.medium}件の中程度の脆弱性</strong>が検出されています。
+                        計画的な対応を推奨します。
+                      </AlertDescriptio>
+                    </Alert>
+                  )}
+
+                  {scanResult.vulnerabilities.low > 0 && (
+                    <Alert>
+                      <AlertTriangle className="h-4 w-4" />
+                      <AlertDescription>
+                        <strong>{scanResult.vulnerabilities.low}件の軽微な脆弱性</strong>が検出されています。
+                        時間があるときに対応してください。
+                      </AlertDescription>
+                    </Alert>
+                  )}
+
+                  {scanResult.vulnerabilities.high === 0 && 
+                   scanResult.vulnerabilities.medium === 0 && 
+                   scanResult.vulnerabilities.low === 0 && (
+                    <Alert>
+                      <CheckCircle className="h-4 w-4" />
+                      <AlertDescription>
+                        現在、検出されている脆弱性はありません。
+                        セキュリティ状態は良好です。
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                </div>
+              ) : (
+                <p className="text-muted-foreground">スキャン結果がありません</p>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="recommendations">
+          <Card>
+            <CardHeader>
+              <CardTitle>セキュリティ推奨事項</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {scanResult && scanResult.recommendations.length > 0 ? (
+                <div className="space-y-3">
+                  {scanResult.recommendations.map((recommendation, index) => (
+                    <div key={index} className="flex items-start gap-3 p-3 border rounded-lg">
+                      <CheckCircle className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                      <p className="text-sm">{recommendation}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-muted-foreground">推奨事項はありません</p>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="zap-scan">
+          <ZapScanResults />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };
