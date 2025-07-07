@@ -55,24 +55,6 @@ export const useAccountStatus = () => {
         console.log('Account status loaded:', data);
         setAccountStatus(data);
 
-        // Realtimeチャンネルの設定（静的なチャンネル名を使用）
-        channel = supabase
-          .channel(`account-status-${user.id}`)
-          .on(
-            'postgres_changes',
-            {
-              event: 'UPDATE',
-              schema: 'public',
-              table: 'user_account_status',
-              filter: `user_id=eq.${user.id}`
-            },
-            (payload) => {
-              console.log('Account status updated:', payload.new);
-              setAccountStatus(payload.new as AccountStatus);
-            }
-          )
-          .subscribe();
-
       } catch (err) {
         console.error('Unexpected error:', err);
         setError('予期しないエラーが発生しました');
@@ -83,12 +65,41 @@ export const useAccountStatus = () => {
 
     fetchAccountStatus();
 
+    // ユーザーが存在する場合のみリアルタイム購読を設定
+    if (user) {
+      // 既存のチャンネルがあれば削除
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
+
+      // 新しいチャンネルを作成（ユニークなチャンネル名を使用）
+      const channelName = `account-status-${user.id}-${Date.now()}`;
+      channel = supabase
+        .channel(channelName)
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'user_account_status',
+            filter: `user_id=eq.${user.id}`
+          },
+          (payload) => {
+            console.log('Account status updated:', payload.new);
+            setAccountStatus(payload.new as AccountStatus);
+          }
+        )
+        .subscribe((status) => {
+          console.log('Channel subscription status:', status);
+        });
+    }
+
     return () => {
       if (channel) {
         supabase.removeChannel(channel);
       }
     };
-  }, [user]);
+  }, [user?.id]); // user.idの変更のみを監視
 
   return {
     accountStatus,
