@@ -129,8 +129,8 @@ export const ProtectedAdminRoute = ({ children }: ProtectedAdminRouteProps) => {
       }
     };
 
-    // 場所が変更されたらリセット
-    if (location.pathname.includes('/admin')) {
+    // 管理者ページにアクセスしたらチェック実行
+    if (location.pathname.includes('/admin') || location.pathname.includes('/security-management')) {
       setIsAdmin(null);
       checkAdminAccess();
     }
