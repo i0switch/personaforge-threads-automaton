@@ -290,7 +290,7 @@ export const SecurityAuditReport = () => {
                       <AlertDescription>
                         <strong>{scanResult.vulnerabilities.medium}件の中程度の脆弱性</strong>が検出されています。
                         計画的な対応を推奨します。
-                      </AlertDescriptio>
+                      </AlertDescription>
                     </Alert>
                   )}
 
