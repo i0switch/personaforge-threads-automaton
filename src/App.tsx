@@ -18,6 +18,7 @@ import AutoReply from "@/pages/AutoReply";
 import Settings from "@/pages/Settings";
 import AdminDashboard from "@/pages/AdminDashboard";
 import SecurityManagement from "@/pages/SecurityManagement";
+import DevelopmentGuide from "@/pages/DevelopmentGuide";
 
 const queryClient = new QueryClient();
 
@@ -119,6 +120,7 @@ function App() {
                       </ProtectedAdminRoute>
                     }
                   />
+                  <Route path="/development-guide" element={<DevelopmentGuide />} />
                 </Routes>
               </main>
             </div>
