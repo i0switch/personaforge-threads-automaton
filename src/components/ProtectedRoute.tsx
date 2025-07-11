@@ -18,12 +18,14 @@ export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
     }
   }, [user, loading, navigate]);
 
+  // 認証中のみローディング表示
   if (loading) {
     return <LoadingSpinner message="認証確認中..." />;
   }
 
+  // ユーザーが存在しない場合は何も表示しない（リダイレクト処理中）
   if (!user) {
-    return <LoadingSpinner message="リダイレクト中..." />;
+    return null;
   }
 
   return <>{children}</>;

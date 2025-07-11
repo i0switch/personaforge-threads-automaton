@@ -150,6 +150,6 @@ export const ProtectedAdminRoute = ({ children }: ProtectedAdminRouteProps) => {
     return <>{children}</>;
   }
 
-  // リダイレクト中
-  return <LoadingSpinner message="リダイレクト中..." />;
+  // リダイレクト中は何も表示しない
+  return null;
 };
