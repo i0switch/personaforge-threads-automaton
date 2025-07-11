@@ -231,7 +231,37 @@ export const UserManagementTable = () => {
 
     setUpdating(userId);
     try {
-      // Delete from profiles table (this will cascade due to foreign keys)
+      // Delete from all related tables
+      await Promise.all([
+        // Delete personas
+        supabase.from('personas').delete().eq('user_id', userId),
+        // Delete user account status
+        supabase.from('user_account_status').delete().eq('user_id', userId),
+        // Delete posts
+        supabase.from('posts').delete().eq('user_id', userId),
+        // Delete auto replies
+        supabase.from('auto_replies').delete().eq('user_id', userId),
+        // Delete thread replies
+        supabase.from('thread_replies').delete().eq('user_id', userId),
+        // Delete webhook settings
+        supabase.from('webhook_settings').delete().eq('user_id', userId),
+        // Delete reply check settings
+        supabase.from('reply_check_settings').delete().eq('user_id', userId),
+        // Delete scheduling settings
+        supabase.from('scheduling_settings').delete().eq('user_id', userId),
+        // Delete user API keys
+        supabase.from('user_api_keys').delete().eq('user_id', userId),
+        // Delete user roles
+        supabase.from('user_roles').delete().eq('user_id', userId),
+        // Delete activity logs
+        supabase.from('activity_logs').delete().eq('user_id', userId),
+        // Delete analytics
+        supabase.from('analytics').delete().eq('user_id', userId),
+        // Delete post queue
+        supabase.from('post_queue').delete().eq('user_id', userId),
+      ]);
+
+      // Finally delete from profiles table
       const { error } = await supabase
         .from('profiles')
         .delete()
@@ -241,7 +271,7 @@ export const UserManagementTable = () => {
 
       toast({
         title: "成功",
-        description: "ユーザーを削除しました。",
+        description: "ユーザーを完全に削除しました。",
       });
 
       // Remove from local state
