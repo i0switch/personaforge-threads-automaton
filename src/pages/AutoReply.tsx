@@ -159,9 +159,11 @@ const AutoReply = () => {
       return;
     }
 
+    console.log('generateAutoReply: Starting auto-reply generation');
     setGeneratingReply(true);
+    
     try {
-      console.log('Calling generate-auto-reply with:', {
+      console.log('generateAutoReply: Calling generate-auto-reply with:', {
         postContent: testPostContent,
         replyContent: testReplyContent,
         persona: selectedPersona
@@ -169,6 +171,7 @@ const AutoReply = () => {
 
       // Get current session for authentication
       const { data: { session } } = await supabase.auth.getSession();
+      console.log('generateAutoReply: Session obtained:', !!session);
       
       const { data, error } = await supabase.functions.invoke('generate-auto-reply', {
         body: {
@@ -181,17 +184,19 @@ const AutoReply = () => {
         } : {}
       });
 
-      console.log('Auto-reply response:', { data, error });
+      console.log('generateAutoReply: Auto-reply response received:', { data, error });
 
       if (error) {
-        console.error('Auto-reply generation error:', error);
+        console.error('generateAutoReply: Auto-reply generation error:', error);
         throw new Error(`自動返信生成に失敗しました: ${error.message}`);
       }
 
       if (!data || !data.reply) {
+        console.error('generateAutoReply: No reply data returned:', data);
         throw new Error('返信データが返されませんでした');
       }
 
+      console.log('generateAutoReply: Setting generated reply:', data.reply);
       setGeneratedReply(data.reply);
 
       toast({
