@@ -108,6 +108,7 @@ export type Database = {
       auto_replies: {
         Row: {
           created_at: string
+          delay_minutes: number | null
           id: string
           is_active: boolean
           persona_id: string | null
@@ -118,6 +119,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          delay_minutes?: number | null
           id?: string
           is_active?: boolean
           persona_id?: string | null
@@ -128,6 +130,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          delay_minutes?: number | null
           id?: string
           is_active?: boolean
           persona_id?: string | null
@@ -150,6 +153,7 @@ export type Database = {
         Row: {
           age: string | null
           ai_auto_reply_enabled: boolean | null
+          auto_reply_delay_minutes: number | null
           auto_reply_enabled: boolean | null
           avatar_url: string | null
           created_at: string
@@ -170,6 +174,7 @@ export type Database = {
         Insert: {
           age?: string | null
           ai_auto_reply_enabled?: boolean | null
+          auto_reply_delay_minutes?: number | null
           auto_reply_enabled?: boolean | null
           avatar_url?: string | null
           created_at?: string
@@ -190,6 +195,7 @@ export type Database = {
         Update: {
           age?: string | null
           ai_auto_reply_enabled?: boolean | null
+          auto_reply_delay_minutes?: number | null
           auto_reply_enabled?: boolean | null
           avatar_url?: string | null
           created_at?: string
@@ -474,8 +480,10 @@ export type Database = {
           reply_author_id: string
           reply_author_username: string | null
           reply_id: string
+          reply_status: string | null
           reply_text: string
           reply_timestamp: string
+          scheduled_reply_at: string | null
           updated_at: string
           user_id: string
         }
@@ -488,8 +496,10 @@ export type Database = {
           reply_author_id: string
           reply_author_username?: string | null
           reply_id: string
+          reply_status?: string | null
           reply_text: string
           reply_timestamp: string
+          scheduled_reply_at?: string | null
           updated_at?: string
           user_id: string
         }
@@ -502,8 +512,10 @@ export type Database = {
           reply_author_id?: string
           reply_author_username?: string | null
           reply_id?: string
+          reply_status?: string | null
           reply_text?: string
           reply_timestamp?: string
+          scheduled_reply_at?: string | null
           updated_at?: string
           user_id?: string
         }
