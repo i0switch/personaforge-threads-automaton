@@ -30,7 +30,8 @@ export const PersonaForm = ({ editingPersona, onSubmit, onCancel }: PersonaFormP
     threads_username: "",
     webhook_verify_token: "",
     auto_reply_enabled: false,
-    ai_auto_reply_enabled: false
+    ai_auto_reply_enabled: false,
+    auto_reply_delay_minutes: 0
   });
   const [loading, setLoading] = useState(false);
 
@@ -51,7 +52,8 @@ export const PersonaForm = ({ editingPersona, onSubmit, onCancel }: PersonaFormP
         threads_username: editingPersona.threads_username || "",
         webhook_verify_token: editingPersona.webhook_verify_token || "",
         auto_reply_enabled: editingPersona.auto_reply_enabled || false,
-        ai_auto_reply_enabled: editingPersona.ai_auto_reply_enabled || false
+        ai_auto_reply_enabled: editingPersona.ai_auto_reply_enabled || false,
+        auto_reply_delay_minutes: editingPersona.auto_reply_delay_minutes || 0
       });
     }
   }, [editingPersona]);
@@ -205,6 +207,24 @@ export const PersonaForm = ({ editingPersona, onSubmit, onCancel }: PersonaFormP
                     onCheckedChange={handleAiAutoReplyChange}
                   />
                 </div>
+
+                {formData.ai_auto_reply_enabled && (
+                  <div className="space-y-2 ml-4 p-4 border border-border rounded-lg bg-muted/50">
+                    <Label htmlFor="auto_reply_delay_minutes">返信遅延時間（分）</Label>
+                    <Input
+                      id="auto_reply_delay_minutes"
+                      type="number"
+                      min="0"
+                      max="1440"
+                      value={formData.auto_reply_delay_minutes}
+                      onChange={(e) => handleInputChange("auto_reply_delay_minutes", parseInt(e.target.value) || 0)}
+                      placeholder="0 = 即座に返信、30 = 30分後に返信"
+                    />
+                    <p className="text-sm text-muted-foreground">
+                      0分 = 即座に返信、それ以外の数値でスケジュール返信（最大24時間）
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
 

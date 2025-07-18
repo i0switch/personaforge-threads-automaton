@@ -50,6 +50,13 @@ export type Database = {
             referencedRelation: "personas"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "activity_logs_persona_id_fkey"
+            columns: ["persona_id"]
+            isOneToOne: false
+            referencedRelation: "personas_secure"
+            referencedColumns: ["id"]
+          },
         ]
       }
       analytics: {
@@ -103,6 +110,13 @@ export type Database = {
             referencedRelation: "personas"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "analytics_persona_id_fkey"
+            columns: ["persona_id"]
+            isOneToOne: false
+            referencedRelation: "personas_secure"
+            referencedColumns: ["id"]
+          },
         ]
       }
       auto_replies: {
@@ -145,6 +159,13 @@ export type Database = {
             columns: ["persona_id"]
             isOneToOne: false
             referencedRelation: "personas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "auto_replies_persona_id_fkey"
+            columns: ["persona_id"]
+            isOneToOne: false
+            referencedRelation: "personas_secure"
             referencedColumns: ["id"]
           },
         ]
@@ -325,6 +346,13 @@ export type Database = {
             referencedRelation: "personas"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "posts_persona_id_fkey"
+            columns: ["persona_id"]
+            isOneToOne: false
+            referencedRelation: "personas_secure"
+            referencedColumns: ["id"]
+          },
         ]
       }
       profiles: {
@@ -397,6 +425,13 @@ export type Database = {
             columns: ["persona_id"]
             isOneToOne: false
             referencedRelation: "personas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reply_check_settings_persona_id_fkey"
+            columns: ["persona_id"]
+            isOneToOne: false
+            referencedRelation: "personas_secure"
             referencedColumns: ["id"]
           },
         ]
@@ -525,6 +560,13 @@ export type Database = {
             columns: ["persona_id"]
             isOneToOne: false
             referencedRelation: "personas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "thread_replies_persona_id_fkey"
+            columns: ["persona_id"]
+            isOneToOne: false
+            referencedRelation: "personas_secure"
             referencedColumns: ["id"]
           },
         ]
@@ -661,6 +703,13 @@ export type Database = {
             referencedRelation: "personas"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "webhook_settings_persona_id_fkey"
+            columns: ["persona_id"]
+            isOneToOne: false
+            referencedRelation: "personas_secure"
+            referencedColumns: ["id"]
+          },
         ]
       }
     }
@@ -686,6 +735,72 @@ export type Database = {
         }
         Relationships: []
       }
+      personas_secure: {
+        Row: {
+          age: string | null
+          ai_auto_reply_enabled: boolean | null
+          auto_reply_delay_minutes: number | null
+          auto_reply_enabled: boolean | null
+          avatar_url: string | null
+          created_at: string | null
+          expertise: string[] | null
+          id: string | null
+          is_active: boolean | null
+          name: string | null
+          personality: string | null
+          threads_access_token: string | null
+          threads_app_id: string | null
+          threads_app_secret: string | null
+          threads_username: string | null
+          tone_of_voice: string | null
+          updated_at: string | null
+          user_id: string | null
+          webhook_verify_token: string | null
+        }
+        Insert: {
+          age?: string | null
+          ai_auto_reply_enabled?: boolean | null
+          auto_reply_delay_minutes?: number | null
+          auto_reply_enabled?: boolean | null
+          avatar_url?: string | null
+          created_at?: string | null
+          expertise?: string[] | null
+          id?: string | null
+          is_active?: boolean | null
+          name?: string | null
+          personality?: string | null
+          threads_access_token?: never
+          threads_app_id?: string | null
+          threads_app_secret?: string | null
+          threads_username?: string | null
+          tone_of_voice?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+          webhook_verify_token?: string | null
+        }
+        Update: {
+          age?: string | null
+          ai_auto_reply_enabled?: boolean | null
+          auto_reply_delay_minutes?: number | null
+          auto_reply_enabled?: boolean | null
+          avatar_url?: string | null
+          created_at?: string | null
+          expertise?: string[] | null
+          id?: string | null
+          is_active?: boolean | null
+          name?: string | null
+          personality?: string | null
+          threads_access_token?: never
+          threads_app_id?: string | null
+          threads_app_secret?: string | null
+          threads_username?: string | null
+          tone_of_voice?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+          webhook_verify_token?: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       authenticate_service_request: {
@@ -703,6 +818,14 @@ export type Database = {
           persona_limit: number
           can_create: boolean
         }[]
+      }
+      decrypt_access_token: {
+        Args: { encrypted_token: string }
+        Returns: string
+      }
+      encrypt_access_token: {
+        Args: { token: string }
+        Returns: string
       }
       get_user_emails_for_admin: {
         Args: Record<PropertyKey, never>
