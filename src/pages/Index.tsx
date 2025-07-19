@@ -257,6 +257,56 @@ const Index = () => {
           })}
         </div>
 
+        {/* サポート・更新機能通知用オープンチャット */}
+        <div className="text-center mb-8">
+          <Card className="border-0 bg-gradient-to-r from-green-500 via-emerald-500 to-green-600 shadow-xl">
+            <div className="bg-white/95 backdrop-blur-sm m-1 rounded-lg">
+              <CardHeader>
+                <CardTitle className="flex items-center justify-center gap-3 text-gray-800">
+                  <div className="p-2 bg-gradient-to-r from-green-600 to-emerald-600 rounded-lg">
+                    <MessageSquare className="h-6 w-6 text-white" />
+                  </div>
+                  サポート・更新機能通知用オープンチャット
+                  <Badge className="bg-gradient-to-r from-green-600 to-emerald-600 text-white">
+                    LINE
+                  </Badge>
+                </CardTitle>
+                <CardDescription className="text-gray-600 text-base text-center">
+                  「Threads-Genius AI利用者専用」
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col items-center space-y-4">
+                <a 
+                  href="https://line.me/ti/g2/8PfsRrm8_msOUgclDBgrYtY3Nm-uz5focauD1A?utm_source=invitation&utm_medium=link_copy&utm_campaign=default"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block transition-transform hover:scale-105"
+                >
+                  <img 
+                    src="/lovable-uploads/17adfadd-e520-4fe6-bb3d-50e82ffa1967.png" 
+                    alt="LINE オープンチャット QRコード" 
+                    className="w-32 h-32 rounded-lg shadow-md hover:shadow-lg transition-shadow"
+                  />
+                </a>
+                <Button 
+                  className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white shadow-lg hover:shadow-xl transition-all duration-300"
+                  asChild
+                >
+                  <a 
+                    href="https://line.me/ti/g2/8PfsRrm8_msOUgclDBgrYtY3Nm-uz5focauD1A?utm_source=invitation&utm_medium=link_copy&utm_campaign=default"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    オープンチャットに参加
+                  </a>
+                </Button>
+              </CardContent>
+            </div>
+          </Card>
+        </div>
+
         {/* Enhanced Advertisement Section */}
         <div className="space-y-8">
           <div className="text-center relative">
