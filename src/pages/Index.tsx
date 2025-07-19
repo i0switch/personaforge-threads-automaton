@@ -257,8 +257,9 @@ const Index = () => {
           })}
         </div>
 
-        {/* サポート・更新機能通知用オープンチャット */}
-        <div className="text-center mb-8">
+        {/* サポート・更新機能通知 & 新機能アピール */}
+        <div className="grid gap-6 md:grid-cols-2 mb-8">
+          {/* サポート・更新機能通知用オープンチャット */}
           <Card className="border-0 bg-gradient-to-r from-green-500 via-emerald-500 to-green-600 shadow-xl">
             <div className="bg-white/95 backdrop-blur-sm m-1 rounded-lg">
               <CardHeader>
@@ -266,7 +267,7 @@ const Index = () => {
                   <div className="p-2 bg-gradient-to-r from-green-600 to-emerald-600 rounded-lg">
                     <MessageSquare className="h-6 w-6 text-white" />
                   </div>
-                  サポート・更新機能通知用オープンチャット
+                  サポート・更新機能通知用
                   <Badge className="bg-gradient-to-r from-green-600 to-emerald-600 text-white">
                     LINE
                   </Badge>
@@ -301,6 +302,54 @@ const Index = () => {
                     <ExternalLink className="h-4 w-4" />
                     オープンチャットに参加
                   </a>
+                </Button>
+              </CardContent>
+            </div>
+          </Card>
+
+          {/* 新機能アピール：遅延返信設定 */}
+          <Card className="border-0 bg-gradient-to-r from-purple-500 via-indigo-500 to-purple-600 shadow-xl">
+            <div className="bg-white/95 backdrop-blur-sm m-1 rounded-lg">
+              <CardHeader>
+                <CardTitle className="flex items-center justify-center gap-3 text-gray-800">
+                  <div className="p-2 bg-gradient-to-r from-purple-600 to-indigo-600 rounded-lg">
+                    <Bot className="h-6 w-6 text-white" />
+                  </div>
+                  AI自動返信機能 アップデート
+                  <Badge className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white animate-pulse">
+                    NEW
+                  </Badge>
+                </CardTitle>
+                <CardDescription className="text-gray-600 text-base text-center">
+                  遅延返信設定機能を追加しました
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="bg-white/90 backdrop-blur-sm rounded-xl p-4 border border-purple-200 shadow-sm">
+                  <div className="flex items-start gap-3 mb-3">
+                    <TrendingUp className="h-5 w-5 text-purple-600 mt-0.5" />
+                    <div>
+                      <p className="text-gray-800 font-bold text-base mb-2">
+                        より人間らしく返信できます
+                      </p>
+                      <p className="text-gray-700 text-sm leading-relaxed">
+                        返信までの時間を設定することで、自然な会話のリズムを演出。即座に返信するのではなく、人間らしい間を作ることができます。
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 text-purple-700 bg-purple-50 rounded-lg p-3">
+                    <Sparkles className="h-5 w-5" />
+                    <span className="font-semibold text-sm">0〜60分まで自由に設定可能</span>
+                  </div>
+                </div>
+                
+                <Button 
+                  className="w-full h-10 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white shadow-md hover:shadow-lg transition-all duration-300 transform hover:scale-105"
+                  onClick={() => navigate("/auto-reply")}
+                >
+                  <Bot className="h-4 w-4 mr-2" />
+                  自動返信設定を確認
+                  <Sparkles className="h-4 w-4 ml-2" />
                 </Button>
               </CardContent>
             </div>
