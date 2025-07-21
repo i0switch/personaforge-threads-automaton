@@ -138,8 +138,25 @@ serve(async (req) => {
           });
       }
     }
+
+    console.log(`=== Scheduled replies processing completed. Processed: ${processedCount}, Success: ${successCount}, Failed: ${failedCount} ===`);
+
+    return new Response(JSON.stringify({ 
+      processed: processedCount,
+      success: successCount,
+      failed: failedCount
+    }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+
+  } catch (error) {
+    console.error('Error in process-scheduled-replies function:', error);
+    return new Response(JSON.stringify({ error: error.message }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
   }
-}
+});
 
 // 定型文返信かどうかをチェックする関数
 async function checkIfKeywordReply(supabase: any, userId: string, replyText: string) {
@@ -349,22 +366,3 @@ ${reply.reply_text}
     console.log('Reply published successfully');
   }
 }
-
-    console.log(`=== Scheduled replies processing completed. Processed: ${processedCount}, Success: ${successCount}, Failed: ${failedCount} ===`);
-
-    return new Response(JSON.stringify({ 
-      processed: processedCount,
-      success: successCount,
-      failed: failedCount
-    }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
-
-  } catch (error) {
-    console.error('Error in process-scheduled-replies function:', error);
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
-  }
-});
