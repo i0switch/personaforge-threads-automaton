@@ -109,6 +109,138 @@ serve(async (req) => {
   }
 });
 
+// 定型文返信チェック関数
+async function checkKeywordAutoReply(persona: any, thread: any) {
+  try {
+    console.log(`Checking keyword auto-reply for persona ${persona.name}, reply: "${thread.text}"`);
+    
+    // このユーザーの定型文返信設定を取得
+    const { data: autoReplies } = await supabase
+      .from('auto_replies')
+      .select('*')
+      .eq('user_id', persona.user_id)
+      .eq('is_active', true);
+
+    if (!autoReplies || autoReplies.length === 0) {
+      console.log(`No active auto-replies found for user ${persona.user_id}`);
+      return;
+    }
+
+    const replyText = (thread.text || '').toLowerCase();
+    
+    // キーワードマッチングチェック
+    for (const autoReply of autoReplies) {
+      const keywords = autoReply.trigger_keywords || [];
+      
+      for (const keyword of keywords) {
+        if (replyText.includes(keyword.toLowerCase())) {
+          console.log(`Keyword "${keyword}" matched in reply: "${thread.text}"`);
+          
+          // 遅延設定に基づいて返信をスケジュール
+          const delayMinutes = autoReply.delay_minutes || 0;
+          const scheduledAt = delayMinutes > 0 
+            ? new Date(Date.now() + delayMinutes * 60 * 1000).toISOString()
+            : null;
+
+          if (delayMinutes > 0) {
+            // 遅延返信の場合：scheduled_reply_atを設定
+            await supabase
+              .from('thread_replies')
+              .update({
+                reply_status: 'scheduled',
+                scheduled_reply_at: scheduledAt
+              })
+              .eq('reply_id', thread.id);
+            
+            console.log(`Scheduled auto-reply for ${delayMinutes} minutes: "${autoReply.response_template}"`);
+          } else {
+            // 即座に返信
+            await sendKeywordReply(persona, thread, autoReply.response_template);
+          }
+          
+          return; // 最初のマッチで終了
+        }
+      }
+    }
+    
+    console.log(`No keyword matches found for reply: "${thread.text}"`);
+  } catch (error) {
+    console.error(`Error in keyword auto-reply check:`, error);
+  }
+}
+
+// 定型文返信を送信する関数
+async function sendKeywordReply(persona: any, thread: any, responseTemplate: string) {
+  try {
+    console.log(`Sending keyword reply: "${responseTemplate}" to thread ${thread.id}`);
+    
+    // Threads APIで返信を投稿
+    const response = await fetch(`https://graph.threads.net/v1.0/me/threads`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${persona.threads_access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        media_type: 'TEXT',
+        text: responseTemplate,
+        reply_to_id: thread.id
+      })
+    });
+
+    if (response.ok) {
+      const result = await response.json();
+      console.log(`Keyword reply posted successfully: ${result.id}`);
+      
+      // thread_repliesテーブルを更新
+      await supabase
+        .from('thread_replies')
+        .update({
+          reply_status: 'sent',
+          auto_reply_sent: true
+        })
+        .eq('reply_id', thread.id);
+        
+      // 活動ログに記録
+      await supabase
+        .from('activity_logs')
+        .insert({
+          user_id: persona.user_id,
+          persona_id: persona.id,
+          action_type: 'keyword_auto_reply_sent',
+          description: `Keyword auto-reply sent to thread ${thread.id}`,
+          metadata: {
+            original_reply: thread.text,
+            auto_reply_text: responseTemplate,
+            thread_id: thread.id,
+            threads_post_id: result.id
+          }
+        });
+        
+    } else {
+      console.error(`Failed to post keyword reply:`, response.status, await response.text());
+      
+      // エラー状態を記録
+      await supabase
+        .from('thread_replies')
+        .update({
+          reply_status: 'failed'
+        })
+        .eq('reply_id', thread.id);
+    }
+  } catch (error) {
+    console.error(`Error sending keyword reply:`, error);
+    
+    // エラー状態を記録
+    await supabase
+      .from('thread_replies')
+      .update({
+        reply_status: 'failed'
+      })
+      .eq('reply_id', thread.id);
+  }
+}
+
 async function checkRepliesForPost(persona: any, postId: string): Promise<number> {
   try {
     // Threads APIを使用してメンション・リプライを検索
@@ -164,6 +296,9 @@ async function checkRepliesForPost(persona: any, postId: string): Promise<number
             if (!insertError) {
               newRepliesCount++;
               console.log(`New reply saved: ${thread.id}`);
+
+              // 定型文返信チェック（キーワードマッチング）
+              await checkKeywordAutoReply(persona, thread);
 
               // AI自動返信チェック
               if (persona.ai_auto_reply_enabled) {
