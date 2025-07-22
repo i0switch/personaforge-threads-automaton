@@ -821,12 +821,10 @@ async function sendThreadsReply(persona: any, thread: any, responseText: string)
   }
   
   // 2. 返信対象の情報を整理
-  let rootOwnerId = '';
   let replyToId = '';
   
   // root_postの情報があるか確認
   if (thread.root_post && thread.root_post.id) {
-    rootOwnerId = thread.root_post.owner_id || 'me';
     replyToId = thread.root_post.id; // 元投稿のIDを設定
   } else {
     console.error('❌ root_post情報が不足');
@@ -834,10 +832,10 @@ async function sendThreadsReply(persona: any, thread: any, responseText: string)
   }
   
   console.log('📋 返信情報:');
-  console.log('  - Root Owner ID:', rootOwnerId);
   console.log('  - Reply To ID:', replyToId);
   console.log('  - Thread ID:', thread.id);
   console.log('  - Root Post ID:', thread.root_post?.id);
+  console.log('  - Persona Threads User ID:', persona.threads_user_id);
   
   // 3. URLSearchParamsでパラメータを準備
   const params = new URLSearchParams({
@@ -846,8 +844,8 @@ async function sendThreadsReply(persona: any, thread: any, responseText: string)
     access_token: persona.threads_access_token
   });
   
-  // 4. 正しいエンドポイント（/threads）で送信
-  const endpoint = `https://graph.threads.net/v1.0/${rootOwnerId}/threads`;
+  // 4. 正しいエンドポイント（/threads）で送信 - ペルソナ自身のuser IDを使用
+  const endpoint = `https://graph.threads.net/v1.0/${persona.threads_user_id}/threads`;
   console.log('🌐 エンドポイント:', endpoint);
   console.log('📝 パラメータ:', params.toString());
   
