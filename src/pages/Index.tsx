@@ -257,6 +257,52 @@ const Index = () => {
           })}
         </div>
 
+        {/* Support Section with QR Code */}
+        <div className="text-center relative mb-8">
+          <div className="absolute inset-0 bg-gradient-to-r from-blue-400/10 via-indigo-400/10 to-purple-400/10 rounded-2xl blur-2xl"></div>
+          <div className="relative bg-white/90 backdrop-blur-sm rounded-2xl p-6 shadow-lg border border-slate-200/50">
+            <div className="flex flex-col items-center gap-4 mb-4">
+              <h3 className="text-2xl font-bold bg-gradient-to-r from-blue-700 via-indigo-800 to-purple-700 bg-clip-text text-transparent">
+                📞 サポート・更新機能通知用オープンチャット
+              </h3>
+              <p className="text-lg font-semibold text-gray-800">
+                「Threads-Genius AI利用者専用」
+              </p>
+              
+              {/* QR Code with Click Handler */}
+              <div className="relative group">
+                <button
+                  onClick={() => window.open('https://line.me/ti/g2/8PfsRrm8_msOUgclDBgrYtY3Nm-uz5focauD1A?utm_source=invitation&utm_medium=link_copy&utm_campaign=default', '_blank')}
+                  className="transition-transform duration-300 hover:scale-105 cursor-pointer"
+                >
+                  <img 
+                    src="/lovable-uploads/fd3e3c72-f098-40b3-a6a9-7b7f1c11ff6c.png" 
+                    alt="LINEオープンチャットQRコード" 
+                    className="w-32 h-32 rounded-lg shadow-md border-2 border-gray-200 hover:border-blue-400 transition-colors duration-300"
+                  />
+                  <div className="absolute inset-0 bg-blue-500/10 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                </button>
+                <p className="text-sm text-gray-600 mt-2">
+                  QRコードをクリックして参加
+                </p>
+              </div>
+              
+              <div className="text-center space-y-2">
+                <p className="text-gray-700">
+                  最新の機能アップデート情報やサポートを受けられます
+                </p>
+                <Button
+                  onClick={() => window.open('https://line.me/ti/g2/8PfsRrm8_msOUgclDBgrYtY3Nm-uz5focauD1A?utm_source=invitation&utm_medium=link_copy&utm_campaign=default', '_blank')}
+                  className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white shadow-md hover:shadow-lg transition-all duration-300"
+                >
+                  <ExternalLink className="h-4 w-4 mr-2" />
+                  オープンチャットに参加
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Enhanced Advertisement Section */}
         <div className="space-y-8">
           <div className="text-center relative">
