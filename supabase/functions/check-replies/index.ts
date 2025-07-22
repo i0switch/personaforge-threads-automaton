@@ -183,6 +183,21 @@ async function checkKeywordAutoReply(persona: any, thread: any) {
             // 即座に返信
             console.log(`即座返信を実行します`);
             await sendKeywordReply(persona, thread, autoReply.response_template);
+            
+            // 即座返信の場合はすぐにステータスを更新
+            const { error: updateError } = await supabase
+              .from('thread_replies')
+              .update({
+                reply_status: 'sent',
+                auto_reply_sent: true
+              })
+              .eq('reply_id', thread.id);
+              
+            if (updateError) {
+              console.error(`即座返信ステータス更新エラー:`, updateError);
+            } else {
+              console.log(`✅ 即座返信完了`);
+            }
           }
           
           console.log(`=== キーワード自動返信チェック完了（マッチあり）===`);
@@ -223,15 +238,6 @@ async function sendKeywordReply(persona: any, thread: any, responseTemplate: str
       const result = await response.json();
       console.log(`Keyword reply posted successfully: ${result.id}`);
       
-      // thread_repliesテーブルを更新
-      await supabase
-        .from('thread_replies')
-        .update({
-          reply_status: 'sent',
-          auto_reply_sent: true
-        })
-        .eq('reply_id', thread.id);
-        
       // 活動ログに記録
       await supabase
         .from('activity_logs')
@@ -250,14 +256,7 @@ async function sendKeywordReply(persona: any, thread: any, responseTemplate: str
         
     } else {
       console.error(`Failed to post keyword reply:`, response.status, await response.text());
-      
-      // エラー状態を記録
-      await supabase
-        .from('thread_replies')
-        .update({
-          reply_status: 'failed'
-        })
-        .eq('reply_id', thread.id);
+      throw new Error(`Failed to post keyword reply: ${response.status}`);
     }
   } catch (error) {
     console.error(`Error sending keyword reply:`, error);
