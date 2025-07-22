@@ -556,57 +556,8 @@ async function processReplyData(supabase: any, persona_id: string, replyData: an
           }
         })
 
-      // AI自動返信の処理
-      if (persona.ai_auto_reply_enabled) {
-        console.log(`Triggering AI auto-reply for reply: ${reply.id}`)
-        
-        // 元の投稿内容を取得
-        let originalPostContent = ''
-        try {
-          if (reply.root_post?.id) {
-            console.log(`Fetching original post content for post ID: ${reply.root_post.id}`)
-            const postResponse = await fetch(`https://graph.threads.net/v1.0/${reply.root_post.id}?fields=text&access_token=${persona.threads_access_token}`)
-            if (postResponse.ok) {
-              const postData = await postResponse.json()
-              originalPostContent = postData.text || ''
-              console.log(`Original post content retrieved: "${originalPostContent.substring(0, 100)}..."`)
-            } else {
-              console.log(`Failed to fetch original post: ${postResponse.status}`)
-            }
-          } else {
-            console.log('No root_post.id available for original post content fetch')
-          }
-        } catch (error) {
-          console.error(`Error fetching original post content:`, error)
-        }
-        
-        try {
-          const { data: autoReplyResponse, error: autoReplyError } = await supabase.functions.invoke('threads-auto-reply', {
-            body: {
-              postContent: originalPostContent,
-              replyContent: reply.text,
-              replyId: reply.id,
-              personaId: persona.id,
-              userId: persona.user_id,
-              replyAuthor: reply.username
-            }
-          })
-
-          if (autoReplyError) {
-            console.error(`Auto-reply error for ${reply.id}:`, autoReplyError)
-          } else {
-            console.log(`Auto-reply triggered for ${reply.id}`)
-            
-            // auto_reply_sentフラグを更新
-            await supabase
-              .from('thread_replies')
-              .update({ auto_reply_sent: true })
-              .eq('reply_id', reply.id)
-          }
-        } catch (autoReplyErr) {
-          console.error(`Failed to trigger auto-reply for ${reply.id}:`, autoReplyErr)
-        }
-      }
+      // 自動返信処理（統合版）
+      await processAutoReply(supabase, persona, reply);
     }
 
     return repliesProcessed
@@ -614,6 +565,259 @@ async function processReplyData(supabase: any, persona_id: string, replyData: an
     console.error('Error processing reply data:', error)
     return 0
   }
+}
+
+// 自動返信処理（統合版）
+async function processAutoReply(supabase: any, persona: any, reply: any) {
+  try {
+    console.log(`🔍 自動返信処理開始: ${reply.text} (ID: ${reply.id})`);
+    
+    // ペルソナの詳細情報を取得（自動返信設定を含む）
+    const { data: fullPersona, error: personaError } = await supabase
+      .from('personas')
+      .select(`
+        id,
+        name,
+        user_id,
+        auto_reply_enabled,
+        ai_auto_reply_enabled,
+        auto_reply_delay_minutes,
+        threads_access_token,
+        personality,
+        tone_of_voice,
+        expertise
+      `)
+      .eq('id', persona.id)
+      .maybeSingle();
+
+    if (personaError || !fullPersona) {
+      console.error('❌ ペルソナ詳細取得エラー:', personaError);
+      return;
+    }
+
+    // 自動返信設定がOFFの場合は終了
+    if (!fullPersona.auto_reply_enabled && !fullPersona.ai_auto_reply_enabled) {
+      console.log('⚠️ 自動返信設定がOFFです - スキップ');
+      return;
+    }
+
+    let templateMatched = false;
+
+    // 定型文による自動返信がONの場合
+    if (fullPersona.auto_reply_enabled) {
+      console.log('🎯 定型文返信処理開始');
+      
+      // このペルソナの定型文返信設定を取得
+      const { data: autoReplies, error: autoReplyError } = await supabase
+        .from('auto_replies')
+        .select('*')
+        .eq('user_id', fullPersona.user_id)
+        .eq('is_active', true);
+
+      if (autoReplyError) {
+        console.error('❌ 定型文返信設定の取得エラー:', autoReplyError);
+      } else if (autoReplies && autoReplies.length > 0) {
+        console.log(`🎯 定型文返信設定: ${autoReplies.length}件`);
+
+        // キーワードマッチングをチェック
+        const replyText = (reply.text || '').toLowerCase().trim();
+
+        for (const autoReply of autoReplies) {
+          const keywords = autoReply.trigger_keywords || [];
+      
+          for (const keyword of keywords) {
+            if (!keyword) continue;
+        
+            const keywordLower = keyword.toLowerCase().trim();
+            
+            // より確実な部分一致チェック
+            const cleanReplyText = replyText.replace(/[「」『』\(\)（）\[\]【】<>《》]/g, '').trim();
+            const cleanKeyword = keywordLower.replace(/[「」『』\(\)（）\[\]【】<>《》]/g, '').trim();
+            
+            const isMatch = cleanReplyText.includes(cleanKeyword) || 
+                           replyText.includes(keywordLower) ||
+                           cleanReplyText === cleanKeyword ||
+                           replyText === keywordLower;
+
+            if (isMatch) {
+              console.log(`🎯 マッチしました！返信: "${autoReply.response_template}"`);
+              
+              try {
+                // Threads APIで返信を送信
+                await sendThreadsReply(fullPersona, reply, autoReply.response_template);
+                
+                // ステータスを更新
+                await supabase
+                  .from('thread_replies')
+                  .update({
+                    reply_status: 'sent',
+                    auto_reply_sent: true,
+                    updated_at: new Date().toISOString()
+                  })
+                  .eq('reply_id', reply.id);
+
+                console.log('✅ 定型文返信送信完了');
+                templateMatched = true;
+                break;
+            
+              } catch (sendError) {
+                console.error('❌ 定型文返信送信エラー:', sendError);
+                
+                // エラー状態を記録
+                await supabase
+                  .from('thread_replies')
+                  .update({
+                    reply_status: 'failed',
+                    updated_at: new Date().toISOString()
+                  })
+                  .eq('reply_id', reply.id);
+              }
+            }
+          }
+          
+          if (templateMatched) break;
+        }
+      }
+    }
+
+    // 定型文でマッチしなかった場合、AI自動返信を試す
+    if (!templateMatched && fullPersona.ai_auto_reply_enabled) {
+      console.log('🤖 AI自動返信処理開始');
+      
+      try {
+        // 元の投稿内容を取得
+        let originalPostContent = '';
+        try {
+          if (reply.root_post?.id) {
+            const postResponse = await fetch(`https://graph.threads.net/v1.0/${reply.root_post.id}?fields=text&access_token=${fullPersona.threads_access_token}`);
+            if (postResponse.ok) {
+              const postData = await postResponse.json();
+              originalPostContent = postData.text || '';
+            }
+          }
+        } catch (error) {
+          console.error('元投稿取得エラー:', error);
+        }
+
+        // AI返信を生成
+        const aiResponse = await supabase.functions.invoke('generate-auto-reply', {
+          body: {
+            postContent: originalPostContent,
+            replyContent: reply.text,
+            persona: fullPersona
+          }
+        });
+
+        if (aiResponse.error) {
+          throw new Error(aiResponse.error.message);
+        }
+
+        const aiReplyText = aiResponse.data?.reply;
+        
+        if (aiReplyText) {
+          // 遅延設定をチェック
+          const delayMinutes = fullPersona.auto_reply_delay_minutes || 0;
+          
+          if (delayMinutes > 0) {
+            // スケジュール返信として登録
+            const scheduledAt = new Date(Date.now() + delayMinutes * 60 * 1000);
+            
+            await supabase
+              .from('thread_replies')
+              .update({
+                reply_status: 'scheduled',
+                scheduled_reply_at: scheduledAt.toISOString(),
+                updated_at: new Date().toISOString()
+              })
+              .eq('reply_id', reply.id);
+
+            console.log(`⏰ AI返信をスケジュール登録: ${delayMinutes}分後`);
+          } else {
+            // 即座に返信
+            await sendThreadsReply(fullPersona, reply, aiReplyText);
+            
+            await supabase
+              .from('thread_replies')
+              .update({
+                reply_status: 'sent',
+                auto_reply_sent: true,
+                updated_at: new Date().toISOString()
+              })
+              .eq('reply_id', reply.id);
+
+            console.log('✅ AI自動返信送信完了');
+          }
+        }
+        
+      } catch (aiError) {
+        console.error('❌ AI自動返信エラー:', aiError);
+        
+        await supabase
+          .from('thread_replies')
+          .update({
+            reply_status: 'failed',
+            updated_at: new Date().toISOString()
+          })
+          .eq('reply_id', reply.id);
+      }
+    }
+
+    if (!templateMatched && !fullPersona.ai_auto_reply_enabled) {
+      console.log('❌ マッチするキーワードがなく、AI返信も無効です');
+    }
+
+  } catch (error) {
+    console.error('❌ 自動返信処理エラー:', error);
+  }
+}
+
+// Threads APIで返信を送信する関数
+async function sendThreadsReply(persona: any, thread: any, responseText: string) {
+  console.log('📤 Threads返信送信開始...');
+  
+  // Step 1: Create the reply container
+  const createResponse = await fetch(`https://graph.threads.net/v1.0/me/threads`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      media_type: 'TEXT',
+      text: responseText,
+      reply_to_id: thread.root_post?.id || thread.replied_to?.id,
+      access_token: persona.threads_access_token
+    })
+  });
+
+  const createResult = await createResponse.json();
+  console.log('📝 コンテナ作成:', createResponse.status, createResult);
+
+  if (!createResponse.ok) {
+    throw new Error(`Container creation failed: ${createResponse.status} - ${JSON.stringify(createResult)}`);
+  }
+
+  const containerId = createResult.id;
+
+  // Step 2: Publish the reply
+  const publishResponse = await fetch(`https://graph.threads.net/v1.0/${containerId}/publish`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      access_token: persona.threads_access_token
+    })
+  });
+
+  const publishResult = await publishResponse.json();
+  console.log('📢 返信公開:', publishResponse.status, publishResult);
+
+  if (!publishResponse.ok) {
+    throw new Error(`Publish failed: ${publishResponse.status} - ${JSON.stringify(publishResult)}`);
+  }
+
+  console.log('✅ 返信送信成功:', publishResult.id);
+  return publishResult;
 }
 
 // セキュリティイベントログ
