@@ -623,12 +623,13 @@ async function processReplyData(supabase: any, persona_id: string, replyData: an
 async function processKeywordTriggerReplies(supabase: any, persona: any, reply: any) {
   try {
     console.log(`\n🔍 処理中: "${reply.text}" (ID: ${reply.id})`)
+    console.log(`📋 ペルソナ: ${persona.name}`)
     
-    // このペルソナのトリガー返信設定を取得
+    // このユーザーのすべてのアクティブなトリガー返信設定を取得
     const { data: triggerSettings, error } = await supabase
       .from('auto_replies')
-      .select('*')
-      .eq('persona_id', persona.id)
+      .select('*, personas!inner(id, name, threads_access_token, threads_user_id)')
+      .eq('user_id', persona.user_id)
       .eq('is_active', true)
 
     if (error) {
@@ -666,22 +667,24 @@ async function processKeywordTriggerReplies(supabase: any, persona: any, reply: 
 
       if (matched) {
         console.log(`🚀 トリガー返信を送信中: "${setting.response_template}"`)
+        console.log(`使用するペルソナ: ${setting.personas.name} (ID: ${setting.personas.id})`)
         
-        // トリガー返信を送信
-        await sendThreadsReply(supabase, persona, reply.id, setting.response_template)
+        // トリガー返信を送信（設定のペルソナを使用）
+        await sendThreadsReply(supabase, setting.personas, reply.id, setting.response_template)
         
         // アクティビティログを記録
         await supabase
           .from('activity_logs')
           .insert({
             user_id: persona.user_id,
-            persona_id: persona.id,
+            persona_id: setting.persona_id,
             action_type: 'keyword_auto_reply_sent',
             description: `キーワード自動返信を送信: "${setting.response_template.substring(0, 50)}..."`,
             metadata: {
               reply_id: reply.id,
               keyword_matched: keywords.find(k => replyText.includes(k.trim().toLowerCase())),
-              response_sent: setting.response_template
+              response_sent: setting.response_template,
+              triggered_persona: setting.personas.name
             }
           })
         
