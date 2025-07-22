@@ -808,61 +808,49 @@ async function processAutoReply(supabase: any, persona: any, reply: any) {
   }
 }
 
-// Threads APIで返信を送信する関数
+// Threads APIで返信を送信する関数（Meta公式仕様に準拠）
 async function sendThreadsReply(persona: any, thread: any, responseText: string) {
   console.log('📤 Threads返信送信開始...');
   
-  // Step 1: Create the reply container
-  const createResponse = await fetch(`https://graph.threads.net/v1.0/me/threads`, {
+  // Meta公式仕様：https://graph.threads.net/v1.0/{threads-user-id}/replies
+  const replyEndpoint = `https://graph.threads.net/v1.0/me/replies`;
+  
+  // reply_to_idは受信したリプライのIDを使用
+  const replyToId = thread.id; // webhookで受信したリプライのID
+  
+  console.log('📋 返信対象ID:', replyToId);
+  console.log('📝 返信テキスト:', responseText);
+  console.log('🔑 使用アクセストークン（最初の20文字）:', persona.threads_access_token?.substring(0, 20));
+  
+  const response = await fetch(replyEndpoint, {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
+      'Content-Type': 'application/x-www-form-urlencoded',
     },
-    body: JSON.stringify({
-      media_type: 'TEXT',
-      text: responseText,
-      reply_to_id: thread.root_post?.id || thread.replied_to?.id,
+    body: new URLSearchParams({
+      message: responseText,
+      reply_to_id: replyToId,
       access_token: persona.threads_access_token
     })
   });
 
-  const createResult = await createResponse.json();
-  console.log('📝 コンテナ作成:', createResponse.status, createResult);
+  const result = await response.json();
+  console.log('📢 返信結果:', response.status, result);
 
-  if (!createResponse.ok) {
-    throw new Error(`Container creation failed: ${createResponse.status} - ${JSON.stringify(createResult)}`);
-  }
-
-  const containerId = createResult.id;
-
-  // Step 2: Publish the reply
-  const publishResponse = await fetch(`https://graph.threads.net/v1.0/${containerId}/publish`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      access_token: persona.threads_access_token
-    })
-  });
-
-  const publishResult = await publishResponse.json();
-  console.log('📢 返信公開:', publishResponse.status, publishResult);
-
-  if (!publishResponse.ok) {
+  if (!response.ok) {
     // エラーの詳細を分析
-    if (publishResult?.error?.code === 100 && publishResult?.error?.error_subcode === 33) {
+    if (result?.error?.code === 100 && result?.error?.error_subcode === 33) {
       console.error('❌ Threads API エラー: 投稿が存在しないか、アクセス権限がありません');
-      console.error('📋 返信対象投稿ID:', thread.root_post?.id || thread.replied_to?.id);
+      console.error('📋 返信対象投稿ID:', replyToId);
       console.error('🔑 使用アクセストークン（最初の20文字）:', persona.threads_access_token?.substring(0, 20));
       console.error('📝 返信テキスト:', responseText);
       throw new Error('Reply target post not found or no permission to reply');
     }
-    throw new Error(`Publish failed: ${publishResponse.status} - ${JSON.stringify(publishResult)}`);
+    throw new Error(`Reply failed: ${response.status} - ${JSON.stringify(result)}`);
   }
 
-  console.log('✅ 返信送信成功:', publishResult.id);
-  return publishResult;
+  console.log('✅ 返信送信成功:', result.id);
+  return result;
 }
 
 // セキュリティイベントログ
