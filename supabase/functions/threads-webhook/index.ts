@@ -850,6 +850,14 @@ async function sendThreadsReply(persona: any, thread: any, responseText: string)
   console.log('📢 返信公開:', publishResponse.status, publishResult);
 
   if (!publishResponse.ok) {
+    // エラーの詳細を分析
+    if (publishResult?.error?.code === 100 && publishResult?.error?.error_subcode === 33) {
+      console.error('❌ Threads API エラー: 投稿が存在しないか、アクセス権限がありません');
+      console.error('📋 返信対象投稿ID:', thread.root_post?.id || thread.replied_to?.id);
+      console.error('🔑 使用アクセストークン（最初の20文字）:', persona.threads_access_token?.substring(0, 20));
+      console.error('📝 返信テキスト:', responseText);
+      throw new Error('Reply target post not found or no permission to reply');
+    }
     throw new Error(`Publish failed: ${publishResponse.status} - ${JSON.stringify(publishResult)}`);
   }
 
