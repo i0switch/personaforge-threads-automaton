@@ -18,6 +18,7 @@ serve(async (req) => {
   }
 
   try {
+    console.log('=== CHECK-REPLIES FUNCTION STARTED ===');
     console.log('Starting reply check...');
 
     // アクティブなリプライチェック設定を取得
@@ -36,9 +37,31 @@ serve(async (req) => {
       `)
       .eq('is_active', true);
 
+    console.log('Reply check settings found:', checkSettings?.length || 0);
+
+    // リプライチェック設定がない場合、アクティブなペルソナを直接取得
+    let personasToCheck = [];
+    
     if (!checkSettings || checkSettings.length === 0) {
-      console.log('No active reply check settings found');
-      return new Response(JSON.stringify({ message: 'No active settings' }), {
+      console.log('No reply check settings found, getting active personas directly');
+      const { data: activePersonas } = await supabase
+        .from('personas')
+        .select('*')
+        .eq('is_active', true)
+        .not('threads_access_token', 'is', null);
+      
+      personasToCheck = activePersonas || [];
+      console.log('Active personas found:', personasToCheck.length);
+    } else {
+      // リプライチェック設定からペルソナを取得
+      personasToCheck = checkSettings
+        .filter(setting => setting.personas)
+        .map(setting => setting.personas);
+    }
+
+    if (personasToCheck.length === 0) {
+      console.log('No personas to check');
+      return new Response(JSON.stringify({ message: 'No personas to check' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200
       });
@@ -46,8 +69,7 @@ serve(async (req) => {
 
     let totalRepliesFound = 0;
 
-    for (const setting of checkSettings) {
-      const persona = setting.personas;
+    for (const persona of personasToCheck) {
       if (!persona?.threads_access_token) {
         console.log(`Skipping persona ${persona?.id} - no access token`);
         continue;
@@ -80,11 +102,16 @@ serve(async (req) => {
         // 既存の未処理リプライをチェック
         await checkExistingReplies(persona);
 
-        // 最後のチェック時刻を更新
-        await supabase
-          .from('reply_check_settings')
-          .update({ last_check_at: new Date().toISOString() })
-          .eq('id', setting.id);
+        // 最後のチェック時刻を更新（リプライチェック設定がある場合のみ）
+        if (checkSettings && checkSettings.length > 0) {
+          const setting = checkSettings.find(s => s.personas?.id === persona.id);
+          if (setting) {
+            await supabase
+              .from('reply_check_settings')
+              .update({ last_check_at: new Date().toISOString() })
+              .eq('id', setting.id);
+          }
+        }
 
       } catch (error) {
         console.error(`Error checking replies for persona ${persona?.id}:`, error);
