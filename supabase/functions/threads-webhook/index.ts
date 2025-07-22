@@ -570,9 +570,11 @@ async function processReplyData(supabase: any, persona_id: string, replyData: an
 // 自動返信処理（統合版）
 async function processAutoReply(supabase: any, persona: any, reply: any) {
   try {
-    console.log(`🔍 自動返信処理開始: ${reply.text} (ID: ${reply.id})`);
+    console.log(`🔍 自動返信処理開始: "${reply.text}" (ID: ${reply.id})`);
+    console.log('🔍 受信したペルソナ情報:', JSON.stringify(persona, null, 2));
     
     // ペルソナの詳細情報を取得（自動返信設定を含む）
+    console.log(`🔍 ペルソナ詳細情報を取得中: ${persona.id}`);
     const { data: fullPersona, error: personaError } = await supabase
       .from('personas')
       .select(`
@@ -592,14 +594,20 @@ async function processAutoReply(supabase: any, persona: any, reply: any) {
 
     if (personaError || !fullPersona) {
       console.error('❌ ペルソナ詳細取得エラー:', personaError);
+      console.error('❌ fullPersona:', fullPersona);
       return;
     }
+
+    console.log('✅ ペルソナ詳細情報取得成功:', JSON.stringify(fullPersona, null, 2));
 
     // 自動返信設定がOFFの場合は終了
     if (!fullPersona.auto_reply_enabled && !fullPersona.ai_auto_reply_enabled) {
       console.log('⚠️ 自動返信設定がOFFです - スキップ');
+      console.log(`⚠️ auto_reply_enabled: ${fullPersona.auto_reply_enabled}, ai_auto_reply_enabled: ${fullPersona.ai_auto_reply_enabled}`);
       return;
     }
+
+    console.log(`✅ 自動返信設定確認: auto_reply_enabled=${fullPersona.auto_reply_enabled}, ai_auto_reply_enabled=${fullPersona.ai_auto_reply_enabled}`);
 
     let templateMatched = false;
 
@@ -643,9 +651,12 @@ async function processAutoReply(supabase: any, persona: any, reply: any) {
               console.log(`🎯 マッチしました！返信: "${autoReply.response_template}"`);
               
               try {
+                console.log('📤 Threads返信送信開始...');
                 // Threads APIで返信を送信
                 await sendThreadsReply(fullPersona, reply, autoReply.response_template);
+                console.log('✅ Threads返信送信成功');
                 
+                console.log('💾 データベース更新開始...');
                 // ステータスを更新
                 await supabase
                   .from('thread_replies')
@@ -661,8 +672,10 @@ async function processAutoReply(supabase: any, persona: any, reply: any) {
                 break;
             
               } catch (sendError) {
-                console.error('❌ 定型文返信送信エラー:', sendError);
+                console.error('❌ 定型文返信送信エラー詳細:', sendError);
+                console.error('❌ エラースタック:', sendError.stack);
                 
+                console.log('💾 エラー状態をデータベースに記録...');
                 // エラー状態を記録
                 await supabase
                   .from('thread_replies')
@@ -767,7 +780,24 @@ async function processAutoReply(supabase: any, persona: any, reply: any) {
     }
 
   } catch (error) {
-    console.error('❌ 自動返信処理エラー:', error);
+    console.error('❌ 自動返信処理エラー詳細:', error);
+    console.error('❌ エラースタック:', error.stack);
+    console.error('❌ エラー発生時のペルソナ:', JSON.stringify(persona, null, 2));
+    console.error('❌ エラー発生時のリプライ:', JSON.stringify(reply, null, 2));
+    
+    // エラー状態をデータベースに記録
+    try {
+      await supabase
+        .from('thread_replies')
+        .update({
+          reply_status: 'failed',
+          updated_at: new Date().toISOString()
+        })
+        .eq('reply_id', reply.id);
+      console.log('💾 エラー状態をデータベースに記録しました');
+    } catch (dbError) {
+      console.error('❌ データベース更新エラー:', dbError);
+    }
   }
 }
 
