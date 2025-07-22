@@ -78,6 +78,9 @@ serve(async (req) => {
           totalRepliesFound += repliesFound;
         }
 
+        // 既存の未処理リプライをチェック
+        await checkExistingReplies(persona);
+
         // 最後のチェック時刻を更新
         await supabase
           .from('reply_check_settings')
@@ -238,6 +241,43 @@ async function sendKeywordReply(persona: any, thread: any, responseTemplate: str
         reply_status: 'failed'
       })
       .eq('reply_id', thread.id);
+  }
+}
+
+// 既存の未処理リプライをチェックする関数
+async function checkExistingReplies(persona: any) {
+  try {
+    console.log(`Checking existing unprocessed replies for persona: ${persona.name}`);
+    
+    // 未処理の返信を取得（auto_reply_sent = false かつ reply_status = pending）
+    const { data: existingReplies } = await supabase
+      .from('thread_replies')
+      .select('*')
+      .eq('persona_id', persona.id)
+      .eq('auto_reply_sent', false)
+      .eq('reply_status', 'pending');
+
+    if (!existingReplies || existingReplies.length === 0) {
+      console.log(`No unprocessed replies found for persona ${persona.id}`);
+      return;
+    }
+
+    console.log(`Found ${existingReplies.length} unprocessed replies for persona ${persona.id}`);
+
+    for (const reply of existingReplies) {
+      // 模擬threadオブジェクトを作成
+      const mockThread = {
+        id: reply.reply_id,
+        text: reply.reply_text,
+        username: reply.reply_author_username,
+        timestamp: reply.reply_timestamp
+      };
+
+      // キーワードマッチングチェック
+      await checkKeywordAutoReply(persona, mockThread);
+    }
+  } catch (error) {
+    console.error(`Error checking existing replies for persona ${persona.id}:`, error);
   }
 }
 
