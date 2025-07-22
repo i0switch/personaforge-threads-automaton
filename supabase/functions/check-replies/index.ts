@@ -22,22 +22,16 @@ serve(async (req) => {
     console.log('Starting reply check...');
 
     // アクティブなリプライチェック設定を取得
-    const { data: checkSettings } = await supabase
+    const { data: checkSettings, error: settingsError } = await supabase
       .from('reply_check_settings')
-      .select(`
-        *,
-        personas (
-          id,
-          name,
-          user_id,
-          threads_access_token,
-          threads_username,
-          ai_auto_reply_enabled
-        )
-      `)
+      .select('*')
       .eq('is_active', true);
 
     console.log('Reply check settings found:', checkSettings?.length || 0);
+    
+    if (settingsError) {
+      console.error('Error fetching settings:', settingsError);
+    }
 
     // リプライチェック設定がない場合、アクティブなペルソナを直接取得
     let personasToCheck = [];
@@ -53,10 +47,23 @@ serve(async (req) => {
       personasToCheck = activePersonas || [];
       console.log('Active personas found:', personasToCheck.length);
     } else {
-      // リプライチェック設定からペルソナを取得
-      personasToCheck = checkSettings
-        .filter(setting => setting.personas)
-        .map(setting => setting.personas);
+      // リプライチェック設定からユーザーIDを取得し、そのユーザーのペルソナを取得
+      const userIds = [...new Set(checkSettings.map(s => s.user_id))];
+      console.log('Getting personas for user IDs:', userIds);
+      
+      const { data: personas, error: personasError } = await supabase
+        .from('personas')
+        .select('*')
+        .in('user_id', userIds)
+        .eq('is_active', true)
+        .not('threads_access_token', 'is', null);
+        
+      if (personasError) {
+        console.error('Error fetching personas:', personasError);
+      }
+      
+      personasToCheck = personas || [];
+      console.log('Personas found for settings:', personasToCheck.length);
     }
 
     if (personasToCheck.length === 0) {
@@ -104,7 +111,7 @@ serve(async (req) => {
 
         // 最後のチェック時刻を更新（リプライチェック設定がある場合のみ）
         if (checkSettings && checkSettings.length > 0) {
-          const setting = checkSettings.find(s => s.personas?.id === persona.id);
+          const setting = checkSettings.find(s => s.user_id === persona.user_id);
           if (setting) {
             await supabase
               .from('reply_check_settings')
