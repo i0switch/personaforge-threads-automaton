@@ -812,26 +812,62 @@ async function processAutoReply(supabase: any, persona: any, reply: any) {
 async function sendThreadsReply(persona: any, thread: any, responseText: string) {
   console.log('📤 Threads返信送信開始...');
   
-  // Meta公式仕様：https://graph.threads.net/v1.0/{threads-user-id}/replies
-  const replyEndpoint = `https://graph.threads.net/v1.0/me/replies`;
+  // 1. アクセストークンのデバッグ（オプション）
+  try {
+    const debugResponse = await fetch(`https://graph.facebook.com/debug_token?input_token=${persona.threads_access_token}&access_token=${persona.threads_access_token}`);
+    const debugResult = await debugResponse.json();
+    console.log('🔍 トークンデバッグ情報:', debugResult);
+  } catch (error) {
+    console.log('⚠️ トークンデバッグ失敗:', error);
+  }
   
-  // reply_to_idは受信したリプライのIDを使用
-  const replyToId = thread.id; // webhookで受信したリプライのID
+  // 2. 返信対象の情報を整理
+  let replyToId = '';
+  let rootOwnerId = '';
   
-  console.log('📋 返信対象ID:', replyToId);
-  console.log('📝 返信テキスト:', responseText);
-  console.log('🔑 使用アクセストークン（最初の20文字）:', persona.threads_access_token?.substring(0, 20));
+  // root_postの情報があるか確認
+  if (thread.root_post && thread.root_post.id) {
+    rootOwnerId = thread.root_post.owner_id || 'me';
+    
+    // rootへの直返信の場合はreply_to_idを省略
+    // 既存返信への返信の場合はthread.idを使用
+    if (thread.replied_to && thread.replied_to.id !== thread.root_post.id) {
+      replyToId = thread.id; // 既存返信にぶら下げる
+    }
+    // rootへの直返信の場合はreply_to_idは空文字のまま
+  } else {
+    console.error('❌ root_post情報が不足');
+    throw new Error('Missing root_post information');
+  }
   
-  const response = await fetch(replyEndpoint, {
+  console.log('📋 返信情報:');
+  console.log('  - Root Owner ID:', rootOwnerId);
+  console.log('  - Reply To ID:', replyToId || '(rootへの直返信)');
+  console.log('  - Thread ID:', thread.id);
+  console.log('  - Root Post ID:', thread.root_post?.id);
+  
+  // 3. URLSearchParamsでパラメータを準備
+  const params = new URLSearchParams({
+    message: responseText,
+    access_token: persona.threads_access_token
+  });
+  
+  // reply_to_idが必要な場合のみ追加
+  if (replyToId) {
+    params.append('reply_to_id', replyToId);
+  }
+  
+  // 4. 正しいエンドポイントで送信
+  const endpoint = `https://graph.threads.net/v1.0/${rootOwnerId}/replies`;
+  console.log('🌐 エンドポイント:', endpoint);
+  console.log('📝 パラメータ:', params.toString());
+  
+  const response = await fetch(endpoint, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
     },
-    body: new URLSearchParams({
-      message: responseText,
-      reply_to_id: replyToId,
-      access_token: persona.threads_access_token
-    })
+    body: params
   });
 
   const result = await response.json();
@@ -839,13 +875,14 @@ async function sendThreadsReply(persona: any, thread: any, responseText: string)
 
   if (!response.ok) {
     // エラーの詳細を分析
-    if (result?.error?.code === 100 && result?.error?.error_subcode === 33) {
-      console.error('❌ Threads API エラー: 投稿が存在しないか、アクセス権限がありません');
-      console.error('📋 返信対象投稿ID:', replyToId);
-      console.error('🔑 使用アクセストークン（最初の20文字）:', persona.threads_access_token?.substring(0, 20));
-      console.error('📝 返信テキスト:', responseText);
-      throw new Error('Reply target post not found or no permission to reply');
-    }
+    console.error('❌ Threads API エラー詳細:');
+    console.error('  - Status:', response.status);
+    console.error('  - Error Code:', result?.error?.code);
+    console.error('  - Error Subcode:', result?.error?.error_subcode);
+    console.error('  - Error Message:', result?.error?.message);
+    console.error('  - 使用エンドポイント:', endpoint);
+    console.error('  - 送信パラメータ:', params.toString());
+    
     throw new Error(`Reply failed: ${response.status} - ${JSON.stringify(result)}`);
   }
 
