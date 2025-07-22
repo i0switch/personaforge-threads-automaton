@@ -706,8 +706,13 @@ async function sendThreadsReply(supabase: any, persona: any, replyToId: string, 
 
     console.log(`📤 Threads返信送信中: "${responseText}" (Reply to: ${replyToId})`)
 
+    // threads_user_idが無い場合は「me」を使用
+    const userId = persona.threads_user_id || 'me'
+    
+    console.log(`📤 Using user ID: ${userId} for persona: ${persona.name}`)
+
     // コンテナを作成
-    const createResponse = await fetch(`https://graph.threads.net/v1.0/${persona.threads_user_id}/threads`, {
+    const createResponse = await fetch(`https://graph.threads.net/v1.0/${userId}/threads`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
