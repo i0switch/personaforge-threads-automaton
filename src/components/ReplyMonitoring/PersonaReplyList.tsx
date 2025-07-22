@@ -44,6 +44,50 @@ export const PersonaReplyList = () => {
     fetchReplies();
   }, [selectedPersona]);
 
+  // リアルタイム監視の設定
+  useEffect(() => {
+    if (!user) return;
+
+    console.log('Setting up realtime subscription for thread_replies');
+    
+    const channel = supabase
+      .channel('thread_replies_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'thread_replies',
+          filter: `user_id=eq.${user.id}`
+        },
+        (payload) => {
+          console.log('New reply received via realtime:', payload);
+          // 新しいリプライを既存のリストに追加
+          fetchReplies();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'thread_replies',
+          filter: `user_id=eq.${user.id}`
+        },
+        (payload) => {
+          console.log('Reply updated via realtime:', payload);
+          // リプライの更新（自動返信ステータスなど）
+          fetchReplies();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      console.log('Cleaning up realtime subscription');
+      supabase.removeChannel(channel);
+    };
+  }, [user]);
+
   const fetchPersonas = async () => {
     try {
       const { data, error } = await supabase
