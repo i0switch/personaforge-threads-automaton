@@ -748,7 +748,6 @@ export type Database = {
           is_active: boolean | null
           name: string | null
           personality: string | null
-          threads_access_token: string | null
           threads_app_id: string | null
           threads_app_secret: string | null
           threads_username: string | null
@@ -769,7 +768,6 @@ export type Database = {
           is_active?: boolean | null
           name?: string | null
           personality?: string | null
-          threads_access_token?: never
           threads_app_id?: string | null
           threads_app_secret?: string | null
           threads_username?: string | null
@@ -790,7 +788,6 @@ export type Database = {
           is_active?: boolean | null
           name?: string | null
           personality?: string | null
-          threads_access_token?: never
           threads_app_id?: string | null
           threads_app_secret?: string | null
           threads_username?: string | null
