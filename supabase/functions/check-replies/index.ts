@@ -1,4 +1,3 @@
-
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
@@ -112,42 +111,62 @@ serve(async (req) => {
   }
 });
 
-// 定型文返信チェック関数
+// 定型文返信チェック関数（強化版）
 async function checkKeywordAutoReply(persona: any, thread: any) {
   try {
-    console.log(`Checking keyword auto-reply for persona ${persona.name}, reply: "${thread.text}"`);
+    console.log(`=== キーワード自動返信チェック開始 ===`);
+    console.log(`ペルソナ: ${persona.name} (ID: ${persona.id})`);
+    console.log(`リプライ内容: "${thread.text}"`);
+    console.log(`リプライID: ${thread.id}`);
     
     // このユーザーの定型文返信設定を取得
-    const { data: autoReplies } = await supabase
+    const { data: autoReplies, error: fetchError } = await supabase
       .from('auto_replies')
       .select('*')
       .eq('user_id', persona.user_id)
       .eq('is_active', true);
 
-    if (!autoReplies || autoReplies.length === 0) {
-      console.log(`No active auto-replies found for user ${persona.user_id}`);
+    if (fetchError) {
+      console.error(`定型文返信設定の取得エラー:`, fetchError);
       return;
     }
 
-    const replyText = (thread.text || '').toLowerCase();
+    if (!autoReplies || autoReplies.length === 0) {
+      console.log(`ユーザー ${persona.user_id} の有効な定型文返信設定が見つかりません`);
+      return;
+    }
+
+    console.log(`見つかった定型文返信設定: ${autoReplies.length}件`);
+    autoReplies.forEach((reply, index) => {
+      console.log(`設定${index + 1}: キーワード=[${reply.trigger_keywords?.join(', ')}], 返信="${reply.response_template}"`);
+    });
+
+    const replyText = (thread.text || '').toLowerCase().trim();
+    console.log(`検索対象テキスト（小文字変換後）: "${replyText}"`);
     
     // キーワードマッチングチェック
     for (const autoReply of autoReplies) {
       const keywords = autoReply.trigger_keywords || [];
+      console.log(`チェック中の設定: キーワード=[${keywords.join(', ')}]`);
       
       for (const keyword of keywords) {
-        if (replyText.includes(keyword.toLowerCase())) {
-          console.log(`Keyword "${keyword}" matched in reply: "${thread.text}"`);
+        const keywordLower = keyword.toLowerCase().trim();
+        console.log(`キーワード "${keyword}" (小文字: "${keywordLower}") をチェック中...`);
+        
+        if (replyText.includes(keywordLower)) {
+          console.log(`🎯 キーワード "${keyword}" がマッチしました！`);
+          console.log(`返信テンプレート: "${autoReply.response_template}"`);
           
           // 遅延設定に基づいて返信をスケジュール
           const delayMinutes = autoReply.delay_minutes || 0;
-          const scheduledAt = delayMinutes > 0 
-            ? new Date(Date.now() + delayMinutes * 60 * 1000).toISOString()
-            : null;
-
+          console.log(`遅延設定: ${delayMinutes}分`);
+          
           if (delayMinutes > 0) {
+            const scheduledAt = new Date(Date.now() + delayMinutes * 60 * 1000).toISOString();
+            console.log(`スケジュール返信時刻: ${scheduledAt}`);
+            
             // 遅延返信の場合：scheduled_reply_atを設定
-            await supabase
+            const { error: updateError } = await supabase
               .from('thread_replies')
               .update({
                 reply_status: 'scheduled',
@@ -155,20 +174,29 @@ async function checkKeywordAutoReply(persona: any, thread: any) {
               })
               .eq('reply_id', thread.id);
             
-            console.log(`Scheduled auto-reply for ${delayMinutes} minutes: "${autoReply.response_template}"`);
+            if (updateError) {
+              console.error(`スケジュール返信の設定エラー:`, updateError);
+            } else {
+              console.log(`✅ スケジュール返信が設定されました (${delayMinutes}分後)`);
+            }
           } else {
             // 即座に返信
+            console.log(`即座返信を実行します`);
             await sendKeywordReply(persona, thread, autoReply.response_template);
           }
           
+          console.log(`=== キーワード自動返信チェック完了（マッチあり）===`);
           return; // 最初のマッチで終了
+        } else {
+          console.log(`キーワード "${keyword}" はマッチしませんでした`);
         }
       }
     }
     
-    console.log(`No keyword matches found for reply: "${thread.text}"`);
+    console.log(`❌ マッチするキーワードが見つかりませんでした`);
+    console.log(`=== キーワード自動返信チェック完了（マッチなし）===`);
   } catch (error) {
-    console.error(`Error in keyword auto-reply check:`, error);
+    console.error(`キーワード自動返信チェックエラー:`, error);
   }
 }
 
@@ -247,7 +275,7 @@ async function sendKeywordReply(persona: any, thread: any, responseTemplate: str
 // 既存の未処理リプライをチェックする関数
 async function checkExistingReplies(persona: any) {
   try {
-    console.log(`Checking existing unprocessed replies for persona: ${persona.name}`);
+    console.log(`既存の未処理リプライをチェック中: ${persona.name}`);
     
     // 未処理の返信を取得（auto_reply_sent = false かつ reply_status = pending）
     const { data: existingReplies } = await supabase
@@ -258,13 +286,15 @@ async function checkExistingReplies(persona: any) {
       .eq('reply_status', 'pending');
 
     if (!existingReplies || existingReplies.length === 0) {
-      console.log(`No unprocessed replies found for persona ${persona.id}`);
+      console.log(`ペルソナ ${persona.id} の未処理リプライは見つかりませんでした`);
       return;
     }
 
-    console.log(`Found ${existingReplies.length} unprocessed replies for persona ${persona.id}`);
+    console.log(`見つかった未処理リプライ: ${existingReplies.length}件`);
 
     for (const reply of existingReplies) {
+      console.log(`処理中のリプライ: ID=${reply.reply_id}, テキスト="${reply.reply_text}"`);
+      
       // 模擬threadオブジェクトを作成
       const mockThread = {
         id: reply.reply_id,
@@ -277,7 +307,7 @@ async function checkExistingReplies(persona: any) {
       await checkKeywordAutoReply(persona, mockThread);
     }
   } catch (error) {
-    console.error(`Error checking existing replies for persona ${persona.id}:`, error);
+    console.error(`既存リプライチェックエラー (ペルソナ ${persona.id}):`, error);
   }
 }
 
