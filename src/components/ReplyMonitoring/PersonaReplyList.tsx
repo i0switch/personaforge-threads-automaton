@@ -14,10 +14,14 @@ interface Reply {
   reply_author_username: string;
   reply_timestamp: string;
   auto_reply_sent: boolean;
+  reply_status: string;
   persona_id: string;
   personas: {
     name: string;
   };
+  activity_logs?: {
+    action_type: string;
+  }[];
 }
 
 interface Persona {
@@ -79,11 +83,29 @@ export const PersonaReplyList = () => {
         query = query.eq('persona_id', selectedPersona);
       }
 
-      const { data, error } = await query;
+      const { data: repliesData, error: repliesError } = await query;
 
-      if (error) throw error;
+      if (repliesError) throw repliesError;
       
-      setReplies(data || []);
+      // 各リプライに対してactivity_logsを取得
+      const repliesWithLogs = await Promise.all(
+        (repliesData || []).map(async (reply) => {
+          const { data: logs } = await supabase
+            .from('activity_logs')
+            .select('action_type')
+            .eq('user_id', user!.id)
+            .eq('persona_id', reply.persona_id)
+            .or(`metadata->>'reply_id'.eq.${reply.reply_id},description.ilike.%${reply.reply_id}%`)
+            .in('action_type', ['keyword_auto_reply_sent', 'scheduled_auto_reply_sent', 'ai_auto_reply_sent']);
+          
+          return {
+            ...reply,
+            activity_logs: logs || []
+          };
+        })
+      );
+      
+      setReplies(repliesWithLogs as Reply[]);
     } catch (error) {
       console.error('Error fetching replies:', error);
       toast({
@@ -94,6 +116,39 @@ export const PersonaReplyList = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  // 返信タイプを判定する関数
+  const getReplyType = (reply: Reply) => {
+    if (!reply.auto_reply_sent) {
+      if (reply.reply_status === 'pending') {
+        return { type: 'none', label: '未処理', variant: 'outline' as const };
+      }
+      return { type: 'none', label: '未処理', variant: 'outline' as const };
+    }
+
+    // activity_logsから返信タイプを判定
+    const hasKeywordReply = reply.activity_logs?.some(
+      log => log.action_type === 'keyword_auto_reply_sent'
+    );
+    const hasAiReply = reply.activity_logs?.some(
+      log => log.action_type === 'scheduled_auto_reply_sent' || log.action_type === 'ai_auto_reply_sent'
+    );
+
+    if (hasKeywordReply) {
+      return { type: 'keyword', label: '定型文返信済み', variant: 'default' as const };
+    } else if (hasAiReply) {
+      return { type: 'ai', label: 'AI自動返信済み', variant: 'secondary' as const };
+    } else if (reply.reply_status === 'sent') {
+      // activity_logsがない場合はreply_statusから判定
+      return { type: 'auto', label: '自動返信済み', variant: 'secondary' as const };
+    } else if (reply.reply_status === 'scheduled') {
+      return { type: 'scheduled', label: 'スケジュール済み', variant: 'outline' as const };
+    } else if (reply.reply_status === 'failed') {
+      return { type: 'failed', label: '送信失敗', variant: 'destructive' as const };
+    }
+
+    return { type: 'processed', label: '処理済み', variant: 'outline' as const };
   };
 
   return (
@@ -149,9 +204,14 @@ export const PersonaReplyList = () => {
                           </span>
                         </div>
                         <div className="flex items-center space-x-2">
-                          {reply.auto_reply_sent === true && (
-                            <Badge variant="secondary">自動返信済み</Badge>
-                          )}
+                          {(() => {
+                            const replyType = getReplyType(reply);
+                            return (
+                              <Badge variant={replyType.variant}>
+                                {replyType.label}
+                              </Badge>
+                            );
+                          })()}
                           <span className="text-sm text-gray-500">
                             {new Date(reply.reply_timestamp).toLocaleString()}
                           </span>
