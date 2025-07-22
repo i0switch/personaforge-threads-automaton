@@ -457,7 +457,7 @@ async function processReplyData(supabase: any, persona_id: string, replyData: an
     // ペルソナ情報を取得
     const { data: persona, error: personaError } = await supabase
       .from('personas')
-      .select('id, name, user_id, ai_auto_reply_enabled, threads_username, threads_access_token')
+      .select('id, name, user_id, ai_auto_reply_enabled, threads_username, threads_access_token, threads_user_id')
       .eq('id', persona_id)
       .maybeSingle()
 
@@ -556,6 +556,9 @@ async function processReplyData(supabase: any, persona_id: string, replyData: an
           }
         })
 
+      // キーワードトリガー返信の処理
+      await processKeywordTriggerReplies(supabase, persona, reply)
+
       // AI自動返信の処理
       if (persona.ai_auto_reply_enabled) {
         console.log(`Triggering AI auto-reply for reply: ${reply.id}`)
@@ -613,6 +616,145 @@ async function processReplyData(supabase: any, persona_id: string, replyData: an
   } catch (error) {
     console.error('Error processing reply data:', error)
     return 0
+  }
+}
+
+// キーワードトリガー返信の処理
+async function processKeywordTriggerReplies(supabase: any, persona: any, reply: any) {
+  try {
+    console.log(`\n🔍 処理中: "${reply.text}" (ID: ${reply.id})`)
+    
+    // このペルソナのトリガー返信設定を取得
+    const { data: triggerSettings, error } = await supabase
+      .from('auto_replies')
+      .select('*')
+      .eq('persona_id', persona.id)
+      .eq('is_active', true)
+
+    if (error) {
+      console.error('トリガー返信設定の取得エラー:', error)
+      return
+    }
+
+    if (!triggerSettings || triggerSettings.length === 0) {
+      console.log('❌ アクティブなトリガー返信設定がありません')
+      return
+    }
+
+    console.log(`🎯 定型文返信設定: ${triggerSettings.length}件`)
+
+    const replyText = reply.text?.trim().toLowerCase() || ''
+    
+    // 各トリガー設定をチェック
+    for (const setting of triggerSettings) {
+      const keywords = setting.trigger_keywords || []
+      let matched = false
+
+      for (const keyword of keywords) {
+        const cleanKeyword = keyword.trim().toLowerCase()
+        const cleanReplyText = replyText
+        
+        console.log(`🔍 クリーンテキスト: "${cleanReplyText}" vs "${cleanKeyword}"`)
+        console.log(`🔍 キーワード "${keyword}" vs "${reply.text}" → ${cleanReplyText.includes(cleanKeyword)}`)
+        
+        if (cleanReplyText.includes(cleanKeyword)) {
+          matched = true
+          console.log(`✅ キーワード "${keyword}" がマッチしました！`)
+          break
+        }
+      }
+
+      if (matched) {
+        console.log(`🚀 トリガー返信を送信中: "${setting.response_template}"`)
+        
+        // トリガー返信を送信
+        await sendThreadsReply(supabase, persona, reply.id, setting.response_template)
+        
+        // アクティビティログを記録
+        await supabase
+          .from('activity_logs')
+          .insert({
+            user_id: persona.user_id,
+            persona_id: persona.id,
+            action_type: 'keyword_auto_reply_sent',
+            description: `キーワード自動返信を送信: "${setting.response_template.substring(0, 50)}..."`,
+            metadata: {
+              reply_id: reply.id,
+              keyword_matched: keywords.find(k => replyText.includes(k.trim().toLowerCase())),
+              response_sent: setting.response_template
+            }
+          })
+        
+        // 一つでもマッチしたら終了（複数のトリガーが同時に発動しないようにする）
+        return
+      }
+    }
+
+    console.log('❌ マッチするキーワードがなく、AI返信も無効です')
+  } catch (error) {
+    console.error('キーワードトリガー返信処理エラー:', error)
+  }
+}
+
+// Threads API を使用して返信を送信
+async function sendThreadsReply(supabase: any, persona: any, replyToId: string, responseText: string) {
+  try {
+    if (!persona.threads_access_token) {
+      console.error('Threads access token not found for persona:', persona.id)
+      return
+    }
+
+    console.log(`📤 Threads返信送信中: "${responseText}" (Reply to: ${replyToId})`)
+
+    // コンテナを作成
+    const createResponse = await fetch(`https://graph.threads.net/v1.0/${persona.threads_user_id}/threads`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        media_type: 'TEXT_POST',
+        text: responseText,
+        reply_to_id: replyToId,
+        access_token: persona.threads_access_token
+      })
+    })
+
+    if (!createResponse.ok) {
+      const errorText = await createResponse.text()
+      console.error('Threads container creation failed:', errorText)
+      return
+    }
+
+    const containerData = await createResponse.json()
+    console.log('🎯 Container created:', containerData.id)
+
+    // 少し待機してから投稿
+    await new Promise(resolve => setTimeout(resolve, 2000))
+
+    // 投稿を公開
+    const publishResponse = await fetch('https://graph.threads.net/v1.0/me/threads_publish', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        creation_id: containerData.id,
+        access_token: persona.threads_access_token
+      })
+    })
+
+    if (!publishResponse.ok) {
+      const errorText = await publishResponse.text()
+      console.error('Threads publish failed:', errorText)
+      return
+    }
+
+    const publishData = await publishResponse.json()
+    console.log('✅ キーワード返信投稿成功:', publishData.id)
+
+  } catch (error) {
+    console.error('Threads返信送信エラー:', error)
   }
 }
 
