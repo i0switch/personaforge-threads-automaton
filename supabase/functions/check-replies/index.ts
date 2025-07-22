@@ -186,8 +186,16 @@ async function checkKeywordAutoReply(persona: any, thread: any) {
       for (const keyword of keywords) {
         const keywordLower = keyword.toLowerCase().trim();
         console.log(`キーワード "${keyword}" (小文字: "${keywordLower}") をチェック中...`);
+        console.log(`検索対象: "${replyText}" に "${keywordLower}" が含まれるか？`);
         
-        if (replyText.includes(keywordLower)) {
+        // 絵文字やUnicode文字を考慮したマッチング
+        const isMatch = replyText.includes(keywordLower) || 
+                       replyText.includes(keyword) || 
+                       keyword === replyText.trim();
+        
+        console.log(`マッチング結果: ${isMatch}`);
+        
+        if (isMatch) {
           console.log(`🎯 キーワード "${keyword}" がマッチしました！`);
           console.log(`返信テンプレート: "${autoReply.response_template}"`);
           
