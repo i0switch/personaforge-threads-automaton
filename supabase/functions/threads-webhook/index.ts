@@ -557,7 +557,14 @@ async function processReplyData(supabase: any, persona_id: string, replyData: an
         })
 
       // 自動返信処理（統合版）
-      await processAutoReply(supabase, persona, reply);
+      console.log('🚀 processAutoReply関数を呼び出します...');
+      try {
+        await processAutoReply(supabase, persona, reply);
+        console.log('✅ processAutoReply関数完了');
+      } catch (autoReplyError) {
+        console.error('❌ processAutoReply関数エラー:', autoReplyError);
+        console.error('❌ autoReplyErrorスタック:', autoReplyError.stack);
+      }
     }
 
     return repliesProcessed
