@@ -252,48 +252,84 @@ async function checkKeywordAutoReply(persona: any, thread: any) {
 // 定型文返信を送信する関数
 async function sendKeywordReply(persona: any, thread: any, responseTemplate: string) {
   try {
-    console.log(`Sending keyword reply: "${responseTemplate}" to thread ${thread.id}`);
+    console.log(`=== 定型文返信送信開始 ===`);
+    console.log(`ペルソナ: ${persona.name}`);
+    console.log(`返信内容: "${responseTemplate}"`);
+    console.log(`返信先スレッドID: ${thread.id}`);
     
-    // Threads APIで返信を投稿
-    const response = await fetch(`https://graph.threads.net/v1.0/me/threads`, {
+    // Step 1: Create the reply container
+    console.log('Step 1: Creating reply container...');
+    const createResponse = await fetch(`https://graph.threads.net/v1.0/me/threads`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${persona.threads_access_token}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         media_type: 'TEXT',
         text: responseTemplate,
-        reply_to_id: thread.id
+        reply_to_id: thread.id,
+        access_token: persona.threads_access_token
       })
     });
 
-    if (response.ok) {
-      const result = await response.json();
-      console.log(`Keyword reply posted successfully: ${result.id}`);
-      
-      // 活動ログに記録
-      await supabase
-        .from('activity_logs')
-        .insert({
-          user_id: persona.user_id,
-          persona_id: persona.id,
-          action_type: 'keyword_auto_reply_sent',
-          description: `Keyword auto-reply sent to thread ${thread.id}`,
-          metadata: {
-            original_reply: thread.text,
-            auto_reply_text: responseTemplate,
-            thread_id: thread.id,
-            threads_post_id: result.id
-          }
-        });
-        
-    } else {
-      console.error(`Failed to post keyword reply:`, response.status, await response.text());
-      throw new Error(`Failed to post keyword reply: ${response.status}`);
+    const createResponseText = await createResponse.text();
+    console.log(`Create response status: ${createResponse.status}`);
+    console.log(`Create response body: ${createResponseText}`);
+
+    if (!createResponse.ok) {
+      throw new Error(`Failed to create reply container: ${createResponse.status} - ${createResponseText}`);
     }
+
+    const createResult = JSON.parse(createResponseText);
+    const containerId = createResult.id;
+    console.log(`✅ Reply container created: ${containerId}`);
+
+    // Step 2: Publish the reply
+    console.log('Step 2: Publishing reply...');
+    const publishResponse = await fetch(`https://graph.threads.net/v1.0/${containerId}/publish`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        access_token: persona.threads_access_token
+      })
+    });
+
+    const publishResponseText = await publishResponse.text();
+    console.log(`Publish response status: ${publishResponse.status}`);
+    console.log(`Publish response body: ${publishResponseText}`);
+
+    if (!publishResponse.ok) {
+      throw new Error(`Failed to publish reply: ${publishResponse.status} - ${publishResponseText}`);
+    }
+
+    const publishResult = JSON.parse(publishResponseText);
+    console.log(`✅ Reply published successfully: ${publishResult.id}`);
+    
+    // 活動ログに記録
+    await supabase
+      .from('activity_logs')
+      .insert({
+        user_id: persona.user_id,
+        persona_id: persona.id,
+        action_type: 'keyword_auto_reply_sent',
+        description: `Keyword auto-reply sent to thread ${thread.id}`,
+        metadata: {
+          original_reply: thread.text,
+          auto_reply_text: responseTemplate,
+          thread_id: thread.id,
+          container_id: containerId,
+          published_post_id: publishResult.id
+        }
+      });
+      
+    console.log(`=== 定型文返信送信完了 ===`);
+    return publishResult;
+        
   } catch (error) {
-    console.error(`Error sending keyword reply:`, error);
+    console.error(`=== 定型文返信送信エラー ===`);
+    console.error(`エラー詳細:`, error);
     
     // エラー状態を記録
     await supabase
@@ -302,6 +338,8 @@ async function sendKeywordReply(persona: any, thread: any, responseTemplate: str
         reply_status: 'failed'
       })
       .eq('reply_id', thread.id);
+      
+    throw error;
   }
 }
 
