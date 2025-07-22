@@ -494,15 +494,14 @@ async function processReplyData(supabase: any, persona_id: string, replyData: an
         continue
       }
 
-      // このリプライが現在のペルソナ宛てかチェック
-      // root_post.usernameまたはreplied_toで判定
-      const isForThisPersona = reply.root_post?.username === persona.threads_username || 
-                              reply.root_post?.username === persona.name
-
-      if (!isForThisPersona) {
-        console.log(`Reply not for this persona. Root post owner: ${reply.root_post?.username}, persona: ${persona.threads_username}/${persona.name}`)
-        continue
-      }
+      // webhookがpersona_idで呼ばれているので、そのペルソナの返信として処理
+      // ただし自分のリプライは除外済み
+      console.log(`Processing reply for persona ${persona.name} (persona_id: ${persona_id}):`, {
+        replyId: reply.id,
+        rootPostOwner: reply.root_post?.username,
+        personaUsername: persona.threads_username,
+        text: reply.text
+      })
 
       console.log(`Processing reply for persona ${persona.name}:`, reply.text)
 
