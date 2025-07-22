@@ -203,87 +203,18 @@ serve(async (req) => {
     const publishData = await publishResponse.json();
     console.log('Reply published:', publishData.id);
 
-    // Get the thread reply ID for updating
-    const { data: threadReplyData, error: threadReplyError } = await supabase
-      .from('thread_replies')
-      .select('id')
-      .eq('reply_id', replyId)
-      .eq('persona_id', personaId)
-      .single();
-
-    const threadReplyId = threadReplyData?.id;
-
-    if (threadReplyError || !threadReplyId) {
-      console.error('Thread reply not found:', threadReplyError);
-      // Continue anyway as this might be a new reply
-    }
-
-    // Check if reply should be delayed
-    const delayMinutes = persona.auto_reply_delay_minutes || 0;
-    
-    if (delayMinutes > 0 && threadReplyId) {
-      // Schedule reply for later
-      const scheduledAt = new Date(Date.now() + delayMinutes * 60 * 1000);
-      
-      const { error: scheduleError } = await supabase
-        .from('thread_replies')
-        .update({ 
-          reply_status: 'scheduled',
-          scheduled_reply_at: scheduledAt.toISOString()
-        })
-        .eq('id', threadReplyId);
-
-      if (scheduleError) {
-        console.error('Error scheduling reply:', scheduleError);
-        return new Response(JSON.stringify({ error: 'Failed to schedule reply' }), {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
-
-      // Log activity
-      await supabase
-        .from('activity_logs')
-        .insert({
-          user_id: userId,
-          persona_id: personaId,
-          action_type: 'auto_reply_scheduled',
-          description: `自動返信がスケジュールされました (${delayMinutes}分後): ${replyContent.substring(0, 50)}...`,
-          metadata: {
-            reply_id: replyId,
-            scheduled_at: scheduledAt.toISOString(),
-            delay_minutes: delayMinutes,
-            generated_reply: generatedReply
-          }
-        });
-
-      return new Response(JSON.stringify({ 
-        success: true, 
-        message: 'Reply scheduled successfully',
-        scheduled_at: scheduledAt.toISOString(),
-        delay_minutes: delayMinutes
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    // Immediate reply - existing logic
     // Update the thread_replies table to mark auto reply as sent
     console.log('Updating thread_replies auto_reply_sent flag...');
-    if (threadReplyId) {
-      const { error: updateError } = await supabase
-        .from('thread_replies')
-        .update({ 
-          auto_reply_sent: true,
-          reply_status: 'sent'
-        })
-        .eq('id', threadReplyId);
+    const { error: updateError } = await supabase
+      .from('thread_replies')
+      .update({ auto_reply_sent: true })
+      .eq('reply_id', replyId)
+      .eq('persona_id', personaId);
 
-      if (updateError) {
-        console.error('Failed to update auto_reply_sent flag:', updateError);
-      } else {
-        console.log('Successfully updated auto_reply_sent flag');
-      }
+    if (updateError) {
+      console.error('Failed to update auto_reply_sent flag:', updateError);
+    } else {
+      console.log('Successfully updated auto_reply_sent flag');
     }
 
     // Log activity

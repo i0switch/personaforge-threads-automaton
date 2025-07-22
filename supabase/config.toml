@@ -32,12 +32,3 @@ verify_jwt = false
 
 [functions.threads-auto-reply]
 verify_jwt = false
-
-[functions.manual-test]
-verify_jwt = false
-
-[functions.debug-replies]
-verify_jwt = false
-
-[functions.test-function]
-verify_jwt = false

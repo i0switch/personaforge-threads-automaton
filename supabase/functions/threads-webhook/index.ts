@@ -494,14 +494,15 @@ async function processReplyData(supabase: any, persona_id: string, replyData: an
         continue
       }
 
-      // webhookがpersona_idで呼ばれているので、そのペルソナの返信として処理
-      // ただし自分のリプライは除外済み
-      console.log(`Processing reply for persona ${persona.name} (persona_id: ${persona_id}):`, {
-        replyId: reply.id,
-        rootPostOwner: reply.root_post?.username,
-        personaUsername: persona.threads_username,
-        text: reply.text
-      })
+      // このリプライが現在のペルソナ宛てかチェック
+      // root_post.usernameまたはreplied_toで判定
+      const isForThisPersona = reply.root_post?.username === persona.threads_username || 
+                              reply.root_post?.username === persona.name
+
+      if (!isForThisPersona) {
+        console.log(`Reply not for this persona. Root post owner: ${reply.root_post?.username}, persona: ${persona.threads_username}/${persona.name}`)
+        continue
+      }
 
       console.log(`Processing reply for persona ${persona.name}:`, reply.text)
 
@@ -555,14 +556,56 @@ async function processReplyData(supabase: any, persona_id: string, replyData: an
           }
         })
 
-      // 自動返信処理（統合版）
-      console.log('🚀 processAutoReply関数を呼び出します...');
-      try {
-        await processAutoReply(supabase, persona, reply);
-        console.log('✅ processAutoReply関数完了');
-      } catch (autoReplyError) {
-        console.error('❌ processAutoReply関数エラー:', autoReplyError);
-        console.error('❌ autoReplyErrorスタック:', autoReplyError.stack);
+      // AI自動返信の処理
+      if (persona.ai_auto_reply_enabled) {
+        console.log(`Triggering AI auto-reply for reply: ${reply.id}`)
+        
+        // 元の投稿内容を取得
+        let originalPostContent = ''
+        try {
+          if (reply.root_post?.id) {
+            console.log(`Fetching original post content for post ID: ${reply.root_post.id}`)
+            const postResponse = await fetch(`https://graph.threads.net/v1.0/${reply.root_post.id}?fields=text&access_token=${persona.threads_access_token}`)
+            if (postResponse.ok) {
+              const postData = await postResponse.json()
+              originalPostContent = postData.text || ''
+              console.log(`Original post content retrieved: "${originalPostContent.substring(0, 100)}..."`)
+            } else {
+              console.log(`Failed to fetch original post: ${postResponse.status}`)
+            }
+          } else {
+            console.log('No root_post.id available for original post content fetch')
+          }
+        } catch (error) {
+          console.error(`Error fetching original post content:`, error)
+        }
+        
+        try {
+          const { data: autoReplyResponse, error: autoReplyError } = await supabase.functions.invoke('threads-auto-reply', {
+            body: {
+              postContent: originalPostContent,
+              replyContent: reply.text,
+              replyId: reply.id,
+              personaId: persona.id,
+              userId: persona.user_id,
+              replyAuthor: reply.username
+            }
+          })
+
+          if (autoReplyError) {
+            console.error(`Auto-reply error for ${reply.id}:`, autoReplyError)
+          } else {
+            console.log(`Auto-reply triggered for ${reply.id}`)
+            
+            // auto_reply_sentフラグを更新
+            await supabase
+              .from('thread_replies')
+              .update({ auto_reply_sent: true })
+              .eq('reply_id', reply.id)
+          }
+        } catch (autoReplyErr) {
+          console.error(`Failed to trigger auto-reply for ${reply.id}:`, autoReplyErr)
+        }
       }
     }
 
@@ -571,310 +614,6 @@ async function processReplyData(supabase: any, persona_id: string, replyData: an
     console.error('Error processing reply data:', error)
     return 0
   }
-}
-
-// 自動返信処理（統合版）
-async function processAutoReply(supabase: any, persona: any, reply: any) {
-  try {
-    console.log(`🔍 自動返信処理開始: "${reply.text}" (ID: ${reply.id})`);
-    console.log('🔍 受信したペルソナ情報:', JSON.stringify(persona, null, 2));
-    
-    // ペルソナの詳細情報を取得（自動返信設定を含む）
-    console.log(`🔍 ペルソナ詳細情報を取得中: ${persona.id}`);
-    const { data: fullPersona, error: personaError } = await supabase
-      .from('personas')
-      .select(`
-        id,
-        name,
-        user_id,
-        auto_reply_enabled,
-        ai_auto_reply_enabled,
-        auto_reply_delay_minutes,
-        threads_access_token,
-        personality,
-        tone_of_voice,
-        expertise
-      `)
-      .eq('id', persona.id)
-      .maybeSingle();
-
-    if (personaError || !fullPersona) {
-      console.error('❌ ペルソナ詳細取得エラー:', personaError);
-      console.error('❌ fullPersona:', fullPersona);
-      return;
-    }
-
-    console.log('✅ ペルソナ詳細情報取得成功:', JSON.stringify(fullPersona, null, 2));
-
-    // 自動返信設定がOFFの場合は終了
-    if (!fullPersona.auto_reply_enabled && !fullPersona.ai_auto_reply_enabled) {
-      console.log('⚠️ 自動返信設定がOFFです - スキップ');
-      console.log(`⚠️ auto_reply_enabled: ${fullPersona.auto_reply_enabled}, ai_auto_reply_enabled: ${fullPersona.ai_auto_reply_enabled}`);
-      return;
-    }
-
-    console.log(`✅ 自動返信設定確認: auto_reply_enabled=${fullPersona.auto_reply_enabled}, ai_auto_reply_enabled=${fullPersona.ai_auto_reply_enabled}`);
-
-    let templateMatched = false;
-
-    // 定型文による自動返信がONの場合
-    if (fullPersona.auto_reply_enabled) {
-      console.log('🎯 定型文返信処理開始');
-      
-      // このペルソナの定型文返信設定を取得
-      const { data: autoReplies, error: autoReplyError } = await supabase
-        .from('auto_replies')
-        .select('*')
-        .eq('user_id', fullPersona.user_id)
-        .eq('is_active', true);
-
-      if (autoReplyError) {
-        console.error('❌ 定型文返信設定の取得エラー:', autoReplyError);
-      } else if (autoReplies && autoReplies.length > 0) {
-        console.log(`🎯 定型文返信設定: ${autoReplies.length}件`);
-
-        // キーワードマッチングをチェック
-        const replyText = (reply.text || '').toLowerCase().trim();
-
-        for (const autoReply of autoReplies) {
-          const keywords = autoReply.trigger_keywords || [];
-      
-          for (const keyword of keywords) {
-            if (!keyword) continue;
-        
-            const keywordLower = keyword.toLowerCase().trim();
-            
-            // より確実な部分一致チェック
-            const cleanReplyText = replyText.replace(/[「」『』\(\)（）\[\]【】<>《》]/g, '').trim();
-            const cleanKeyword = keywordLower.replace(/[「」『』\(\)（）\[\]【】<>《》]/g, '').trim();
-            
-            const isMatch = cleanReplyText.includes(cleanKeyword) || 
-                           replyText.includes(keywordLower) ||
-                           cleanReplyText === cleanKeyword ||
-                           replyText === keywordLower;
-
-            if (isMatch) {
-              console.log(`🎯 マッチしました！返信: "${autoReply.response_template}"`);
-              
-              try {
-                console.log('📤 Threads返信送信開始...');
-                // Threads APIで返信を送信
-                await sendThreadsReply(fullPersona, reply, autoReply.response_template);
-                console.log('✅ Threads返信送信成功');
-                
-                console.log('💾 データベース更新開始...');
-                // ステータスを更新
-                await supabase
-                  .from('thread_replies')
-                  .update({
-                    reply_status: 'sent',
-                    auto_reply_sent: true,
-                    updated_at: new Date().toISOString()
-                  })
-                  .eq('reply_id', reply.id);
-
-                console.log('✅ 定型文返信送信完了');
-                templateMatched = true;
-                break;
-            
-              } catch (sendError) {
-                console.error('❌ 定型文返信送信エラー詳細:', sendError);
-                console.error('❌ エラースタック:', sendError.stack);
-                
-                console.log('💾 エラー状態をデータベースに記録...');
-                // エラー状態を記録
-                await supabase
-                  .from('thread_replies')
-                  .update({
-                    reply_status: 'failed',
-                    updated_at: new Date().toISOString()
-                  })
-                  .eq('reply_id', reply.id);
-              }
-            }
-          }
-          
-          if (templateMatched) break;
-        }
-      }
-    }
-
-    // 定型文でマッチしなかった場合、AI自動返信を試す
-    if (!templateMatched && fullPersona.ai_auto_reply_enabled) {
-      console.log('🤖 AI自動返信処理開始');
-      
-      try {
-        // 元の投稿内容を取得
-        let originalPostContent = '';
-        try {
-          if (reply.root_post?.id) {
-            const postResponse = await fetch(`https://graph.threads.net/v1.0/${reply.root_post.id}?fields=text&access_token=${fullPersona.threads_access_token}`);
-            if (postResponse.ok) {
-              const postData = await postResponse.json();
-              originalPostContent = postData.text || '';
-            }
-          }
-        } catch (error) {
-          console.error('元投稿取得エラー:', error);
-        }
-
-        // AI返信を生成
-        const aiResponse = await supabase.functions.invoke('generate-auto-reply', {
-          body: {
-            postContent: originalPostContent,
-            replyContent: reply.text,
-            persona: fullPersona
-          }
-        });
-
-        if (aiResponse.error) {
-          throw new Error(aiResponse.error.message);
-        }
-
-        const aiReplyText = aiResponse.data?.reply;
-        
-        if (aiReplyText) {
-          // 遅延設定をチェック
-          const delayMinutes = fullPersona.auto_reply_delay_minutes || 0;
-          
-          if (delayMinutes > 0) {
-            // スケジュール返信として登録
-            const scheduledAt = new Date(Date.now() + delayMinutes * 60 * 1000);
-            
-            await supabase
-              .from('thread_replies')
-              .update({
-                reply_status: 'scheduled',
-                scheduled_reply_at: scheduledAt.toISOString(),
-                updated_at: new Date().toISOString()
-              })
-              .eq('reply_id', reply.id);
-
-            console.log(`⏰ AI返信をスケジュール登録: ${delayMinutes}分後`);
-          } else {
-            // 即座に返信
-            await sendThreadsReply(fullPersona, reply, aiReplyText);
-            
-            await supabase
-              .from('thread_replies')
-              .update({
-                reply_status: 'sent',
-                auto_reply_sent: true,
-                updated_at: new Date().toISOString()
-              })
-              .eq('reply_id', reply.id);
-
-            console.log('✅ AI自動返信送信完了');
-          }
-        }
-        
-      } catch (aiError) {
-        console.error('❌ AI自動返信エラー:', aiError);
-        
-        await supabase
-          .from('thread_replies')
-          .update({
-            reply_status: 'failed',
-            updated_at: new Date().toISOString()
-          })
-          .eq('reply_id', reply.id);
-      }
-    }
-
-    if (!templateMatched && !fullPersona.ai_auto_reply_enabled) {
-      console.log('❌ マッチするキーワードがなく、AI返信も無効です');
-    }
-
-  } catch (error) {
-    console.error('❌ 自動返信処理エラー詳細:', error);
-    console.error('❌ エラースタック:', error.stack);
-    console.error('❌ エラー発生時のペルソナ:', JSON.stringify(persona, null, 2));
-    console.error('❌ エラー発生時のリプライ:', JSON.stringify(reply, null, 2));
-    
-    // エラー状態をデータベースに記録
-    try {
-      await supabase
-        .from('thread_replies')
-        .update({
-          reply_status: 'failed',
-          updated_at: new Date().toISOString()
-        })
-        .eq('reply_id', reply.id);
-      console.log('💾 エラー状態をデータベースに記録しました');
-    } catch (dbError) {
-      console.error('❌ データベース更新エラー:', dbError);
-    }
-  }
-}
-
-// Threads APIで返信を送信する関数（Meta公式仕様に準拠）
-async function sendThreadsReply(persona: any, thread: any, responseText: string) {
-  console.log('📤 Threads返信送信開始...');
-  
-  // 1. アクセストークンのデバッグ（オプション）
-  try {
-    const debugResponse = await fetch(`https://graph.facebook.com/debug_token?input_token=${persona.threads_access_token}&access_token=${persona.threads_access_token}`);
-    const debugResult = await debugResponse.json();
-    console.log('🔍 トークンデバッグ情報:', debugResult);
-  } catch (error) {
-    console.log('⚠️ トークンデバッグ失敗:', error);
-  }
-  
-  // 2. 返信対象の情報を整理
-  let replyToId = '';
-  
-  // root_postの情報があるか確認
-  if (thread.root_post && thread.root_post.id) {
-    replyToId = thread.root_post.id; // 元投稿のIDを設定
-  } else {
-    console.error('❌ root_post情報が不足');
-    throw new Error('Missing root_post information');
-  }
-  
-  console.log('📋 返信情報:');
-  console.log('  - Reply To ID:', replyToId);
-  console.log('  - Thread ID:', thread.id);
-  console.log('  - Root Post ID:', thread.root_post?.id);
-  console.log('  - Persona Threads User ID:', persona.threads_user_id);
-  
-  // 3. URLSearchParamsでパラメータを準備
-  const params = new URLSearchParams({
-    message: responseText,
-    reply_to_id: replyToId,
-    access_token: persona.threads_access_token
-  });
-  
-  // 4. 正しいエンドポイント（/threads）で送信 - ペルソナ自身のuser IDを使用
-  const endpoint = `https://graph.threads.net/v1.0/${persona.threads_user_id}/threads`;
-  console.log('🌐 エンドポイント:', endpoint);
-  console.log('📝 パラメータ:', params.toString());
-  
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: params
-  });
-
-  const result = await response.json();
-  console.log('📢 返信結果:', response.status, result);
-
-  if (!response.ok) {
-    // エラーの詳細を分析
-    console.error('❌ Threads API エラー詳細:');
-    console.error('  - Status:', response.status);
-    console.error('  - Error Code:', result?.error?.code);
-    console.error('  - Error Subcode:', result?.error?.error_subcode);
-    console.error('  - Error Message:', result?.error?.message);
-    console.error('  - 使用エンドポイント:', endpoint);
-    console.error('  - 送信パラメータ:', params.toString());
-    
-    throw new Error(`Reply failed: ${response.status} - ${JSON.stringify(result)}`);
-  }
-
-  console.log('✅ 返信送信成功:', result.id);
-  return result;
 }
 
 // セキュリティイベントログ
