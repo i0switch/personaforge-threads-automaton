@@ -91,15 +91,22 @@ Deno.serve(async (req) => {
         const keywords = autoReply.trigger_keywords || [];
         
         for (const keyword of keywords) {
+          if (!keyword) continue;
+          
           const keywordLower = keyword.toLowerCase().trim();
           
-          // 複数のマッチング方法を試す
-          const isMatch = replyText.includes(keywordLower) || 
-                         replyText.includes(keyword) || 
-                         keyword === replyText.trim() ||
+          // より確実な部分一致チェック
+          // 記号や括弧を除去してテキストのみで比較
+          const cleanReplyText = replyText.replace(/[「」『』\(\)（）\[\]【】<>《》]/g, '').trim();
+          const cleanKeyword = keywordLower.replace(/[「」『』\(\)（）\[\]【】<>《》]/g, '').trim();
+          
+          const isMatch = cleanReplyText.includes(cleanKeyword) || 
+                         replyText.includes(keywordLower) ||
+                         cleanReplyText === cleanKeyword ||
                          replyText === keywordLower;
 
           console.log(`🔍 キーワード "${keyword}" vs "${reply.reply_text}" → ${isMatch}`);
+          console.log(`🔍 クリーンテキスト: "${cleanReplyText}" vs "${cleanKeyword}"`);
 
           if (isMatch) {
             console.log(`🎯 マッチしました！返信: "${autoReply.response_template}"`);
