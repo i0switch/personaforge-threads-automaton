@@ -32,28 +32,24 @@ export const SecurityMigrationNotice = ({ userId }: SecurityMigrationNoticeProps
         return;
       }
 
-      // まだ通知されていない場合
-      if (!accountStatus.security_migration_notified) {
-        // 古い暗号化されたAPIキーがあるかチェック
-        const { data: apiKeys, error: keysError } = await supabase
-          .from('user_api_keys')
-          .select('encrypted_key')
-          .eq('user_id', userId);
+        // まだ通知されていない場合
+        if (!accountStatus.security_migration_notified) {
+          // APIキーがあるかチェック（セキュリティ向上のため全ユーザーに通知）
+          const { data: apiKeys, error: keysError } = await supabase
+            .from('user_api_keys')
+            .select('encrypted_key')
+            .eq('user_id', userId);
 
-        if (keysError) {
-          setIsLoading(false);
-          return;
+          if (keysError) {
+            setIsLoading(false);
+            return;
+          }
+
+          // APIキーが存在する場合は通知を表示（セキュリティ向上のため）
+          if (apiKeys && apiKeys.length > 0) {
+            setShouldShow(true);
+          }
         }
-
-        // THAAで始まる古いトークンがある場合は通知を表示
-        const hasOldTokens = apiKeys?.some(key => 
-          key.encrypted_key && key.encrypted_key.startsWith('THAA')
-        );
-
-        if (hasOldTokens) {
-          setShouldShow(true);
-        }
-      }
     } catch (error) {
       console.error('セキュリティ通知チェックエラー:', error);
     } finally {
