@@ -31,42 +31,50 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   useEffect(() => {
     let mounted = true;
-    console.log('Setting up auth state listener'); // デバッグ用ログ追加
+    let initialLoadComplete = false;
+    console.log('Setting up auth state listener');
 
     // Set up auth state listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (!mounted) return;
         
-        console.log('Auth state change:', event, session?.user?.id); // デバッグ用ログ追加
+        console.log('Auth state change:', event, session?.user?.id);
         
         setSession(session);
         setUser(session?.user ?? null);
         
-        if (!loading) return; // Only set loading to false on initial load
-        setLoading(false);
+        // Always update loading state on auth changes
+        if (mounted) {
+          setLoading(false);
+          initialLoadComplete = true;
+        }
       }
     );
 
     // Check for existing session
     const initializeAuth = async () => {
       try {
-        console.log('Checking for existing session'); // デバッグ用ログ追加
+        console.log('Checking for existing session');
         const { data: { session }, error } = await supabase.auth.getSession();
         if (error) {
           console.error('Error getting session:', error);
+          if (mounted && !initialLoadComplete) {
+            setLoading(false);
+          }
           return;
         }
         
-        if (mounted) {
-          console.log('Found existing session:', !!session); // デバッグ用ログ追加
+        if (mounted && !initialLoadComplete) {
+          console.log('Found existing session:', !!session);
           setSession(session);
           setUser(session?.user ?? null);
           setLoading(false);
+          initialLoadComplete = true;
         }
       } catch (error) {
         console.error('Auth initialization error:', error);
-        if (mounted) {
+        if (mounted && !initialLoadComplete) {
           setLoading(false);
         }
       }
@@ -75,7 +83,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     initializeAuth();
 
     return () => {
-      console.log('Cleaning up auth listener'); // デバッグ用ログ追加
+      console.log('Cleaning up auth listener');
       mounted = false;
       subscription.unsubscribe();
     };
