@@ -61,6 +61,7 @@ export type Database = {
       }
       analytics: {
         Row: {
+          app_identifier: string | null
           comments_count: number | null
           created_at: string
           date: string
@@ -75,6 +76,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          app_identifier?: string | null
           comments_count?: number | null
           created_at?: string
           date: string
@@ -89,6 +91,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          app_identifier?: string | null
           comments_count?: number | null
           created_at?: string
           date?: string
@@ -174,6 +177,7 @@ export type Database = {
         Row: {
           age: string | null
           ai_auto_reply_enabled: boolean | null
+          app_identifier: string | null
           auto_reply_delay_minutes: number | null
           auto_reply_enabled: boolean | null
           avatar_url: string | null
@@ -196,6 +200,7 @@ export type Database = {
         Insert: {
           age?: string | null
           ai_auto_reply_enabled?: boolean | null
+          app_identifier?: string | null
           auto_reply_delay_minutes?: number | null
           auto_reply_enabled?: boolean | null
           avatar_url?: string | null
@@ -218,6 +223,7 @@ export type Database = {
         Update: {
           age?: string | null
           ai_auto_reply_enabled?: boolean | null
+          app_identifier?: string | null
           auto_reply_delay_minutes?: number | null
           auto_reply_enabled?: boolean | null
           avatar_url?: string | null
@@ -282,6 +288,7 @@ export type Database = {
       }
       posts: {
         Row: {
+          app_identifier: string | null
           auto_schedule: boolean | null
           content: string
           created_at: string
@@ -302,6 +309,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          app_identifier?: string | null
           auto_schedule?: boolean | null
           content: string
           created_at?: string
@@ -322,6 +330,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          app_identifier?: string | null
           auto_schedule?: boolean | null
           content?: string
           created_at?: string
