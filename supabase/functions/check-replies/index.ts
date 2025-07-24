@@ -30,7 +30,6 @@ serve(async (req) => {
           id,
           name,
           user_id,
-          threads_access_token,
           threads_username,
           ai_auto_reply_enabled
         )
@@ -49,32 +48,59 @@ serve(async (req) => {
 
     for (const setting of checkSettings) {
       const persona = setting.personas;
-      if (!persona?.threads_access_token) {
-        console.log(`Skipping persona ${persona?.id} - no access token`);
+      if (!persona?.id) {
+        console.log(`Skipping invalid persona`);
         continue;
       }
 
+      // アクセストークンを個別に取得（復号化のため）
+      const { data: personaWithToken } = await supabase
+        .from('personas')
+        .select('threads_access_token')
+        .eq('id', persona.id)
+        .maybeSingle();
+
+      if (!personaWithToken?.threads_access_token) {
+        console.log(`Skipping persona ${persona.id} - no access token`);
+        continue;
+      }
+
+      // 復号化されたアクセストークンを取得
+      const { data: decryptedToken, error: decryptError } = await supabase
+        .rpc('decrypt_access_token', { encrypted_token: personaWithToken.threads_access_token });
+
+      if (decryptError || !decryptedToken) {
+        console.log(`Skipping persona ${persona.id} - token decryption failed`);
+        continue;
+      }
+
+      // ペルソナオブジェクトにアクセストークンを追加
+      const personaWithDecryptedToken = {
+        ...persona,
+        threads_access_token: decryptedToken
+      };
+
       try {
-        console.log(`Checking replies for persona: ${persona.name}`);
+        console.log(`Checking replies for persona: ${personaWithDecryptedToken.name}`);
 
         // 最近投稿された投稿のIDを取得
         const { data: recentPosts } = await supabase
           .from('posts')
           .select('id, content, published_at')
-          .eq('persona_id', persona.id)
+          .eq('persona_id', personaWithDecryptedToken.id)
           .eq('status', 'published')
           .not('published_at', 'is', null)
           .order('published_at', { ascending: false })
           .limit(10);
 
         if (!recentPosts || recentPosts.length === 0) {
-          console.log(`No recent posts found for persona ${persona.id}`);
+          console.log(`No recent posts found for persona ${personaWithDecryptedToken.id}`);
           continue;
         }
 
         // 各投稿のリプライをチェック
         for (const post of recentPosts) {
-          const repliesFound = await checkRepliesForPost(persona, post.id);
+          const repliesFound = await checkRepliesForPost(personaWithDecryptedToken, post.id);
           totalRepliesFound += repliesFound;
         }
 

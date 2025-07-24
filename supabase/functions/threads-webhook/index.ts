@@ -457,7 +457,7 @@ async function processReplyData(supabase: any, persona_id: string, replyData: an
     // ペルソナ情報を取得
     const { data: persona, error: personaError } = await supabase
       .from('personas')
-      .select('id, name, user_id, ai_auto_reply_enabled, threads_username, threads_access_token, threads_user_id')
+      .select('id, name, user_id, ai_auto_reply_enabled, threads_username, threads_user_id')
       .eq('id', persona_id)
       .maybeSingle()
 
@@ -563,12 +563,38 @@ async function processReplyData(supabase: any, persona_id: string, replyData: an
       if (persona.ai_auto_reply_enabled) {
         console.log(`Triggering AI auto-reply for reply: ${reply.id}`)
         
+        // アクセストークンを取得・復号化
+        const { data: personaWithToken } = await supabase
+          .from('personas')
+          .select('threads_access_token')
+          .eq('id', persona.id)
+          .maybeSingle();
+
+        if (!personaWithToken?.threads_access_token) {
+          console.log(`No access token found for persona ${persona.id}`);
+          continue;
+        }
+
+        const { data: decryptedToken, error: decryptError } = await supabase
+          .rpc('decrypt_access_token', { encrypted_token: personaWithToken.threads_access_token });
+
+        if (decryptError || !decryptedToken) {
+          console.log(`Token decryption failed for persona ${persona.id}`);
+          continue;
+        }
+
+        // ペルソナにアクセストークンを追加
+        const personaWithDecryptedToken = {
+          ...persona,
+          threads_access_token: decryptedToken
+        };
+        
         // 元の投稿内容を取得
         let originalPostContent = ''
         try {
           if (reply.root_post?.id) {
             console.log(`Fetching original post content for post ID: ${reply.root_post.id}`)
-            const postResponse = await fetch(`https://graph.threads.net/v1.0/${reply.root_post.id}?fields=text&access_token=${persona.threads_access_token}`)
+            const postResponse = await fetch(`https://graph.threads.net/v1.0/${reply.root_post.id}?fields=text&access_token=${decryptedToken}`)
             if (postResponse.ok) {
               const postData = await postResponse.json()
               originalPostContent = postData.text || ''
@@ -699,8 +725,23 @@ async function processKeywordTriggerReplies(supabase: any, persona: any, reply: 
 // Threads API を使用して返信を送信
 async function sendThreadsReply(supabase: any, persona: any, replyToId: string, responseText: string) {
   try {
-    if (!persona.threads_access_token) {
+    // アクセストークンを取得・復号化
+    const { data: personaWithToken } = await supabase
+      .from('personas')
+      .select('threads_access_token')
+      .eq('id', persona.id)
+      .maybeSingle();
+
+    if (!personaWithToken?.threads_access_token) {
       console.error('Threads access token not found for persona:', persona.id)
+      return
+    }
+
+    const { data: decryptedToken, error: decryptError } = await supabase
+      .rpc('decrypt_access_token', { encrypted_token: personaWithToken.threads_access_token });
+
+    if (decryptError || !decryptedToken) {
+      console.error('Token decryption failed for persona:', persona.id)
       return
     }
 
@@ -721,7 +762,7 @@ async function sendThreadsReply(supabase: any, persona: any, replyToId: string, 
         media_type: 'TEXT_POST',
         text: responseText,
         reply_to_id: replyToId,
-        access_token: persona.threads_access_token
+        access_token: decryptedToken
       })
     })
 
@@ -745,7 +786,7 @@ async function sendThreadsReply(supabase: any, persona: any, replyToId: string, 
       },
       body: JSON.stringify({
         creation_id: containerData.id,
-        access_token: persona.threads_access_token
+        access_token: decryptedToken
       })
     })
 
