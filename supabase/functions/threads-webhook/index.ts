@@ -454,10 +454,15 @@ async function processReplyData(supabase: any, persona_id: string, replyData: an
   try {
     console.log('Processing reply data:', replyData)
     
-    // ペルソナ情報を取得
+  // ペルソナ情報を取得（自動返信設定も含む）
     const { data: persona, error: personaError } = await supabase
       .from('personas')
-      .select('id, name, user_id, ai_auto_reply_enabled, threads_username, threads_user_id')
+      .select(`
+        id, name, user_id, ai_auto_reply_enabled, threads_username, threads_user_id,
+        auto_reply_settings (
+          is_active, template_replies_enabled
+        )
+      `)
       .eq('id', persona_id)
       .maybeSingle()
 
@@ -556,8 +561,24 @@ async function processReplyData(supabase: any, persona_id: string, replyData: an
           }
         })
 
-      // キーワードトリガー返信の処理
-      await processKeywordTriggerReplies(supabase, persona, reply)
+      // 自動返信設定の確認
+      const autoReplySettings = persona.auto_reply_settings?.[0]
+      if (!autoReplySettings || !autoReplySettings.is_active) {
+        console.log(`自動返信設定がOFFになっています - persona: ${persona.name}`)
+        continue
+      }
+
+      console.log(`自動返信設定が有効 - persona: ${persona.name}`)
+
+      // トリガー自動返信（定型文）の処理
+      if (autoReplySettings.template_replies_enabled) {
+        console.log(`トリガー自動返信（定型文）処理開始 - persona: ${persona.name}`)
+        const templateReplySent = await processKeywordTriggerReplies(supabase, persona, reply)
+        if (templateReplySent) {
+          console.log(`定型文返信を送信したため、AI返信はスキップします`)
+          continue
+        }
+      }
 
       // AI自動返信の処理
       if (persona.ai_auto_reply_enabled) {
@@ -579,7 +600,7 @@ async function processReplyData(supabase: any, persona_id: string, replyData: an
           .rpc('decrypt_access_token', { encrypted_token: personaWithToken.threads_access_token });
 
         if (decryptError || !decryptedToken) {
-          console.log(`Token decryption failed for persona ${persona.id}`);
+          console.error(`Token decryption failed for persona: ${persona.id}`, decryptError);
           continue;
         }
 
@@ -646,7 +667,7 @@ async function processReplyData(supabase: any, persona_id: string, replyData: an
 }
 
 // キーワードトリガー返信の処理
-async function processKeywordTriggerReplies(supabase: any, persona: any, reply: any) {
+async function processKeywordTriggerReplies(supabase: any, persona: any, reply: any): Promise<boolean> {
   try {
     console.log(`\n🔍 処理中: "${reply.text}" (ID: ${reply.id})`)
     
@@ -659,12 +680,12 @@ async function processKeywordTriggerReplies(supabase: any, persona: any, reply: 
 
     if (error) {
       console.error('トリガー返信設定の取得エラー:', error)
-      return
+      return false
     }
 
     if (!triggerSettings || triggerSettings.length === 0) {
       console.log('❌ アクティブなトリガー返信設定がありません')
-      return
+      return false
     }
 
     console.log(`🎯 定型文返信設定: ${triggerSettings.length}件`)
@@ -694,36 +715,40 @@ async function processKeywordTriggerReplies(supabase: any, persona: any, reply: 
         console.log(`🚀 トリガー返信を送信中: "${setting.response_template}"`)
         
         // トリガー返信を送信
-        await sendThreadsReply(supabase, persona, reply.id, setting.response_template)
+        const success = await sendThreadsReply(supabase, persona, reply.id, setting.response_template)
         
-        // アクティビティログを記録
-        await supabase
-          .from('activity_logs')
-          .insert({
-            user_id: persona.user_id,
-            persona_id: persona.id,
-            action_type: 'keyword_auto_reply_sent',
-            description: `キーワード自動返信を送信: "${setting.response_template.substring(0, 50)}..."`,
-            metadata: {
-              reply_id: reply.id,
-              keyword_matched: keywords.find(k => replyText.includes(k.trim().toLowerCase())),
-              response_sent: setting.response_template
-            }
-          })
-        
-        // 一つでもマッチしたら終了（複数のトリガーが同時に発動しないようにする）
-        return
+        if (success) {
+          // アクティビティログを記録
+          await supabase
+            .from('activity_logs')
+            .insert({
+              user_id: persona.user_id,
+              persona_id: persona.id,
+              action_type: 'keyword_auto_reply_sent',
+              description: `キーワード自動返信を送信: "${setting.response_template.substring(0, 50)}..."`,
+              metadata: {
+                reply_id: reply.id,
+                keyword_matched: keywords.find(k => replyText.includes(k.trim().toLowerCase())),
+                response_sent: setting.response_template
+              }
+            })
+          
+          // 一つでもマッチしたら true を返す（複数のトリガーが同時に発動しないようにする）
+          return true
+        }
       }
     }
 
-    console.log('❌ マッチするキーワードがなく、AI返信も無効です')
+    console.log('❌ マッチするキーワードがありませんでした')
+    return false
   } catch (error) {
     console.error('キーワードトリガー返信処理エラー:', error)
+    return false
   }
 }
 
 // Threads API を使用して返信を送信
-async function sendThreadsReply(supabase: any, persona: any, replyToId: string, responseText: string) {
+async function sendThreadsReply(supabase: any, persona: any, replyToId: string, responseText: string): Promise<boolean> {
   try {
     // アクセストークンを取得・復号化
     const { data: personaWithToken } = await supabase
@@ -734,15 +759,15 @@ async function sendThreadsReply(supabase: any, persona: any, replyToId: string, 
 
     if (!personaWithToken?.threads_access_token) {
       console.error('Threads access token not found for persona:', persona.id)
-      return
+      return false
     }
 
     const { data: decryptedToken, error: decryptError } = await supabase
       .rpc('decrypt_access_token', { encrypted_token: personaWithToken.threads_access_token });
 
     if (decryptError || !decryptedToken) {
-      console.error('Token decryption failed for persona:', persona.id)
-      return
+      console.error('Token decryption failed for persona:', persona.id, decryptError)
+      return false
     }
 
     console.log(`📤 Threads返信送信中: "${responseText}" (Reply to: ${replyToId})`)
@@ -769,7 +794,7 @@ async function sendThreadsReply(supabase: any, persona: any, replyToId: string, 
     if (!createResponse.ok) {
       const errorText = await createResponse.text()
       console.error('Threads container creation failed:', errorText)
-      return
+      return false
     }
 
     const containerData = await createResponse.json()
@@ -793,14 +818,16 @@ async function sendThreadsReply(supabase: any, persona: any, replyToId: string, 
     if (!publishResponse.ok) {
       const errorText = await publishResponse.text()
       console.error('Threads publish failed:', errorText)
-      return
+      return false
     }
 
     const publishData = await publishResponse.json()
     console.log('✅ キーワード返信投稿成功:', publishData.id)
+    return true
 
   } catch (error) {
     console.error('Threads返信送信エラー:', error)
+    return false
   }
 }
 
