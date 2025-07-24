@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
+import { SecurityMigrationNotice } from "@/components/Security/SecurityMigrationNotice";
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -28,5 +29,10 @@ export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
     return null;
   }
 
-  return <>{children}</>;
+  return (
+    <>
+      <SecurityMigrationNotice userId={user.id} />
+      {children}
+    </>
+  );
 };

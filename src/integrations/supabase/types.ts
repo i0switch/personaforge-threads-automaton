@@ -593,6 +593,7 @@ export type Database = {
           is_approved: boolean
           park_user_link: string | null
           persona_limit: number
+          security_migration_notified: boolean | null
           subscription_status: string | null
           updated_at: string
           user_id: string
@@ -606,6 +607,7 @@ export type Database = {
           is_approved?: boolean
           park_user_link?: string | null
           persona_limit?: number
+          security_migration_notified?: boolean | null
           subscription_status?: string | null
           updated_at?: string
           user_id: string
@@ -619,6 +621,7 @@ export type Database = {
           is_approved?: boolean
           park_user_link?: string | null
           persona_limit?: number
+          security_migration_notified?: boolean | null
           subscription_status?: string | null
           updated_at?: string
           user_id?: string
