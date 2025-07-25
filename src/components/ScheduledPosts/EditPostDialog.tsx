@@ -142,8 +142,10 @@ export const EditPostDialog = ({ post, onSave, saving }: EditPostDialogProps) =>
     i.toString().padStart(2, '0')
   );
 
-  // Generate minute options (00, 15, 30, 45)
-  const minuteOptions = ['00', '15', '30', '45'];
+  // Generate minute options (00-59)
+  const minuteOptions = Array.from({ length: 60 }, (_, i) => 
+    i.toString().padStart(2, '0')
+  );
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
