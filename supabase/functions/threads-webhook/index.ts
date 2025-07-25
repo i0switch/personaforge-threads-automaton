@@ -127,7 +127,7 @@ async function processReply(persona: any, reply: any): Promise<boolean> {
       .eq('reply_id', reply.id)
       .maybeSingle();
 
-    if (existingReply && existingReply.auto_reply_sent) {
+    if (existingReply) {
       console.log(`⏭️ 既に処理済みのリプライ: ${reply.id}`);
       return false;
     }
@@ -281,9 +281,45 @@ async function processAIAutoReply(persona: any, reply: any): Promise<{ sent: boo
   console.log(`🧠 AI自動返信処理開始 - persona: ${persona.name}`);
 
   try {
+    // 元投稿の内容を取得
+    let originalPostContent = '';
+    if (reply.root_post?.id) {
+      try {
+        // まず、データベースから元投稿を探す
+        const { data: existingPost } = await supabase
+          .from('posts')
+          .select('content')
+          .eq('platform', 'threads')
+          .contains('hashtags', [reply.root_post.id])
+          .maybeSingle();
+        
+        if (existingPost?.content) {
+          originalPostContent = existingPost.content;
+          console.log(`📄 データベースから元投稿取得: "${originalPostContent.substring(0, 50)}..."`);
+        } else {
+          // データベースにない場合はThreads APIから取得を試行
+          const accessToken = await getAccessToken(persona);
+          if (accessToken) {
+            try {
+              const response = await fetch(`https://graph.threads.net/v1.0/${reply.root_post.id}?fields=text&access_token=${accessToken}`);
+              if (response.ok) {
+                const postData = await response.json();
+                originalPostContent = postData.text || '';
+                console.log(`📄 Threads APIから元投稿取得: "${originalPostContent.substring(0, 50)}..."`);
+              }
+            } catch (error) {
+              console.log(`⚠️ Threads APIからの投稿取得失敗:`, error);
+            }
+          }
+        }
+      } catch (error) {
+        console.log(`⚠️ 元投稿取得エラー:`, error);
+      }
+    }
+
     const { data: aiResponse, error: aiError } = await supabase.functions.invoke('generate-auto-reply', {
       body: {
-        postContent: '', // 元投稿の内容
+        postContent: originalPostContent,
         replyContent: reply.text,
         replyId: reply.id,
         persona: {
