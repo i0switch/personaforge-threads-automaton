@@ -834,7 +834,7 @@ export type Database = {
           user_id: string
           ai_auto_reply_enabled: boolean
           threads_access_token: string
-          auto_reply_settings: Json
+          auto_replies: Json
         }[]
       }
       get_user_emails_for_admin: {
