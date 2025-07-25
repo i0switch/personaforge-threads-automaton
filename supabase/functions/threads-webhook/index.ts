@@ -746,9 +746,12 @@ async function processKeywordTriggerReplies(supabase: any, persona: any, reply: 
 // Threads API を使用して返信を送信
 async function sendThreadsReply(supabase: any, persona: any, replyToId: string, responseText: string): Promise<boolean> {
   try {
+    console.log('🔧 sendThreadsReply started:', { personaId: persona.id, replyToId, responseText })
+    
     // アクセストークンを取得・復号化（新しい方法）
     let decryptedToken = null;
     
+    console.log('🔑 Attempting to retrieve token via edge function...')
     try {
       const { data: tokenData, error: tokenError } = await supabase.functions.invoke('retrieve-secret', {
         body: { 
@@ -757,40 +760,50 @@ async function sendThreadsReply(supabase: any, persona: any, replyToId: string, 
         }
       });
       
+      console.log('🔑 Edge function response:', { data: tokenData, error: tokenError })
+      
       if (tokenData?.value && !tokenError) {
         decryptedToken = tokenData.value;
-        console.log('✅ Token retrieved via edge function');
+        console.log('✅ Token retrieved via edge function successfully');
+      } else {
+        console.log('❌ Edge function token retrieval failed:', tokenError);
       }
     } catch (edgeFunctionError) {
-      console.log('Edge function retrieval failed, trying legacy method:', edgeFunctionError);
+      console.log('❌ Edge function retrieval failed with exception:', edgeFunctionError);
     }
     
     // フォールバック: 旧式の復号化方法
     if (!decryptedToken) {
+      console.log('🔄 Trying legacy token retrieval method...')
       const { data: personaWithToken } = await supabase
         .from('personas')
         .select('threads_access_token')
         .eq('id', persona.id)
         .maybeSingle();
 
+      console.log('🔄 Legacy token query result:', { hasToken: !!personaWithToken?.threads_access_token })
+
       if (!personaWithToken?.threads_access_token) {
-        console.error('Threads access token not found for persona:', persona.id)
+        console.error('❌ No threads access token found for persona:', persona.id)
         return false
       }
 
       const { data: legacyDecryptedToken, error: decryptError } = await supabase
         .rpc('decrypt_access_token', { encrypted_token: personaWithToken.threads_access_token });
 
+      console.log('🔄 Legacy decryption result:', { hasToken: !!legacyDecryptedToken, error: decryptError })
+
       if (decryptError || !legacyDecryptedToken) {
-        console.error('Token decryption failed for persona:', persona.id, decryptError)
+        console.error('❌ Token decryption failed for persona:', persona.id, decryptError)
         return false
       }
       
       decryptedToken = legacyDecryptedToken;
+      console.log('✅ Legacy token retrieval successful')
     }
 
     if (!decryptedToken) {
-      console.error('No valid access token found for persona:', persona.id)
+      console.error('❌ No valid access token found for persona:', persona.id)
       return false
     }
 
