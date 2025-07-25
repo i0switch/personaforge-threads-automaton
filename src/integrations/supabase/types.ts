@@ -400,6 +400,33 @@ export type Database = {
         }
         Relationships: []
       }
+      rate_limits: {
+        Row: {
+          created_at: string | null
+          endpoint: string
+          id: string
+          identifier: string
+          request_count: number | null
+          window_start: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          endpoint: string
+          id?: string
+          identifier: string
+          request_count?: number | null
+          window_start?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          endpoint?: string
+          id?: string
+          identifier?: string
+          request_count?: number | null
+          window_start?: string | null
+        }
+        Relationships: []
+      }
       reply_check_settings: {
         Row: {
           check_interval_minutes: number | null
@@ -483,6 +510,78 @@ export type Database = {
           retry_enabled?: boolean | null
           timezone?: string | null
           updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      security_alerts: {
+        Row: {
+          category: string
+          created_at: string | null
+          details: Json | null
+          id: string
+          message: string
+          resolved: boolean | null
+          type: string
+          user_id: string | null
+        }
+        Insert: {
+          category: string
+          created_at?: string | null
+          details?: Json | null
+          id?: string
+          message: string
+          resolved?: boolean | null
+          type: string
+          user_id?: string | null
+        }
+        Update: {
+          category?: string
+          created_at?: string | null
+          details?: Json | null
+          id?: string
+          message?: string
+          resolved?: boolean | null
+          type?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      security_config: {
+        Row: {
+          activity_logging: boolean | null
+          anomaly_detection: boolean | null
+          auto_security_scan: boolean | null
+          created_at: string | null
+          id: string
+          security_alerts: boolean | null
+          session_timeout: boolean | null
+          strong_password_policy: boolean | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          activity_logging?: boolean | null
+          anomaly_detection?: boolean | null
+          auto_security_scan?: boolean | null
+          created_at?: string | null
+          id?: string
+          security_alerts?: boolean | null
+          session_timeout?: boolean | null
+          strong_password_policy?: boolean | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          activity_logging?: boolean | null
+          anomaly_detection?: boolean | null
+          auto_security_scan?: boolean | null
+          created_at?: string | null
+          id?: string
+          security_alerts?: boolean | null
+          session_timeout?: boolean | null
+          strong_password_policy?: boolean | null
+          updated_at?: string | null
           user_id?: string
         }
         Relationships: []
