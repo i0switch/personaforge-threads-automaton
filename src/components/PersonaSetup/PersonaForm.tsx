@@ -1,9 +1,8 @@
 
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { SecureInput, SecureTextarea } from "@/components/SecureInput";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
@@ -112,7 +111,7 @@ export const PersonaForm = ({ editingPersona, onSubmit, onCancel }: PersonaFormP
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="name">名前 *</Label>
-                <Input
+                <SecureInput
                   id="name"
                   value={formData.name}
                   onChange={(e) => handleInputChange("name", e.target.value)}
@@ -122,7 +121,7 @@ export const PersonaForm = ({ editingPersona, onSubmit, onCancel }: PersonaFormP
               </div>
               <div className="space-y-2">
                 <Label htmlFor="age">年齢</Label>
-                <Input
+                <SecureInput
                   id="age"
                   value={formData.age}
                   onChange={(e) => handleInputChange("age", e.target.value)}
@@ -133,7 +132,7 @@ export const PersonaForm = ({ editingPersona, onSubmit, onCancel }: PersonaFormP
 
             <div className="space-y-2">
               <Label htmlFor="personality">性格 *</Label>
-              <Textarea
+              <SecureTextarea
                 id="personality"
                 value={formData.personality}
                 onChange={(e) => handleInputChange("personality", e.target.value)}
@@ -145,7 +144,7 @@ export const PersonaForm = ({ editingPersona, onSubmit, onCancel }: PersonaFormP
 
             <div className="space-y-2">
               <Label htmlFor="expertise">専門分野</Label>
-              <Input
+              <SecureInput
                 id="expertise"
                 value={formData.expertise}
                 onChange={(e) => handleInputChange("expertise", e.target.value)}
@@ -155,7 +154,7 @@ export const PersonaForm = ({ editingPersona, onSubmit, onCancel }: PersonaFormP
 
             <div className="space-y-2">
               <Label htmlFor="tone_of_voice">話し方・トーン</Label>
-              <Input
+              <SecureInput
                 id="tone_of_voice"
                 value={formData.tone_of_voice}
                 onChange={(e) => handleInputChange("tone_of_voice", e.target.value)}
@@ -220,7 +219,7 @@ export const PersonaForm = ({ editingPersona, onSubmit, onCancel }: PersonaFormP
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="threads_app_id">Threads App ID</Label>
-                  <Input
+                  <SecureInput
                     id="threads_app_id"
                     value={formData.threads_app_id}
                     onChange={(e) => handleInputChange("threads_app_id", e.target.value)}
@@ -229,7 +228,7 @@ export const PersonaForm = ({ editingPersona, onSubmit, onCancel }: PersonaFormP
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="threads_username">Threadsユーザー名</Label>
-                  <Input
+                  <SecureInput
                     id="threads_username"
                     value={formData.threads_username}
                     onChange={(e) => handleInputChange("threads_username", e.target.value)}
@@ -240,7 +239,7 @@ export const PersonaForm = ({ editingPersona, onSubmit, onCancel }: PersonaFormP
 
               <div className="space-y-2">
                 <Label htmlFor="threads_app_secret">Threads App Secret</Label>
-                <Input
+                <SecureInput
                   id="threads_app_secret"
                   type="password"
                   value={formData.threads_app_secret}
@@ -251,7 +250,7 @@ export const PersonaForm = ({ editingPersona, onSubmit, onCancel }: PersonaFormP
 
               <div className="space-y-2">
                 <Label htmlFor="threads_access_token">Threads Access Token</Label>
-                <Input
+                <SecureInput
                   id="threads_access_token"
                   type="password"
                   value={formData.threads_access_token}
@@ -262,7 +261,7 @@ export const PersonaForm = ({ editingPersona, onSubmit, onCancel }: PersonaFormP
 
               <div className="space-y-2">
                 <Label htmlFor="webhook_verify_token">Webhook確認トークン</Label>
-                <Input
+                <SecureInput
                   id="webhook_verify_token"
                   value={formData.webhook_verify_token}
                   onChange={(e) => handleInputChange("webhook_verify_token", e.target.value)}
