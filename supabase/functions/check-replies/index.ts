@@ -81,6 +81,7 @@ serve(async (req) => {
       };
 
       try {
+        console.log(`🚀 リプライチェック開始 - persona: ${personaWithDecryptedToken.name} (ID: ${personaWithDecryptedToken.id})`);
         console.log(`Checking replies for persona: ${personaWithDecryptedToken.name}`);
 
         // 最近投稿された投稿のIDを取得
