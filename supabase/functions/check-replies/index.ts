@@ -197,6 +197,8 @@ async function checkRepliesForPost(persona: any, postId: string): Promise<number
                 .select('*')
                 .eq('persona_id', persona.id)
                 .eq('is_active', true);
+              
+              console.log(`🎯 自動返信設定の取得結果 - persona: ${persona.name}, 設定数: ${autoRepliesSettings?.length || 0}`);
 
               // 自動返信設定の確認
               if (!autoRepliesSettings || autoRepliesSettings.length === 0) {
