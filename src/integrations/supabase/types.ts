@@ -826,6 +826,17 @@ export type Database = {
         Args: { token: string }
         Returns: string
       }
+      get_persona_for_auto_reply: {
+        Args: { persona_id_param: string }
+        Returns: {
+          id: string
+          name: string
+          user_id: string
+          ai_auto_reply_enabled: boolean
+          threads_access_token: string
+          auto_reply_settings: Json
+        }[]
+      }
       get_user_emails_for_admin: {
         Args: Record<PropertyKey, never>
         Returns: {
