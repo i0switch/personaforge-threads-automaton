@@ -8,6 +8,7 @@ import { ReplySettings } from '@/components/ReplyMonitoring/ReplySettings';
 import { PersonaReplyList } from '@/components/ReplyMonitoring/PersonaReplyList';
 import { PersonaWebhookSettings } from '@/components/ReplyMonitoring/PersonaWebhookSettings';
 import { ActivityLogs } from '@/components/ReplyMonitoring/ActivityLogs';
+import { AutoReplyTester } from '@/components/AutoReplyTester';
 
 const ReplyMonitoring = () => {
   const navigate = useNavigate();
@@ -28,11 +29,12 @@ const ReplyMonitoring = () => {
       </div>
       
       <Tabs defaultValue="replies" className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="replies">リプライ一覧</TabsTrigger>
           <TabsTrigger value="logs">アクティビティログ</TabsTrigger>
           <TabsTrigger value="webhook">Webhook設定</TabsTrigger>
           <TabsTrigger value="settings">監視設定</TabsTrigger>
+          <TabsTrigger value="test">テスト</TabsTrigger>
         </TabsList>
         
         <TabsContent value="replies" className="mt-6">
@@ -49,6 +51,10 @@ const ReplyMonitoring = () => {
         
         <TabsContent value="settings" className="mt-6">
           <ReplySettings />
+        </TabsContent>
+        
+        <TabsContent value="test" className="mt-6">
+          <AutoReplyTester />
         </TabsContent>
       </Tabs>
     </div>
