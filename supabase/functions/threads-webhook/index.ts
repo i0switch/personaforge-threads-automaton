@@ -281,13 +281,20 @@ async function processAIAutoReply(persona: any, reply: any): Promise<{ sent: boo
   console.log(`🧠 AI自動返信処理開始 - persona: ${persona.name}`);
 
   try {
-    const { data: aiResponse, error: aiError } = await supabase.functions.invoke('threads-auto-reply', {
+    const { data: aiResponse, error: aiError } = await supabase.functions.invoke('generate-auto-reply', {
       body: {
         postContent: '', // 元投稿の内容
         replyContent: reply.text,
         replyId: reply.id,
-        personaId: persona.id,
-        userId: persona.user_id
+        persona: {
+          id: persona.id,
+          name: persona.name,
+          user_id: persona.user_id,
+          age: persona.age,
+          personality: persona.personality,
+          tone_of_voice: persona.tone_of_voice,
+          expertise: persona.expertise
+        }
       }
     });
 
@@ -296,16 +303,31 @@ async function processAIAutoReply(persona: any, reply: any): Promise<{ sent: boo
       return { sent: false };
     }
 
-    console.log(`✅ AI自動返信送信完了:`, aiResponse);
+    if (!aiResponse?.success || !aiResponse?.reply) {
+      console.error(`❌ AI返信生成失敗:`, aiResponse);
+      return { sent: false };
+    }
 
-    // アクティビティログを記録
-    await logActivity(persona.user_id, persona.id, 'ai_auto_reply_sent',
-      'AI自動返信を送信', {
-        reply_id: reply.id,
-        ai_response: aiResponse
-      });
+    console.log(`✅ AI返信生成成功: "${aiResponse.reply}"`);
 
-    return { sent: true, method: 'ai' };
+    // 生成されたAI返信をThreadsに投稿
+    const success = await sendThreadsReply(persona, reply.id, aiResponse.reply);
+    
+    if (success) {
+      console.log(`🎉 AI自動返信投稿成功: "${aiResponse.reply}"`);
+      
+      // アクティビティログを記録
+      await logActivity(persona.user_id, persona.id, 'ai_auto_reply_sent',
+        `AI自動返信を送信: "${aiResponse.reply.substring(0, 50)}..."`, {
+          reply_id: reply.id,
+          ai_response: aiResponse.reply
+        });
+
+      return { sent: true, method: 'ai' };
+    } else {
+      console.error(`❌ AI自動返信投稿失敗`);
+      return { sent: false };
+    }
 
   } catch (error) {
     console.error(`❌ AI自動返信処理エラー:`, error);
