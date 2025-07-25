@@ -31,6 +31,30 @@ export const AutoReplyTester = () => {
     }
   };
 
+  const testAIAutoReply = async () => {
+    setTesting(true);
+    setResult(null);
+    
+    try {
+      const { data, error } = await supabase.functions.invoke('test-ai-auto-reply', {
+        body: { replyId: '18090692419632273' } // 最新の「溶ける」リプライ
+      });
+      
+      if (error) {
+        console.error('AI自動返信テストエラー:', error);
+        setResult({ error: error.message });
+      } else {
+        console.log('AI自動返信テスト結果:', data);
+        setResult(data);
+      }
+    } catch (error) {
+      console.error('AI自動返信テスト実行エラー:', error);
+      setResult({ error: error.message });
+    } finally {
+      setTesting(false);
+    }
+  };
+
   const updateAutoReplySettings = async () => {
     setTesting(true);
     
@@ -60,13 +84,20 @@ export const AutoReplyTester = () => {
         <CardTitle>自動返信テスト</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="flex gap-2">
+        <div className="grid grid-cols-1 gap-2">
           <Button 
             onClick={testAutoReply} 
             disabled={testing}
-            className="flex-1"
           >
-            {testing ? 'テスト中...' : 'リプライID: 18013552598773293 をテスト'}
+            {testing ? 'テスト中...' : '定型文返信テスト (おは → おっす！)'}
+          </Button>
+          
+          <Button 
+            onClick={testAIAutoReply} 
+            disabled={testing}
+            variant="secondary"
+          >
+            {testing ? 'テスト中...' : 'AI自動返信テスト (溶ける)'}
           </Button>
           
           <Button 
