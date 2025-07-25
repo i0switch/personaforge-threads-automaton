@@ -36,7 +36,6 @@ const ScheduledPosts = () => {
   // フィルタリングとソートの状態
   const [filters, setFilters] = useState<PostFilters>({
     search: '',
-    status: [],
     personas: [],
     dateRange: {}
   });
@@ -90,11 +89,6 @@ const ScheduledPosts = () => {
         post.content.toLowerCase().includes(searchLower) ||
         post.hashtags?.some(tag => tag.toLowerCase().includes(searchLower))
       );
-    }
-
-    // ステータスフィルター
-    if (filters.status.length > 0) {
-      filtered = filtered.filter(post => filters.status.includes(post.status));
     }
 
     // ペルソナフィルター

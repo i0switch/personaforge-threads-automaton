@@ -18,7 +18,6 @@ type Post = Database['public']['Tables']['posts']['Row'] & {
 
 export interface PostFilters {
   search: string;
-  status: string[];
   personas: string[];
   dateRange: {
     from?: Date;
@@ -50,12 +49,6 @@ export const PostsToolbar = ({
     new Set(posts.map(post => post.personas?.name).filter(Boolean))
   );
 
-  const statusOptions = [
-    { value: 'draft', label: '下書き' },
-    { value: 'scheduled', label: '予約済み' },
-    { value: 'published', label: '公開済み' }
-  ];
-
   const sortOptions = [
     { value: 'created_at', label: '作成日' },
     { value: 'scheduled_for', label: '予約日時' },
@@ -65,13 +58,6 @@ export const PostsToolbar = ({
 
   const handleSearchChange = (search: string) => {
     onFiltersChange({ ...filters, search });
-  };
-
-  const handleStatusFilter = (status: string, checked: boolean) => {
-    const newStatus = checked
-      ? [...filters.status, status]
-      : filters.status.filter(s => s !== status);
-    onFiltersChange({ ...filters, status: newStatus });
   };
 
   const handlePersonaFilter = (persona: string, checked: boolean) => {
@@ -84,13 +70,12 @@ export const PostsToolbar = ({
   const clearFilters = () => {
     onFiltersChange({
       search: '',
-      status: [],
       personas: [],
       dateRange: {}
     });
   };
 
-  const hasActiveFilters = filters.search || filters.status.length > 0 || filters.personas.length > 0;
+  const hasActiveFilters = filters.search || filters.personas.length > 0;
 
   return (
     <div className="space-y-4">
@@ -113,33 +98,13 @@ export const PostsToolbar = ({
                 フィルター
                 {hasActiveFilters && (
                   <Badge variant="secondary" className="ml-2 h-5 w-5 p-0 flex items-center justify-center">
-                    {filters.status.length + filters.personas.length}
+                    {filters.personas.length}
                   </Badge>
                 )}
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-80">
               <div className="space-y-4">
-                <div>
-                  <h4 className="font-medium mb-2">ステータス</h4>
-                  <div className="space-y-2">
-                    {statusOptions.map((option) => (
-                      <div key={option.value} className="flex items-center space-x-2">
-                        <Checkbox
-                          id={`status-${option.value}`}
-                          checked={filters.status.includes(option.value)}
-                          onCheckedChange={(checked) =>
-                            handleStatusFilter(option.value, checked as boolean)
-                          }
-                        />
-                        <label htmlFor={`status-${option.value}`} className="text-sm">
-                          {option.label}
-                        </label>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                
                 <div>
                   <h4 className="font-medium mb-2">ペルソナ</h4>
                   <div className="space-y-2">
@@ -197,17 +162,6 @@ export const PostsToolbar = ({
       
       {hasActiveFilters && (
         <div className="flex flex-wrap gap-2">
-          {filters.status.map((status) => (
-            <Badge key={status} variant="secondary" className="gap-1">
-              {statusOptions.find(s => s.value === status)?.label}
-              <button
-                onClick={() => handleStatusFilter(status, false)}
-                className="ml-1 hover:bg-muted-foreground/20 rounded-full p-0.5"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </Badge>
-          ))}
           {filters.personas.map((persona) => (
             <Badge key={persona} variant="secondary" className="gap-1">
               {persona}
