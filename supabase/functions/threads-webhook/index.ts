@@ -38,7 +38,7 @@ serve(async (req) => {
       .from('personas')
       .select('*')
       .eq('id', personaId)
-      .single();
+      .maybeSingle();
 
     if (personaError || !persona) {
       console.error('❌ ペルソナが見つかりません:', personaError);
@@ -125,7 +125,7 @@ async function processReply(persona: any, reply: any): Promise<boolean> {
       .from('thread_replies')
       .select('id, auto_reply_sent')
       .eq('reply_id', reply.id)
-      .single();
+      .maybeSingle();
 
     if (existingReply && existingReply.auto_reply_sent) {
       console.log(`⏭️ 既に処理済みのリプライ: ${reply.id}`);
@@ -151,26 +151,33 @@ async function processReply(persona: any, reply: any): Promise<boolean> {
 
     console.log(`🤖 自動返信処理開始 - persona: ${persona.name}`);
     
-    // Step 4: トリガー自動返信（定型文）をチェック
-    const templateResult = await processTemplateAutoReply(persona, reply);
-    if (templateResult.sent) {
-      // 返信が送信された場合、auto_reply_sentフラグを更新
-      await updateAutoReplySentFlag(reply.id, true);
-      return true;
-    }
-
-    // Step 5: AI自動返信をチェック
-    if (persona.ai_auto_reply_enabled) {
-      const aiResult = await processAIAutoReply(persona, reply);
-      if (aiResult.sent) {
+    try {
+      // Step 4: トリガー自動返信（定型文）をチェック
+      const templateResult = await processTemplateAutoReply(persona, reply);
+      if (templateResult.sent) {
+        console.log(`✅ 定型文自動返信成功 - reply: ${reply.id}`);
         // 返信が送信された場合、auto_reply_sentフラグを更新
         await updateAutoReplySentFlag(reply.id, true);
         return true;
       }
-    }
 
-    console.log(`ℹ️ 自動返信条件に該当なし - persona: ${persona.name}`);
-    return true;
+      // Step 5: AI自動返信をチェック
+      if (persona.ai_auto_reply_enabled) {
+        const aiResult = await processAIAutoReply(persona, reply);
+        if (aiResult.sent) {
+          console.log(`✅ AI自動返信成功 - reply: ${reply.id}`);
+          // 返信が送信された場合、auto_reply_sentフラグを更新
+          await updateAutoReplySentFlag(reply.id, true);
+          return true;
+        }
+      }
+
+      console.log(`ℹ️ 自動返信条件に該当なし - persona: ${persona.name}`);
+      return true;
+    } catch (error) {
+      console.error(`❌ 自動返信処理エラー - reply: ${reply.id}:`, error);
+      return false;
+    }
 
   } catch (error) {
     console.error(`❌ リプライ処理エラー (${reply.id}):`, error);
@@ -233,22 +240,31 @@ async function processTemplateAutoReply(persona: any, reply: any): Promise<{ sen
 
     for (const keyword of keywords) {
       const cleanKeyword = keyword.trim().toLowerCase();
+      console.log(`🔍 キーワード "${cleanKeyword}" をテキスト "${replyText}" と照合中`);
+      
       if (replyText.includes(cleanKeyword)) {
         console.log(`🎉 キーワードマッチ: "${keyword}" → 返信: "${setting.response_template}"`);
         
-        // 定型文返信を送信
-        const success = await sendThreadsReply(persona, reply.id, setting.response_template);
-        
-        if (success) {
-          // アクティビティログを記録
-          await logActivity(persona.user_id, persona.id, 'template_auto_reply_sent',
-            `定型文自動返信を送信: "${setting.response_template.substring(0, 50)}..."`, {
-              reply_id: reply.id,
-              keyword_matched: keyword,
-              response_sent: setting.response_template
-            });
+        try {
+          // 定型文返信を送信
+          const success = await sendThreadsReply(persona, reply.id, setting.response_template);
+          
+          if (success) {
+            console.log(`✅ 定型文返信送信成功`);
+            // アクティビティログを記録
+            await logActivity(persona.user_id, persona.id, 'template_auto_reply_sent',
+              `定型文自動返信を送信: "${setting.response_template.substring(0, 50)}..."`, {
+                reply_id: reply.id,
+                keyword_matched: keyword,
+                response_sent: setting.response_template
+              });
 
-          return { sent: true, method: 'template' };
+            return { sent: true, method: 'template' };
+          } else {
+            console.error(`❌ 定型文返信送信失敗`);
+          }
+        } catch (error) {
+          console.error(`❌ 定型文返信送信エラー:`, error);
         }
       }
     }
@@ -368,43 +384,57 @@ async function getAccessToken(persona: any): Promise<string | null> {
   try {
     console.log('🔑 アクセストークン取得開始');
 
-    // 新しい方法でトークンを取得
-    const { data: tokenData, error: tokenError } = await supabase.functions.invoke('retrieve-secret', {
-      body: { 
-        key: `persona_${persona.id}_threads_token`,
-        user_id: persona.user_id
-      }
-    });
+    // Step 1: 新しい方法でトークンを取得
+    try {
+      const { data: tokenData, error: tokenError } = await supabase.functions.invoke('retrieve-secret', {
+        body: { 
+          key: `persona_${persona.id}_threads_token`,
+          user_id: persona.user_id
+        }
+      });
 
-    if (tokenData?.value && !tokenError) {
-      console.log('✅ トークン取得成功（新方式）');
-      return tokenData.value;
+      if (tokenData?.value && !tokenError) {
+        console.log('✅ トークン取得成功（新方式）');
+        return tokenData.value;
+      }
+      console.log('🔄 新方式でトークン取得失敗、従来方式を試行');
+    } catch (error) {
+      console.log('🔄 新方式エラー、従来方式を試行:', error);
     }
 
-    console.log('🔄 従来方式でトークン取得を試行');
-
-    // 従来方式のフォールバック
+    // Step 2: 従来方式のフォールバック
     const { data: personaWithToken } = await supabase
       .from('personas')
       .select('threads_access_token')
       .eq('id', persona.id)
-      .single();
+      .maybeSingle();
 
     if (!personaWithToken?.threads_access_token) {
       console.error('❌ アクセストークンが見つかりません');
       return null;
     }
 
-    const { data: decryptedToken, error: decryptError } = await supabase
-      .rpc('decrypt_access_token', { encrypted_token: personaWithToken.threads_access_token });
+    // Step 3: 暗号化されたトークンを復号化
+    try {
+      const { data: decryptedToken, error: decryptError } = await supabase
+        .rpc('decrypt_access_token', { encrypted_token: personaWithToken.threads_access_token });
 
-    if (decryptError || !decryptedToken) {
-      console.error('❌ トークン復号化失敗:', decryptError);
+      if (decryptError) {
+        console.error('❌ トークン復号化失敗:', decryptError);
+        return null;
+      }
+
+      if (!decryptedToken) {
+        console.error('❌ 復号化結果が空です');
+        return null;
+      }
+
+      console.log('✅ トークン取得成功（従来方式）');
+      return decryptedToken;
+    } catch (error) {
+      console.error('❌ 復号化処理エラー:', error);
       return null;
     }
-
-    console.log('✅ トークン取得成功（従来方式）');
-    return decryptedToken;
 
   } catch (error) {
     console.error('❌ トークン取得エラー:', error);
