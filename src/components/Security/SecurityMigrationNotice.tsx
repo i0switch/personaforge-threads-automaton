@@ -104,8 +104,7 @@ export const SecurityMigrationNotice = ({ userId }: SecurityMigrationNoticeProps
               セキュリティ向上のお知らせ
             </AlertTitle>
             <AlertDescription className="text-amber-700 dark:text-amber-300 mt-2">
-              システムのセキュリティを向上させるため、保存されているAPIキーの再設定が必要です。
-              設定ページでAPIキーを再度入力してください。
+              ペルソナ設定のアクセストークンを再度設定し直してください。
             </AlertDescription>
             <div className="flex gap-2 mt-3">
               <Button 
