@@ -169,12 +169,15 @@ async function checkRepliesForPost(persona: any, postId: string): Promise<number
           // すでに保存されているかチェック
           const { data: existingReply } = await supabase
             .from('thread_replies')
-            .select('id')
+            .select('id, auto_reply_sent')
             .eq('reply_id', thread.id)
             .single();
 
+          let shouldProcessAutoReply = false;
+
           if (!existingReply) {
             // 新しいリプライを保存
+            console.log(`🆕 新しいリプライを保存中: ${thread.id} - "${thread.text}"`);
             const { error: insertError } = await supabase
               .from('thread_replies')
               .insert({
@@ -190,54 +193,74 @@ async function checkRepliesForPost(persona: any, postId: string): Promise<number
 
             if (!insertError) {
               newRepliesCount++;
-              console.log(`New reply saved: ${thread.id}`);
+              console.log(`✅ 新しいリプライ保存完了: ${thread.id}`);
+              shouldProcessAutoReply = true;
+            }
+          } else if (!existingReply.auto_reply_sent) {
+            // 既存のリプライで自動返信がまだ送信されていない場合
+            console.log(`🔄 既存リプライの自動返信処理: ${thread.id} - "${thread.text}"`);
+            shouldProcessAutoReply = true;
+          }
 
-              // ペルソナの自動返信設定を取得
-              const { data: autoRepliesSettings } = await supabase
-                .from('auto_replies')
-                .select('*')
-                .eq('persona_id', persona.id)
-                .eq('is_active', true);
-              
-              console.log(`🎯 自動返信設定の取得結果 - persona: ${persona.name}, 設定数: ${autoRepliesSettings?.length || 0}`);
+          if (shouldProcessAutoReply) {
+            // ペルソナの自動返信設定を取得
+            const { data: autoRepliesSettings } = await supabase
+              .from('auto_replies')
+              .select('*')
+              .eq('persona_id', persona.id)
+              .eq('is_active', true);
+            
+            console.log(`🎯 自動返信設定の取得結果 - persona: ${persona.name}, 設定数: ${autoRepliesSettings?.length || 0}`);
 
-              // 自動返信設定の確認
-              if (!autoRepliesSettings || autoRepliesSettings.length === 0) {
-                console.log(`自動返信設定がOFFになっています - persona: ${persona.name}`);
-              } else {
-                console.log(`自動返信設定が有効 - persona: ${persona.name}`);
+            // 自動返信設定の確認
+            if (!autoRepliesSettings || autoRepliesSettings.length === 0) {
+              console.log(`自動返信設定がOFFになっています - persona: ${persona.name}`);
+            } else {
+              console.log(`自動返信設定が有効 - persona: ${persona.name}`);
 
-                // トリガー自動返信（定型文）の処理
-                const templateReplySent = await processKeywordTriggerReplies(supabase, persona, {
-                  id: thread.id,
-                  text: thread.text,
-                  username: thread.username
-                });
+              // トリガー自動返信（定型文）の処理
+              const templateReplySent = await processKeywordTriggerReplies(supabase, persona, {
+                id: thread.id,
+                text: thread.text,
+                username: thread.username
+              });
 
-                if (templateReplySent) {
-                  console.log(`定型文返信を送信したため、AI返信はスキップします`);
-                } else if (persona.ai_auto_reply_enabled) {
-                  // AI自動返信チェック
-                  console.log(`Triggering AI auto-reply for persona ${persona.name}`);
-                  try {
-                    const { data: autoReplyResponse, error: autoReplyError } = await supabase.functions.invoke('threads-auto-reply', {
-                      body: {
-                        postContent: '', // 元投稿の内容
-                        replyContent: thread.text,
-                        replyId: thread.id,
-                        personaId: persona.id,
-                        userId: persona.user_id
-                      }
-                    });
-
-                    if (autoReplyError) {
-                      console.error(`Auto-reply error for ${thread.id}:`, autoReplyError);
-                    } else {
-                      console.log(`Auto-reply sent for ${thread.id}:`, autoReplyResponse);
+              if (templateReplySent) {
+                console.log(`定型文返信を送信したため、AI返信はスキップします`);
+                
+                // auto_reply_sentフラグを更新
+                await supabase
+                  .from('thread_replies')
+                  .update({ auto_reply_sent: true })
+                  .eq('reply_id', thread.id);
+                  
+              } else if (persona.ai_auto_reply_enabled) {
+                // AI自動返信チェック
+                console.log(`Triggering AI auto-reply for persona ${persona.name}`);
+                try {
+                  const { data: autoReplyResponse, error: autoReplyError } = await supabase.functions.invoke('threads-auto-reply', {
+                    body: {
+                      postContent: '', // 元投稿の内容
+                      replyContent: thread.text,
+                      replyId: thread.id,
+                      personaId: persona.id,
+                      userId: persona.user_id
                     }
-                  } catch (autoReplyErr) {
-                    console.error(`Failed to send auto-reply for ${thread.id}:`, autoReplyErr);
+                  });
+
+                  if (autoReplyError) {
+                    console.error(`Auto-reply error for ${thread.id}:`, autoReplyError);
+                  } else {
+                    console.log(`Auto-reply sent for ${thread.id}:`, autoReplyResponse);
+                    
+                    // auto_reply_sentフラグを更新
+                    await supabase
+                      .from('thread_replies')
+                      .update({ auto_reply_sent: true })
+                      .eq('reply_id', thread.id);
                   }
+                } catch (autoReplyErr) {
+                  console.error(`Failed to send auto-reply for ${thread.id}:`, autoReplyErr);
                 }
               }
             }
