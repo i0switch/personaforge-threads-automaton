@@ -65,19 +65,44 @@ serve(async (req) => {
         continue;
       }
 
-      // 復号化されたアクセストークンを取得
-      const { data: decryptedToken, error: decryptError } = await supabase
-        .rpc('decrypt_access_token', { encrypted_token: personaWithToken.threads_access_token });
-
-      if (decryptError || !decryptedToken) {
-        console.log(`Skipping persona ${persona.id} - token decryption failed`);
-        continue;
+      // アクセストークンを取得
+      let accessToken = null;
+      try {
+        // retrieve-secret関数を使用してアクセストークンを復号化
+        const tokenResult = await supabase.functions.invoke('retrieve-secret', {
+          body: {
+            key: `threads_access_token_${persona.id}`,
+            fallback: personaWithToken.threads_access_token
+          }
+        });
+        
+        if (tokenResult.data?.secret) {
+          accessToken = tokenResult.data.secret;
+          console.log(`✅ アクセストークン取得成功 - persona: ${persona.name}`);
+        } else if (personaWithToken.threads_access_token.startsWith('THAA')) {
+          // 暗号化されていないトークンをそのまま使用
+          accessToken = personaWithToken.threads_access_token;
+          console.log(`✅ 非暗号化トークン使用 - persona: ${persona.name}`);
+        } else {
+          console.log(`❌ アクセストークン取得失敗 - persona: ${persona.name}`);
+          continue;
+        }
+      } catch (error) {
+        console.error(`アクセストークン処理エラー - persona: ${persona.name}:`, error);
+        // フォールバック：暗号化されていないトークンを試す
+        if (personaWithToken.threads_access_token?.startsWith('THAA')) {
+          accessToken = personaWithToken.threads_access_token;
+          console.log(`🔄 フォールバック成功 - persona: ${persona.name}`);
+        } else {
+          console.log(`Skipping persona ${persona.id} - token decryption failed`);
+          continue;
+        }
       }
 
       // ペルソナオブジェクトにアクセストークンを追加
       const personaWithDecryptedToken = {
         ...persona,
-        threads_access_token: decryptedToken
+        threads_access_token: accessToken
       };
 
       try {

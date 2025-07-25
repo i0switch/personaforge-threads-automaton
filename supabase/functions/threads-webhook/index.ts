@@ -414,27 +414,44 @@ async function getAccessToken(persona: any): Promise<string | null> {
       return null;
     }
 
-    // Step 3: 暗号化されたトークンを復号化
+    // Step 3: retrieve-secret関数を使用してトークンを取得
+    try {
+      const { data: tokenData, error: tokenError } = await supabase.functions.invoke('retrieve-secret', {
+        body: { 
+          key: `threads_access_token_${persona.id}`,
+          fallback: personaWithToken.threads_access_token
+        }
+      });
+
+      if (tokenData?.secret && !tokenError) {
+        console.log('✅ トークン取得成功（retrieve-secret）');
+        return tokenData.secret;
+      }
+    } catch (error) {
+      console.log('🔄 retrieve-secret方式エラー:', error);
+    }
+
+    // Step 4: 暗号化されていないトークンかチェック
+    if (personaWithToken.threads_access_token.startsWith('THAA')) {
+      console.log('✅ 非暗号化トークン使用');
+      return personaWithToken.threads_access_token;
+    }
+
+    // Step 5: 従来の復号化方式を試行
     try {
       const { data: decryptedToken, error: decryptError } = await supabase
         .rpc('decrypt_access_token', { encrypted_token: personaWithToken.threads_access_token });
 
-      if (decryptError) {
-        console.error('❌ トークン復号化失敗:', decryptError);
-        return null;
+      if (decryptedToken && !decryptError) {
+        console.log('✅ トークン復号化成功（従来方式）');
+        return decryptedToken;
       }
-
-      if (!decryptedToken) {
-        console.error('❌ 復号化結果が空です');
-        return null;
-      }
-
-      console.log('✅ トークン取得成功（従来方式）');
-      return decryptedToken;
     } catch (error) {
       console.error('❌ 復号化処理エラー:', error);
-      return null;
     }
+
+    console.error('❌ 全ての方式でアクセストークン取得失敗');
+    return null;
 
   } catch (error) {
     console.error('❌ トークン取得エラー:', error);
