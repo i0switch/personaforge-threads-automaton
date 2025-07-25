@@ -143,22 +143,24 @@ async function processReply(persona: any, reply: any): Promise<boolean> {
         reply_text: reply.text
       });
 
-    // Step 3: 自動返信処理（設定がONの場合のみ）
-    if (!persona.auto_reply_enabled) {
-      console.log(`ℹ️ 自動返信設定がOFF - persona: ${persona.name}`);
+    // Step 3: 自動返信処理（定型文またはAI自動返信が有効な場合のみ）
+    if (!persona.auto_reply_enabled && !persona.ai_auto_reply_enabled) {
+      console.log(`ℹ️ 自動返信設定がすべてOFF - persona: ${persona.name}`);
       return true;
     }
 
     console.log(`🤖 自動返信処理開始 - persona: ${persona.name}`);
     
     try {
-      // Step 4: トリガー自動返信（定型文）をチェック
-      const templateResult = await processTemplateAutoReply(persona, reply);
-      if (templateResult.sent) {
-        console.log(`✅ 定型文自動返信成功 - reply: ${reply.id}`);
-        // 返信が送信された場合、auto_reply_sentフラグを更新
-        await updateAutoReplySentFlag(reply.id, true);
-        return true;
+      // Step 4: トリガー自動返信（定型文）をチェック（auto_reply_enabledの場合のみ）
+      if (persona.auto_reply_enabled) {
+        const templateResult = await processTemplateAutoReply(persona, reply);
+        if (templateResult.sent) {
+          console.log(`✅ 定型文自動返信成功 - reply: ${reply.id}`);
+          // 返信が送信された場合、auto_reply_sentフラグを更新
+          await updateAutoReplySentFlag(reply.id, true);
+          return true;
+        }
       }
 
       // Step 5: AI自動返信をチェック
