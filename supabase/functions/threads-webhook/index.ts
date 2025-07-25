@@ -33,7 +33,7 @@ serve(async (req) => {
 
     console.log(`📋 処理開始 - ペルソナID: ${personaId}`);
 
-    // ペルソナ情報を取得
+    // ペルソナ情報を取得（自動返信設定も含む）
     const { data: persona, error: personaError } = await supabase
       .from('personas')
       .select('*')
@@ -48,7 +48,7 @@ serve(async (req) => {
       });
     }
 
-    console.log(`✅ ペルソナ取得成功: ${persona.name}`);
+    console.log(`✅ ペルソナ取得成功: ${persona.name}, 自動返信: ${persona.auto_reply_enabled}`);
 
     // Webhookペイロードを解析
     const payload = await req.json();
@@ -132,10 +132,10 @@ async function processReply(persona: any, reply: any): Promise<boolean> {
       return false;
     }
 
-    // リプライをデータベースに保存
+    // Step 1: リプライをデータベースに保存
     await saveReplyToDatabase(persona, reply);
 
-    // アクティビティログを記録
+    // Step 2: アクティビティログを記録
     await logActivity(persona.user_id, persona.id, 'reply_received', 
       `新しいリプライを受信: @${reply.username}`, {
         author: reply.username,
@@ -143,19 +143,33 @@ async function processReply(persona: any, reply: any): Promise<boolean> {
         reply_text: reply.text
       });
 
-    // 自動返信処理
-    const autoReplyResult = await processAutoReply(persona, reply);
-    
-    // auto_reply_sentフラグを更新
-    if (autoReplyResult.sent) {
-      await supabase
-        .from('thread_replies')
-        .update({ auto_reply_sent: true })
-        .eq('reply_id', reply.id);
-      
-      console.log(`✅ auto_reply_sentフラグ更新完了: ${reply.id}`);
+    // Step 3: 自動返信処理（設定がONの場合のみ）
+    if (!persona.auto_reply_enabled) {
+      console.log(`ℹ️ 自動返信設定がOFF - persona: ${persona.name}`);
+      return true;
     }
 
+    console.log(`🤖 自動返信処理開始 - persona: ${persona.name}`);
+    
+    // Step 4: トリガー自動返信（定型文）をチェック
+    const templateResult = await processTemplateAutoReply(persona, reply);
+    if (templateResult.sent) {
+      // 返信が送信された場合、auto_reply_sentフラグを更新
+      await updateAutoReplySentFlag(reply.id, true);
+      return true;
+    }
+
+    // Step 5: AI自動返信をチェック
+    if (persona.ai_auto_reply_enabled) {
+      const aiResult = await processAIAutoReply(persona, reply);
+      if (aiResult.sent) {
+        // 返信が送信された場合、auto_reply_sentフラグを更新
+        await updateAutoReplySentFlag(reply.id, true);
+        return true;
+      }
+    }
+
+    console.log(`ℹ️ 自動返信条件に該当なし - persona: ${persona.name}`);
     return true;
 
   } catch (error) {
@@ -192,9 +206,9 @@ async function saveReplyToDatabase(persona: any, reply: any): Promise<void> {
   console.log(`✅ リプライ保存完了: ${reply.id}`);
 }
 
-// 自動返信を処理
-async function processAutoReply(persona: any, reply: any): Promise<{ sent: boolean, method?: string }> {
-  console.log(`🤖 自動返信処理開始 - persona: ${persona.name}`);
+// トリガー自動返信（定型文）を処理
+async function processTemplateAutoReply(persona: any, reply: any): Promise<{ sent: boolean, method?: string }> {
+  console.log(`🎯 定型文自動返信チェック開始`);
 
   // 自動返信設定を取得
   const { data: autoRepliesSettings } = await supabase
@@ -204,31 +218,11 @@ async function processAutoReply(persona: any, reply: any): Promise<{ sent: boole
     .eq('is_active', true);
 
   if (!autoRepliesSettings || autoRepliesSettings.length === 0) {
-    console.log(`❌ 自動返信設定がOFF - persona: ${persona.name}`);
+    console.log(`❌ 定型文自動返信設定なし - persona: ${persona.name}`);
     return { sent: false };
   }
 
-  console.log(`✅ 自動返信設定が有効 - persona: ${persona.name}, 設定数: ${autoRepliesSettings.length}`);
-
-  // 1. トリガー自動返信（定型文）をチェック
-  const templateResult = await processTemplateAutoReply(persona, reply, autoRepliesSettings);
-  if (templateResult.sent) {
-    return templateResult;
-  }
-
-  // 2. AI自動返信をチェック
-  if (persona.ai_auto_reply_enabled) {
-    const aiResult = await processAIAutoReply(persona, reply);
-    return aiResult;
-  }
-
-  console.log(`ℹ️ 自動返信条件に該当なし - persona: ${persona.name}`);
-  return { sent: false };
-}
-
-// トリガー自動返信（定型文）を処理
-async function processTemplateAutoReply(persona: any, reply: any, autoRepliesSettings: any[]): Promise<{ sent: boolean, method?: string }> {
-  console.log(`🎯 定型文自動返信チェック開始`);
+  console.log(`✅ 定型文自動返信設定が有効 - persona: ${persona.name}, 設定数: ${autoRepliesSettings.length}`);
 
   const replyText = (reply.text || '').trim().toLowerCase();
   console.log(`🔍 リプライテキスト: "${replyText}"`);
@@ -415,6 +409,24 @@ async function getAccessToken(persona: any): Promise<string | null> {
   } catch (error) {
     console.error('❌ トークン取得エラー:', error);
     return null;
+  }
+}
+
+// auto_reply_sentフラグを更新
+async function updateAutoReplySentFlag(replyId: string, sent: boolean): Promise<void> {
+  try {
+    const { error } = await supabase
+      .from('thread_replies')
+      .update({ auto_reply_sent: sent })
+      .eq('reply_id', replyId);
+    
+    if (error) {
+      console.error('❌ auto_reply_sentフラグ更新エラー:', error);
+    } else {
+      console.log(`✅ auto_reply_sentフラグ更新完了: ${replyId} -> ${sent}`);
+    }
+  } catch (error) {
+    console.error('❌ auto_reply_sentフラグ更新エラー:', error);
   }
 }
 
