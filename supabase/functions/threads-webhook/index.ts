@@ -454,13 +454,12 @@ async function processReplyData(supabase: any, persona_id: string, replyData: an
   try {
     console.log('Processing reply data:', replyData)
     
-  // ペルソナ情報を取得（自動返信設定も含む）
     const { data: persona, error: personaError } = await supabase
       .from('personas')
       .select(`
         id, name, user_id, ai_auto_reply_enabled, threads_username, threads_user_id,
-        auto_reply_settings (
-          is_active, template_replies_enabled
+        auto_replies (
+          is_active, response_template
         )
       `)
       .eq('id', persona_id)

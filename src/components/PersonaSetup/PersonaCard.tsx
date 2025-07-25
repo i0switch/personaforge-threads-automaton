@@ -54,7 +54,7 @@ export const PersonaCard = ({ persona, onEdit, onDelete, onToggleActive }: Perso
             )}
             <div className="flex-1 min-w-0">
               <CardTitle className="text-lg truncate">{persona.name}</CardTitle>
-              <CardDescription className="flex items-center gap-2 mt-1">
+              <div className="flex items-center gap-2 mt-1 text-sm text-muted-foreground">
                 {persona.age && `年齢: ${persona.age}`}
                 <div className="flex gap-1 ml-auto">
                   <Badge variant={persona.is_active ? "default" : "secondary"}>
@@ -64,7 +64,7 @@ export const PersonaCard = ({ persona, onEdit, onDelete, onToggleActive }: Perso
                     {replyModeInfo.label}
                   </Badge>
                 </div>
-              </CardDescription>
+              </div>
             </div>
           </div>
         </div>
