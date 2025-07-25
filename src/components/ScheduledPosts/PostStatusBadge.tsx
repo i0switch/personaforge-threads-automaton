@@ -30,7 +30,8 @@ export const PostStatusBadge = ({ post }: PostStatusBadgeProps) => {
   
   if (post.status === 'scheduled') {
     if (post.scheduled_for && isPast(new Date(post.scheduled_for))) {
-      return <Badge variant="destructive">期限切れ</Badge>;
+      // 予約時刻を過ぎている場合は、処理中として表示
+      return <Badge variant="secondary">処理中</Badge>;
     }
     return <Badge variant="secondary">予約済み</Badge>;
   }
