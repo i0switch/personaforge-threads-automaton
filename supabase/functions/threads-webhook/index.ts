@@ -8,6 +8,9 @@ const corsHeaders = {
 }
 
 serve(async (req) => {
+  console.log('🚀 WEBHOOK FUNCTION STARTED - Method:', req.method, 'URL:', req.url)
+  console.log('🚀 Current timestamp:', new Date().toISOString())
+  
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
