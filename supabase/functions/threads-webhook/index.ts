@@ -1,821 +1,319 @@
-
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import "https://deno.land/x/xhr@0.1.0/mod.ts";
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-hub-signature-256',
-}
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 serve(async (req) => {
-  console.log('🚀 WEBHOOK FUNCTION STARTED - Method:', req.method, 'URL:', req.url)
-  console.log('🚀 Current timestamp:', new Date().toISOString())
-  
+  console.log(`🚀 Webhook受信: ${req.method} ${req.url}`);
+
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+    return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    )
-
-    const url = new URL(req.url)
-    const persona_id = url.searchParams.get('persona_id')
-
-    // Meta for Developers Webhook検証処理（GET リクエスト）
-    if (req.method === 'GET') {
-      const hubMode = url.searchParams.get('hub.mode')
-      const hubChallenge = url.searchParams.get('hub.challenge')
-      const hubVerifyToken = url.searchParams.get('hub.verify_token')
-
-      console.log('Webhook verification request:', {
-        persona_id,
-        hubMode,
-        hubVerifyToken: hubVerifyToken ? '[PRESENT]' : '[MISSING]',
-        hubChallenge: hubChallenge ? '[PRESENT]' : '[MISSING]'
-      })
-
-      if (!persona_id) {
-        console.error('Missing persona_id in verification request')
-        return new Response('Missing persona_id parameter', { 
-          status: 400, 
-          headers: corsHeaders 
-        })
-      }
-
-      if (hubMode === 'subscribe') {
-        // ペルソナのWebhook Verify Tokenを取得
-        const { data: persona, error } = await supabase
-          .from('personas')
-          .select('webhook_verify_token')
-          .eq('id', persona_id)
-          .single()
-
-        if (error || !persona) {
-          console.error('Persona not found:', error)
-          await logSecurityEvent(supabase, {
-            event_type: 'webhook_verification_failed',
-            details: {
-              reason: 'persona_not_found',
-              persona_id,
-              timestamp: new Date().toISOString()
-            }
-          })
-          return new Response('Persona not found', { 
-            status: 404, 
-            headers: corsHeaders 
-          })
-        }
-
-        if (!persona.webhook_verify_token) {
-          console.error('Webhook verify token not configured for persona:', persona_id)
-          await logSecurityEvent(supabase, {
-            event_type: 'webhook_verification_failed',
-            details: {
-              reason: 'verify_token_not_configured',
-              persona_id,
-              timestamp: new Date().toISOString()
-            }
-          })
-          return new Response('Webhook verify token not configured', { 
-            status: 400, 
-            headers: corsHeaders 
-          })
-        }
-
-        console.log('Comparing tokens:', {
-          received: hubVerifyToken,
-          expected: persona.webhook_verify_token,
-          match: hubVerifyToken === persona.webhook_verify_token
-        })
-
-        if (hubVerifyToken === persona.webhook_verify_token) {
-          console.log('Webhook verification successful for persona:', persona_id)
-          await logSecurityEvent(supabase, {
-            event_type: 'webhook_verification_success',
-            details: {
-              persona_id,
-              timestamp: new Date().toISOString()
-            }
-          })
-          return new Response(hubChallenge, { 
-            status: 200, 
-            headers: { ...corsHeaders, 'Content-Type': 'text/plain' } 
-          })
-        } else {
-          console.error('Webhook verify token mismatch')
-          await logSecurityEvent(supabase, {
-            event_type: 'webhook_verification_failed',
-            details: {
-              reason: 'token_mismatch',
-              persona_id,
-              timestamp: new Date().toISOString()
-            }
-          })
-          return new Response('Forbidden', { 
-            status: 403, 
-            headers: corsHeaders 
-          })
-        }
-      }
-
-      return new Response('Bad Request', { 
-        status: 400, 
-        headers: corsHeaders 
-      })
+    // ペルソナIDを取得
+    const url = new URL(req.url);
+    const personaId = url.searchParams.get('persona_id');
+    
+    if (!personaId) {
+      console.error('❌ ペルソナIDが指定されていません');
+      return new Response(JSON.stringify({ error: 'persona_id is required' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
     }
 
-    // POST リクエスト - Webhook データ処理
-    if (req.method === 'POST') {
-      const userAgent = req.headers.get('user-agent') || 'unknown'
-      const clientIP = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || 'unknown'
-      const signature = req.headers.get('x-hub-signature-256')
-      const contentType = req.headers.get('content-type')
-      const timestamp = Date.now()
+    console.log(`📋 処理開始 - ペルソナID: ${personaId}`);
 
-      if (!persona_id) {
-        return new Response(
-          JSON.stringify({ error: 'Missing persona_id parameter' }),
-          { 
-            status: 400, 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-          }
-        )
-      }
-
-      // 基本的なセキュリティチェック
-      if (!signature) {
-        await logSecurityEvent(supabase, {
-          event_type: 'webhook_verification_failed',
-          ip_address: clientIP,
-          user_agent: userAgent,
-          details: {
-            reason: 'missing_signature',
-            persona_id,
-            timestamp: new Date().toISOString(),
-            content_type: contentType
-          }
-        })
-
-        return new Response(
-          JSON.stringify({ error: 'Signature required' }),
-          { 
-            status: 401, 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-          }
-        )
-      }
-
-      // Rate limiting - IPアドレス毎の制限
-      const isRateLimited = await checkRateLimit(supabase, clientIP)
-      if (isRateLimited) {
-        await logSecurityEvent(supabase, {
-          event_type: 'rate_limit_exceeded',
-          ip_address: clientIP,
-          user_agent: userAgent,
-          details: {
-            reason: 'too_many_requests',
-            persona_id,
-            timestamp: new Date().toISOString()
-          }
-        })
-
-        return new Response(
-          JSON.stringify({ error: 'Rate limit exceeded. Please try again later.' }),
-          { 
-            status: 429, 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-          }
-        )
-      }
-
-      // リクエストボディを取得
-      const body = await req.text()
-      
-      // ボディサイズ制限（1MB）
-      if (body.length > 1024 * 1024) {
-        await logSecurityEvent(supabase, {
-          event_type: 'webhook_security_violation',
-          ip_address: clientIP,
-          details: {
-            reason: 'payload_too_large',
-            size: body.length,
-            persona_id,
-            timestamp: new Date().toISOString()
-          }
-        })
-
-        return new Response(
-          JSON.stringify({ error: 'Payload too large' }),
-          { 
-            status: 413, 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-          }
-        )
-      }
-
-      // Webhook署名検証
-      let payload
-      try {
-        payload = JSON.parse(body)
-      } catch (error) {
-        await logSecurityEvent(supabase, {
-          event_type: 'webhook_security_violation',
-          ip_address: clientIP,
-          details: {
-            reason: 'invalid_json',
-            error: error.message,
-            persona_id,
-            timestamp: new Date().toISOString()
-          }
-        })
-
-        return new Response(
-          JSON.stringify({ error: 'Invalid JSON payload' }),
-          { 
-            status: 400, 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-          }
-        )
-      }
-
-      // 入力検証とサニタイゼーション
-      const validationResult = validateWebhookPayload(payload)
-      if (!validationResult.valid) {
-        await logSecurityEvent(supabase, {
-          event_type: 'webhook_validation_failed',
-          ip_address: clientIP,
-          details: {
-            reason: 'invalid_payload',
-            errors: validationResult.errors,
-            persona_id,
-            timestamp: new Date().toISOString()
-          }
-        })
-
-        return new Response(
-          JSON.stringify({ error: 'Invalid payload format' }),
-          { 
-            status: 400, 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-          }
-        )
-      }
-
-      // 成功した場合のログ記録
-      await logSecurityEvent(supabase, {
-        event_type: 'webhook_processed',
-        ip_address: clientIP,
-        user_agent: userAgent,
-        details: {
-          content_type: contentType,
-          payload_size: body.length,
-          persona_id,
-          timestamp: new Date().toISOString(),
-          processing_time: Date.now() - timestamp
-        }
-      })
-
-      // Webhookペイロードの処理
-      console.log('Processing webhook payload for persona:', persona_id, JSON.stringify(payload, null, 2))
-
-      // リプライデータの処理
-      let repliesProcessed = 0
-      
-      console.log('Processing webhook payload structure:', {
-        hasEntry: !!payload.entry,
-        hasValues: !!payload.values,
-        valuesLength: payload.values ? payload.values.length : 0,
-        firstValue: payload.values ? payload.values[0] : null
-      })
-      
-      // Threads Webhookの新しい構造（values配列）をチェック
-      if (payload.values && Array.isArray(payload.values)) {
-        for (const valueItem of payload.values) {
-          console.log('Processing value item:', JSON.stringify(valueItem, null, 2))
-          
-          if (valueItem.field === 'replies' && valueItem.value) {
-            console.log('Processing reply data for field:', valueItem.field, 'with value:', valueItem.value)
-            const processed = await processReplyData(supabase, persona_id, [valueItem.value])
-            repliesProcessed += processed
-          }
-        }
-      }
-      
-      // 従来のentry構造もサポート（後方互換性）
-      if (payload.entry && Array.isArray(payload.entry)) {
-        for (const entry of payload.entry) {
-          console.log('Processing entry:', JSON.stringify(entry, null, 2))
-          if (entry.changes && Array.isArray(entry.changes)) {
-            for (const change of entry.changes) {
-              console.log('Processing change:', {
-                field: change.field,
-                hasValue: !!change.value,
-                valueType: typeof change.value
-              })
-              
-              if ((change.field === 'mentions' || change.field === 'replies' || change.field === 'comments') && change.value) {
-                console.log('Processing reply data for field:', change.field, 'with value:', change.value)
-                const processed = await processReplyData(supabase, persona_id, change.value)
-                repliesProcessed += processed
-              }
-            }
-          }
-        }
-      }
-
-      await logSecurityEvent(supabase, {
-        event_type: 'webhook_replies_processed',
-        details: {
-          persona_id,
-          replies_processed: repliesProcessed,
-          timestamp: new Date().toISOString()
-        }
-      })
-
-      return new Response(
-        JSON.stringify({ 
-          success: true, 
-          message: 'Webhook processed successfully',
-          timestamp: new Date().toISOString(),
-          persona_id,
-          replies_processed: repliesProcessed
-        }),
-        { 
-          status: 200, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      )
-    }
-
-    return new Response(
-      JSON.stringify({ error: 'Method not allowed' }),
-      { 
-        status: 405, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
-    )
-
-  } catch (error) {
-    console.error('Webhook processing error:', error)
-    
-    // エラー情報を記録（詳細は除く）
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    )
-    
-    await logSecurityEvent(supabase, {
-      event_type: 'webhook_error',
-      details: {
-        error_type: error.name || 'UnknownError',
-        timestamp: new Date().toISOString()
-      }
-    })
-    
-    return new Response(
-      JSON.stringify({ error: 'Internal server error' }),
-      { 
-        status: 500, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
-    )
-  }
-})
-
-// Webhookペイロードの検証
-function validateWebhookPayload(payload: any): { valid: boolean; errors: string[] } {
-  const errors: string[] = []
-  
-  if (!payload || typeof payload !== 'object') {
-    errors.push('Payload must be an object')
-    return { valid: false, errors }
-  }
-
-  // 基本的な構造チェック
-  if (payload.object && typeof payload.object !== 'string') {
-    errors.push('Invalid object field')
-  }
-
-  if (payload.entry && !Array.isArray(payload.entry)) {
-    errors.push('Entry must be an array')
-  }
-
-  // SQLインジェクション対策
-  const stringFields = ['object', 'id', 'text']
-  for (const field of stringFields) {
-    if (payload[field] && typeof payload[field] === 'string') {
-      if (containsSqlInjection(payload[field])) {
-        errors.push(`Potential SQL injection in ${field}`)
-      }
-    }
-  }
-
-  return { valid: errors.length === 0, errors }
-}
-
-// SQLインジェクション検出
-function containsSqlInjection(input: string): boolean {
-  const sqlPatterns = [
-    /(\b(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|EXEC|UNION|SCRIPT)\b)/i,
-    /(--|#|\/\*|\*\/)/,
-    /(\bOR\b|\bAND\b).*[=<>]/i,
-    /['";\x00\x1a]/
-  ]
-  
-  return sqlPatterns.some(pattern => pattern.test(input))
-}
-
-// Rate limiting チェック
-async function checkRateLimit(supabase: any, clientIP: string): Promise<boolean> {
-  try {
-    const oneMinuteAgo = new Date(Date.now() - 60 * 1000)
-    
-    const { data, error } = await supabase
-      .from('security_events')
-      .select('id')
-      .eq('ip_address', clientIP)
-      .gte('created_at', oneMinuteAgo.toISOString())
-    
-    if (error) {
-      console.error('Rate limit check error:', error)
-      return false
-    }
-    
-    // 1分間に最大30リクエストまで許可
-    return (data?.length || 0) >= 30
-  } catch (error) {
-    console.error('Rate limiting error:', error)
-    return false
-  }
-}
-
-// リプライデータ処理
-async function processReplyData(supabase: any, persona_id: string, replyData: any): Promise<number> {
-  try {
-    console.log('Processing reply data:', replyData)
-    
+    // ペルソナ情報を取得
     const { data: persona, error: personaError } = await supabase
       .from('personas')
-      .select(`
-        id, name, user_id, ai_auto_reply_enabled, threads_username, threads_user_id,
-        auto_replies (
-          is_active, response_template
-        )
-      `)
-      .eq('id', persona_id)
-      .maybeSingle()
+      .select('*')
+      .eq('id', personaId)
+      .single();
 
-    if (personaError) {
-      console.error('Database error fetching persona:', personaError)
-      return 0
+    if (personaError || !persona) {
+      console.error('❌ ペルソナが見つかりません:', personaError);
+      return new Response(JSON.stringify({ error: 'Persona not found' }), {
+        status: 404,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
     }
 
-    if (!persona) {
-      console.error('Persona not found for ID:', persona_id)
-      return 0
+    console.log(`✅ ペルソナ取得成功: ${persona.name}`);
+
+    // Webhookペイロードを解析
+    const payload = await req.json();
+    console.log(`📦 Webhookペイロード:`, JSON.stringify(payload, null, 2));
+
+    // リプライデータを抽出
+    const replies = extractRepliesFromPayload(payload);
+    console.log(`📨 抽出されたリプライ数: ${replies.length}`);
+
+    if (replies.length === 0) {
+      console.log('ℹ️ 処理対象のリプライがありません');
+      return new Response(JSON.stringify({ message: 'No replies to process' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
     }
 
-    console.log('Processing replies for persona:', persona.name, 'username:', persona.threads_username)
-
-    let repliesProcessed = 0
-
-    // リプライデータの配列を処理
-    const replies = Array.isArray(replyData) ? replyData : [replyData]
-    
+    // 各リプライを処理
+    let processedCount = 0;
     for (const reply of replies) {
-      console.log('Processing individual reply:', {
-        replyId: reply.id,
-        username: reply.username,
-        text: reply.text,
-        rootPostData: reply.root_post,
-        repliedToData: reply.replied_to,
-        fullReplyData: JSON.stringify(reply, null, 2)
-      })
-
-      // 自分自身のリプライをスキップ
-      if (reply.username === persona.threads_username || reply.username === persona.name) {
-        console.log(`Skipping self-reply from ${reply.username}`)
-        continue
-      }
-
-      // このリプライが現在のペルソナ宛てかチェック
-      // root_post.usernameまたはreplied_toで判定
-      const isForThisPersona = reply.root_post?.username === persona.threads_username || 
-                              reply.root_post?.username === persona.name
-
-      if (!isForThisPersona) {
-        console.log(`Reply not for this persona. Root post owner: ${reply.root_post?.username}, persona: ${persona.threads_username}/${persona.name}`)
-        continue
-      }
-
-      console.log(`Processing reply for persona ${persona.name}:`, reply.text)
-
-      // 重複チェック
-      const { data: existingReply } = await supabase
-        .from('thread_replies')
-        .select('id')
-        .eq('reply_id', reply.id)
-        .maybeSingle()
-
-      if (existingReply) {
-        console.log(`Reply already exists: ${reply.id}`)
-        continue
-      }
-
-      // リプライを保存
-      const { error: insertError } = await supabase
-        .from('thread_replies')
-        .insert({
-          user_id: persona.user_id,
-          persona_id: persona.id,
-          original_post_id: reply.replied_to?.id || reply.root_post?.id || 'unknown',
-          reply_id: reply.id,
-          reply_text: reply.text || '',
-          reply_author_id: reply.username,
-          reply_author_username: reply.username,
-          reply_timestamp: new Date(reply.timestamp || Date.now()).toISOString(),
-          auto_reply_sent: false
-        })
-
-      if (insertError) {
-        console.error('Failed to insert reply:', insertError)
-        continue
-      }
-
-      repliesProcessed++
-      console.log(`Reply saved for persona ${persona.name}: ${reply.id}`)
-
-      // アクティビティログを記録
-      await supabase
-        .from('activity_logs')
-        .insert({
-          user_id: persona.user_id,
-          persona_id: persona.id,
-          action_type: 'reply_received',
-          description: `新しいリプライを受信: @${reply.username}`,
-          metadata: {
-            reply_id: reply.id,
-            reply_text: reply.text?.substring(0, 100),
-            author: reply.username
-          }
-        })
-
-      // 自動返信設定の確認
-      const autoReplySettings = persona.auto_replies?.[0]
-      if (!autoReplySettings || !autoReplySettings.is_active) {
-        console.log(`自動返信設定がOFFになっています - persona: ${persona.name}`)
-        continue
-      }
-
-      console.log(`自動返信設定が有効 - persona: ${persona.name}`)
-
-      // トリガー自動返信（定型文）の処理
-      const templateReplySent = await processKeywordTriggerReplies(supabase, persona, reply)
-      if (templateReplySent) {
-        console.log(`定型文返信を送信したため、AI返信はスキップします`)
-        continue
-      }
-
-      // AI自動返信の処理
-      if (persona.ai_auto_reply_enabled) {
-        console.log(`Triggering AI auto-reply for reply: ${reply.id}`)
-        
-        // アクセストークンを取得・復号化
-        const { data: personaWithToken } = await supabase
-          .from('personas')
-          .select('threads_access_token')
-          .eq('id', persona.id)
-          .maybeSingle();
-
-        if (!personaWithToken?.threads_access_token) {
-          console.log(`No access token found for persona ${persona.id}`);
-          continue;
-        }
-
-        const { data: decryptedToken, error: decryptError } = await supabase
-          .rpc('decrypt_access_token', { encrypted_token: personaWithToken.threads_access_token });
-
-        if (decryptError || !decryptedToken) {
-          console.error(`Token decryption failed for persona: ${persona.id}`, decryptError);
-          continue;
-        }
-
-        // ペルソナにアクセストークンを追加
-        const personaWithDecryptedToken = {
-          ...persona,
-          threads_access_token: decryptedToken
-        };
-        
-        // 元の投稿内容を取得
-        let originalPostContent = ''
-        try {
-          if (reply.root_post?.id) {
-            console.log(`Fetching original post content for post ID: ${reply.root_post.id}`)
-            const postResponse = await fetch(`https://graph.threads.net/v1.0/${reply.root_post.id}?fields=text&access_token=${decryptedToken}`)
-            if (postResponse.ok) {
-              const postData = await postResponse.json()
-              originalPostContent = postData.text || ''
-              console.log(`Original post content retrieved: "${originalPostContent.substring(0, 100)}..."`)
-            } else {
-              console.log(`Failed to fetch original post: ${postResponse.status}`)
-            }
-          } else {
-            console.log('No root_post.id available for original post content fetch')
-          }
-        } catch (error) {
-          console.error(`Error fetching original post content:`, error)
-        }
-        
-        try {
-          const { data: autoReplyResponse, error: autoReplyError } = await supabase.functions.invoke('threads-auto-reply', {
-            body: {
-              postContent: originalPostContent,
-              replyContent: reply.text,
-              replyId: reply.id,
-              personaId: persona.id,
-              userId: persona.user_id,
-              replyAuthor: reply.username
-            }
-          })
-
-          if (autoReplyError) {
-            console.error(`Auto-reply error for ${reply.id}:`, autoReplyError)
-          } else {
-            console.log(`Auto-reply triggered for ${reply.id}`)
-            
-            // auto_reply_sentフラグを更新
-            await supabase
-              .from('thread_replies')
-              .update({ auto_reply_sent: true })
-              .eq('reply_id', reply.id)
-          }
-        } catch (autoReplyErr) {
-          console.error(`Failed to trigger auto-reply for ${reply.id}:`, autoReplyErr)
-        }
-      }
+      const success = await processReply(persona, reply);
+      if (success) processedCount++;
     }
 
-    return repliesProcessed
+    console.log(`✅ 処理完了 - ${processedCount}/${replies.length}件処理しました`);
+
+    return new Response(JSON.stringify({ 
+      success: true, 
+      processed: processedCount,
+      total: replies.length 
+    }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+
   } catch (error) {
-    console.error('Error processing reply data:', error)
-    return 0
+    console.error('❌ Webhook処理エラー:', error);
+    return new Response(JSON.stringify({ error: error.message }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+  }
+});
+
+// Webhookペイロードからリプライデータを抽出
+function extractRepliesFromPayload(payload: any): any[] {
+  console.log('🔍 リプライデータ抽出開始');
+  
+  const replies = [];
+  
+  if (payload.values && Array.isArray(payload.values)) {
+    for (const valueItem of payload.values) {
+      if (valueItem.field === 'replies' && valueItem.value) {
+        replies.push(valueItem.value);
+        console.log(`✅ リプライ抽出: ${valueItem.value.id} - "${valueItem.value.text}"`);
+      }
+    }
+  }
+  
+  return replies;
+}
+
+// リプライを処理
+async function processReply(persona: any, reply: any): Promise<boolean> {
+  try {
+    console.log(`\n🔄 リプライ処理開始: ${reply.id} - "${reply.text}" by ${reply.username}`);
+
+    // 自分自身のリプライをスキップ
+    if (reply.username === persona.threads_username || reply.username === persona.name) {
+      console.log(`⏭️ 自分のリプライをスキップ: ${reply.id}`);
+      return false;
+    }
+
+    // リプライが既に存在するかチェック
+    const { data: existingReply } = await supabase
+      .from('thread_replies')
+      .select('id, auto_reply_sent')
+      .eq('reply_id', reply.id)
+      .single();
+
+    if (existingReply && existingReply.auto_reply_sent) {
+      console.log(`⏭️ 既に処理済みのリプライ: ${reply.id}`);
+      return false;
+    }
+
+    // リプライをデータベースに保存
+    await saveReplyToDatabase(persona, reply);
+
+    // アクティビティログを記録
+    await logActivity(persona.user_id, persona.id, 'reply_received', 
+      `新しいリプライを受信: @${reply.username}`, {
+        author: reply.username,
+        reply_id: reply.id,
+        reply_text: reply.text
+      });
+
+    // 自動返信処理
+    const autoReplyResult = await processAutoReply(persona, reply);
+    
+    // auto_reply_sentフラグを更新
+    if (autoReplyResult.sent) {
+      await supabase
+        .from('thread_replies')
+        .update({ auto_reply_sent: true })
+        .eq('reply_id', reply.id);
+      
+      console.log(`✅ auto_reply_sentフラグ更新完了: ${reply.id}`);
+    }
+
+    return true;
+
+  } catch (error) {
+    console.error(`❌ リプライ処理エラー (${reply.id}):`, error);
+    return false;
   }
 }
 
-// キーワードトリガー返信の処理
-async function processKeywordTriggerReplies(supabase: any, persona: any, reply: any): Promise<boolean> {
-  try {
-    console.log(`\n🔍 処理中: "${reply.text}" (ID: ${reply.id})`)
-    
-    // このペルソナのトリガー返信設定を取得
-    const { data: triggerSettings, error } = await supabase
-      .from('auto_replies')
-      .select('*')
-      .eq('persona_id', persona.id)
-      .eq('is_active', true)
+// リプライをデータベースに保存
+async function saveReplyToDatabase(persona: any, reply: any): Promise<void> {
+  console.log(`💾 リプライをデータベースに保存中: ${reply.id}`);
 
-    if (error) {
-      console.error('トリガー返信設定の取得エラー:', error)
-      return false
-    }
+  const { error } = await supabase
+    .from('thread_replies')
+    .upsert({
+      user_id: persona.user_id,
+      persona_id: persona.id,
+      original_post_id: reply.replied_to?.id || reply.root_post?.id,
+      reply_id: reply.id,
+      reply_text: reply.text || '',
+      reply_author_id: reply.username,
+      reply_author_username: reply.username,
+      reply_timestamp: new Date(reply.timestamp || Date.now()).toISOString(),
+      auto_reply_sent: false
+    }, {
+      onConflict: 'reply_id'
+    });
 
-    if (!triggerSettings || triggerSettings.length === 0) {
-      console.log('❌ アクティブなトリガー返信設定がありません')
-      return false
-    }
+  if (error) {
+    console.error('❌ リプライ保存エラー:', error);
+    throw error;
+  }
 
-    console.log(`🎯 定型文返信設定: ${triggerSettings.length}件`)
+  console.log(`✅ リプライ保存完了: ${reply.id}`);
+}
 
-    const replyText = reply.text?.trim().toLowerCase() || ''
-    
-    // 各トリガー設定をチェック
-    for (const setting of triggerSettings) {
-      const keywords = setting.trigger_keywords || []
-      let matched = false
+// 自動返信を処理
+async function processAutoReply(persona: any, reply: any): Promise<{ sent: boolean, method?: string }> {
+  console.log(`🤖 自動返信処理開始 - persona: ${persona.name}`);
 
-      for (const keyword of keywords) {
-        const cleanKeyword = keyword.trim().toLowerCase()
-        const cleanReplyText = replyText
+  // 自動返信設定を取得
+  const { data: autoRepliesSettings } = await supabase
+    .from('auto_replies')
+    .select('*')
+    .eq('persona_id', persona.id)
+    .eq('is_active', true);
+
+  if (!autoRepliesSettings || autoRepliesSettings.length === 0) {
+    console.log(`❌ 自動返信設定がOFF - persona: ${persona.name}`);
+    return { sent: false };
+  }
+
+  console.log(`✅ 自動返信設定が有効 - persona: ${persona.name}, 設定数: ${autoRepliesSettings.length}`);
+
+  // 1. トリガー自動返信（定型文）をチェック
+  const templateResult = await processTemplateAutoReply(persona, reply, autoRepliesSettings);
+  if (templateResult.sent) {
+    return templateResult;
+  }
+
+  // 2. AI自動返信をチェック
+  if (persona.ai_auto_reply_enabled) {
+    const aiResult = await processAIAutoReply(persona, reply);
+    return aiResult;
+  }
+
+  console.log(`ℹ️ 自動返信条件に該当なし - persona: ${persona.name}`);
+  return { sent: false };
+}
+
+// トリガー自動返信（定型文）を処理
+async function processTemplateAutoReply(persona: any, reply: any, autoRepliesSettings: any[]): Promise<{ sent: boolean, method?: string }> {
+  console.log(`🎯 定型文自動返信チェック開始`);
+
+  const replyText = (reply.text || '').trim().toLowerCase();
+  console.log(`🔍 リプライテキスト: "${replyText}"`);
+
+  for (const setting of autoRepliesSettings) {
+    const keywords = setting.trigger_keywords || [];
+    console.log(`🔑 チェック中のキーワード:`, keywords);
+
+    for (const keyword of keywords) {
+      const cleanKeyword = keyword.trim().toLowerCase();
+      if (replyText.includes(cleanKeyword)) {
+        console.log(`🎉 キーワードマッチ: "${keyword}" → 返信: "${setting.response_template}"`);
         
-        console.log(`🔍 クリーンテキスト: "${cleanReplyText}" vs "${cleanKeyword}"`)
-        console.log(`🔍 キーワード "${keyword}" vs "${reply.text}" → ${cleanReplyText.includes(cleanKeyword)}`)
-        
-        if (cleanReplyText.includes(cleanKeyword)) {
-          matched = true
-          console.log(`✅ キーワード "${keyword}" がマッチしました！`)
-          break
-        }
-      }
-
-      if (matched) {
-        console.log(`🚀 トリガー返信を送信中: "${setting.response_template}"`)
-        
-        // トリガー返信を送信
-        const success = await sendThreadsReply(supabase, persona, reply.id, setting.response_template)
+        // 定型文返信を送信
+        const success = await sendThreadsReply(persona, reply.id, setting.response_template);
         
         if (success) {
           // アクティビティログを記録
-          await supabase
-            .from('activity_logs')
-            .insert({
-              user_id: persona.user_id,
-              persona_id: persona.id,
-              action_type: 'keyword_auto_reply_sent',
-              description: `キーワード自動返信を送信: "${setting.response_template.substring(0, 50)}..."`,
-              metadata: {
-                reply_id: reply.id,
-                keyword_matched: keywords.find(k => replyText.includes(k.trim().toLowerCase())),
-                response_sent: setting.response_template
-              }
-            })
-          
-          // 一つでもマッチしたら true を返す（複数のトリガーが同時に発動しないようにする）
-          return true
+          await logActivity(persona.user_id, persona.id, 'template_auto_reply_sent',
+            `定型文自動返信を送信: "${setting.response_template.substring(0, 50)}..."`, {
+              reply_id: reply.id,
+              keyword_matched: keyword,
+              response_sent: setting.response_template
+            });
+
+          return { sent: true, method: 'template' };
         }
       }
     }
+  }
 
-    console.log('❌ マッチするキーワードがありませんでした')
-    return false
+  console.log(`❌ マッチするキーワードなし`);
+  return { sent: false };
+}
+
+// AI自動返信を処理
+async function processAIAutoReply(persona: any, reply: any): Promise<{ sent: boolean, method?: string }> {
+  console.log(`🧠 AI自動返信処理開始 - persona: ${persona.name}`);
+
+  try {
+    const { data: aiResponse, error: aiError } = await supabase.functions.invoke('threads-auto-reply', {
+      body: {
+        postContent: '', // 元投稿の内容
+        replyContent: reply.text,
+        replyId: reply.id,
+        personaId: persona.id,
+        userId: persona.user_id
+      }
+    });
+
+    if (aiError) {
+      console.error(`❌ AI自動返信エラー:`, aiError);
+      return { sent: false };
+    }
+
+    console.log(`✅ AI自動返信送信完了:`, aiResponse);
+
+    // アクティビティログを記録
+    await logActivity(persona.user_id, persona.id, 'ai_auto_reply_sent',
+      'AI自動返信を送信', {
+        reply_id: reply.id,
+        ai_response: aiResponse
+      });
+
+    return { sent: true, method: 'ai' };
+
   } catch (error) {
-    console.error('キーワードトリガー返信処理エラー:', error)
-    return false
+    console.error(`❌ AI自動返信処理エラー:`, error);
+    return { sent: false };
   }
 }
 
-// Threads API を使用して返信を送信
-async function sendThreadsReply(supabase: any, persona: any, replyToId: string, responseText: string): Promise<boolean> {
+// Threads APIを使用して返信を送信
+async function sendThreadsReply(persona: any, replyToId: string, responseText: string): Promise<boolean> {
   try {
-    console.log('🔧 sendThreadsReply started:', { personaId: persona.id, replyToId, responseText })
-    
-    // アクセストークンを取得・復号化（新しい方法）
-    let decryptedToken = null;
-    
-    console.log('🔑 Attempting to retrieve token via edge function...')
-    try {
-      const { data: tokenData, error: tokenError } = await supabase.functions.invoke('retrieve-secret', {
-        body: { 
-          key: `persona_${persona.id}_threads_token`,
-          user_id: persona.user_id
-        }
-      });
-      
-      console.log('🔑 Edge function response:', { data: tokenData, error: tokenError })
-      
-      if (tokenData?.value && !tokenError) {
-        decryptedToken = tokenData.value;
-        console.log('✅ Token retrieved via edge function successfully');
-      } else {
-        console.log('❌ Edge function token retrieval failed:', tokenError);
-      }
-    } catch (edgeFunctionError) {
-      console.log('❌ Edge function retrieval failed with exception:', edgeFunctionError);
-    }
-    
-    // フォールバック: 旧式の復号化方法
-    if (!decryptedToken) {
-      console.log('🔄 Trying legacy token retrieval method...')
-      const { data: personaWithToken } = await supabase
-        .from('personas')
-        .select('threads_access_token')
-        .eq('id', persona.id)
-        .maybeSingle();
+    console.log(`📤 Threads返信送信開始: "${responseText}" (Reply to: ${replyToId})`);
 
-      console.log('🔄 Legacy token query result:', { hasToken: !!personaWithToken?.threads_access_token })
-
-      if (!personaWithToken?.threads_access_token) {
-        console.error('❌ No threads access token found for persona:', persona.id)
-        return false
-      }
-
-      const { data: legacyDecryptedToken, error: decryptError } = await supabase
-        .rpc('decrypt_access_token', { encrypted_token: personaWithToken.threads_access_token });
-
-      console.log('🔄 Legacy decryption result:', { hasToken: !!legacyDecryptedToken, error: decryptError })
-
-      if (decryptError || !legacyDecryptedToken) {
-        console.error('❌ Token decryption failed for persona:', persona.id, decryptError)
-        return false
-      }
-      
-      decryptedToken = legacyDecryptedToken;
-      console.log('✅ Legacy token retrieval successful')
+    // アクセストークンを取得
+    const accessToken = await getAccessToken(persona);
+    if (!accessToken) {
+      console.error('❌ アクセストークンの取得に失敗');
+      return false;
     }
 
-    if (!decryptedToken) {
-      console.error('❌ No valid access token found for persona:', persona.id)
-      return false
-    }
-
-    console.log(`📤 Threads返信送信中: "${responseText}" (Reply to: ${replyToId})`)
-
-    // threads_user_idが無い場合は「me」を使用
-    const userId = persona.threads_user_id || 'me'
-    
-    console.log(`📤 Using user ID: ${userId} for persona: ${persona.name}`)
+    const userId = persona.threads_user_id || 'me';
 
     // コンテナを作成
     const createResponse = await fetch(`https://graph.threads.net/v1.0/${userId}/threads`, {
@@ -827,21 +325,21 @@ async function sendThreadsReply(supabase: any, persona: any, replyToId: string, 
         media_type: 'TEXT_POST',
         text: responseText,
         reply_to_id: replyToId,
-        access_token: decryptedToken
+        access_token: accessToken
       })
-    })
+    });
 
     if (!createResponse.ok) {
-      const errorText = await createResponse.text()
-      console.error('Threads container creation failed:', errorText)
-      return false
+      const errorText = await createResponse.text();
+      console.error('❌ Threads コンテナ作成失敗:', errorText);
+      return false;
     }
 
-    const containerData = await createResponse.json()
-    console.log('🎯 Container created:', containerData.id)
+    const containerData = await createResponse.json();
+    console.log(`✅ コンテナ作成成功: ${containerData.id}`);
 
     // 少し待機してから投稿
-    await new Promise(resolve => setTimeout(resolve, 2000))
+    await new Promise(resolve => setTimeout(resolve, 2000));
 
     // 投稿を公開
     const publishResponse = await fetch('https://graph.threads.net/v1.0/me/threads_publish', {
@@ -851,41 +349,90 @@ async function sendThreadsReply(supabase: any, persona: any, replyToId: string, 
       },
       body: JSON.stringify({
         creation_id: containerData.id,
-        access_token: decryptedToken
+        access_token: accessToken
       })
-    })
+    });
 
     if (!publishResponse.ok) {
-      const errorText = await publishResponse.text()
-      console.error('Threads publish failed:', errorText)
-      return false
+      const errorText = await publishResponse.text();
+      console.error('❌ Threads 投稿公開失敗:', errorText);
+      return false;
     }
 
-    const publishData = await publishResponse.json()
-    console.log('✅ キーワード返信投稿成功:', publishData.id)
-    return true
+    const publishData = await publishResponse.json();
+    console.log(`🎉 返信送信成功: ${publishData.id}`);
+    return true;
 
   } catch (error) {
-    console.error('Threads返信送信エラー:', error)
-    return false
+    console.error('❌ Threads返信送信エラー:', error);
+    return false;
   }
 }
 
-// セキュリティイベントログ
-async function logSecurityEvent(supabase: any, event: any) {
+// アクセストークンを取得
+async function getAccessToken(persona: any): Promise<string | null> {
   try {
-    const { error } = await supabase.rpc('log_security_event', {
-      p_event_type: event.event_type,
-      p_user_id: event.user_id || null,
-      p_ip_address: event.ip_address || null,
-      p_user_agent: event.user_agent || null,
-      p_details: event.details || null
-    })
-    
-    if (error) {
-      console.error('Failed to log security event:', error)
+    console.log('🔑 アクセストークン取得開始');
+
+    // 新しい方法でトークンを取得
+    const { data: tokenData, error: tokenError } = await supabase.functions.invoke('retrieve-secret', {
+      body: { 
+        key: `persona_${persona.id}_threads_token`,
+        user_id: persona.user_id
+      }
+    });
+
+    if (tokenData?.value && !tokenError) {
+      console.log('✅ トークン取得成功（新方式）');
+      return tokenData.value;
     }
+
+    console.log('🔄 従来方式でトークン取得を試行');
+
+    // 従来方式のフォールバック
+    const { data: personaWithToken } = await supabase
+      .from('personas')
+      .select('threads_access_token')
+      .eq('id', persona.id)
+      .single();
+
+    if (!personaWithToken?.threads_access_token) {
+      console.error('❌ アクセストークンが見つかりません');
+      return null;
+    }
+
+    const { data: decryptedToken, error: decryptError } = await supabase
+      .rpc('decrypt_access_token', { encrypted_token: personaWithToken.threads_access_token });
+
+    if (decryptError || !decryptedToken) {
+      console.error('❌ トークン復号化失敗:', decryptError);
+      return null;
+    }
+
+    console.log('✅ トークン取得成功（従来方式）');
+    return decryptedToken;
+
   } catch (error) {
-    console.error('Security logging error:', error)
+    console.error('❌ トークン取得エラー:', error);
+    return null;
+  }
+}
+
+// アクティビティログを記録
+async function logActivity(userId: string, personaId: string, actionType: string, description: string, metadata?: any): Promise<void> {
+  try {
+    await supabase
+      .from('activity_logs')
+      .insert({
+        user_id: userId,
+        persona_id: personaId,
+        action_type: actionType,
+        description: description,
+        metadata: metadata || {}
+      });
+    
+    console.log(`📝 アクティビティログ記録: ${actionType}`);
+  } catch (error) {
+    console.error('❌ アクティビティログ記録エラー:', error);
   }
 }
