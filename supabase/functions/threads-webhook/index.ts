@@ -561,7 +561,7 @@ async function processReplyData(supabase: any, persona_id: string, replyData: an
         })
 
       // 自動返信設定の確認
-      const autoReplySettings = persona.auto_reply_settings?.[0]
+      const autoReplySettings = persona.auto_replies?.[0]
       if (!autoReplySettings || !autoReplySettings.is_active) {
         console.log(`自動返信設定がOFFになっています - persona: ${persona.name}`)
         continue
@@ -570,13 +570,10 @@ async function processReplyData(supabase: any, persona_id: string, replyData: an
       console.log(`自動返信設定が有効 - persona: ${persona.name}`)
 
       // トリガー自動返信（定型文）の処理
-      if (autoReplySettings.template_replies_enabled) {
-        console.log(`トリガー自動返信（定型文）処理開始 - persona: ${persona.name}`)
-        const templateReplySent = await processKeywordTriggerReplies(supabase, persona, reply)
-        if (templateReplySent) {
-          console.log(`定型文返信を送信したため、AI返信はスキップします`)
-          continue
-        }
+      const templateReplySent = await processKeywordTriggerReplies(supabase, persona, reply)
+      if (templateReplySent) {
+        console.log(`定型文返信を送信したため、AI返信はスキップします`)
+        continue
       }
 
       // AI自動返信の処理
