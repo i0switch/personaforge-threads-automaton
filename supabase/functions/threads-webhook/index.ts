@@ -31,6 +31,31 @@ serve(async (req) => {
       });
     }
 
+    // Facebook Webhook認証のチャレンジレスポンス処理（GETリクエスト）
+    if (req.method === 'GET') {
+      const challenge = url.searchParams.get('hub.challenge');
+      const verifyToken = url.searchParams.get('hub.verify_token');
+      
+      console.log(`🔐 Facebook Webhook認証 - challenge: ${challenge}, verify_token: ${verifyToken}`);
+      
+      // ペルソナのwebhook_verify_tokenを取得
+      const { data: persona } = await supabase
+        .from('personas')
+        .select('webhook_verify_token')
+        .eq('id', personaId)
+        .maybeSingle();
+      
+      if (persona && persona.webhook_verify_token && verifyToken === persona.webhook_verify_token) {
+        console.log(`✅ Webhook認証成功 - persona: ${personaId}`);
+        return new Response(challenge, {
+          headers: { 'Content-Type': 'text/plain' }
+        });
+      } else {
+        console.error(`❌ Webhook認証失敗 - 期待値: ${persona?.webhook_verify_token}, 受信値: ${verifyToken}`);
+        return new Response('Forbidden', { status: 403 });
+      }
+    }
+
     console.log(`📋 処理開始 - ペルソナID: ${personaId}`);
 
     // ペルソナ情報を取得（自動返信設定も含む）
@@ -50,7 +75,7 @@ serve(async (req) => {
 
     console.log(`✅ ペルソナ取得成功: ${persona.name}, 自動返信: ${persona.auto_reply_enabled}`);
 
-    // Webhookペイロードを解析
+    // Webhookペイロードを解析（POSTリクエストの場合のみ）
     const payload = await req.json();
     console.log(`📦 Webhookペイロード:`, JSON.stringify(payload, null, 2));
 
