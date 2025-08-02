@@ -41,6 +41,23 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         
         console.log('Auth state change:', event, session?.user?.id);
         
+        // Handle token revoked or signed out events
+        if (event === 'TOKEN_REFRESHED' && !session) {
+          console.log('Token refresh failed, clearing session');
+          setSession(null);
+          setUser(null);
+          setLoading(false);
+          return;
+        }
+        
+        if (event === 'SIGNED_OUT' || !session) {
+          console.log('User signed out or session invalid, clearing state');
+          setSession(null);
+          setUser(null);
+          setLoading(false);
+          return;
+        }
+        
         setSession(session);
         setUser(session?.user ?? null);
         
@@ -59,10 +76,32 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         const { data: { session }, error } = await supabase.auth.getSession();
         if (error) {
           console.error('Error getting session:', error);
+          // Clear potentially corrupted session data
+          await supabase.auth.signOut({ scope: 'local' });
           if (mounted && !initialLoadComplete) {
+            setSession(null);
+            setUser(null);
             setLoading(false);
+            initialLoadComplete = true;
           }
           return;
+        }
+        
+        // Validate session if it exists
+        if (session) {
+          // Check if token is still valid by making a simple API call
+          const { error: testError } = await supabase.from('user_account_status').select('user_id').limit(1);
+          if (testError && testError.message.includes('invalid claim')) {
+            console.log('Session token invalid, clearing session');
+            await supabase.auth.signOut({ scope: 'local' });
+            if (mounted && !initialLoadComplete) {
+              setSession(null);
+              setUser(null);
+              setLoading(false);
+              initialLoadComplete = true;
+            }
+            return;
+          }
         }
         
         if (mounted && !initialLoadComplete) {
@@ -74,8 +113,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         }
       } catch (error) {
         console.error('Auth initialization error:', error);
+        // Clear session on any error
+        await supabase.auth.signOut({ scope: 'local' });
         if (mounted && !initialLoadComplete) {
+          setSession(null);
+          setUser(null);
           setLoading(false);
+          initialLoadComplete = true;
         }
       }
     };
