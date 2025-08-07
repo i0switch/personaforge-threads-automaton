@@ -74,10 +74,6 @@ export default function AutoPostMode() {
                 <Button variant="secondary" onClick={() => navigate("/auto-post-mode/schedules")}>
                   設定済みスケジュール編集
                 </Button>
-                <Button variant="outline" onClick={() => navigate("/scheduled-posts")}>スケジュール設定を開く</Button>
-                <Button variant="outline" onClick={() => navigate("/create-posts")}>
-                  投稿テンプレートを作成
-                </Button>
               </CardContent>
             </Card>
 
