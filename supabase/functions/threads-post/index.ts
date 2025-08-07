@@ -199,6 +199,28 @@ serve(async (req) => {
       // Don't throw here as the post was successfully published
     } else {
       console.log('Post status updated successfully');
+
+      // Save Threads post ID to self-reply job for this post (if exists)
+      try {
+        const threadsId: string | undefined = publishData?.id;
+        if (threadsId) {
+          const { error: jobErr } = await supabase
+            .from('self_reply_jobs')
+            .update({ threads_post_id: threadsId })
+            .eq('post_id', postId)
+            .eq('status', 'pending');
+          if (jobErr) {
+            console.error('Failed to update self_reply_jobs with Threads ID:', jobErr);
+          } else {
+            console.log('self_reply_jobs updated with Threads ID:', threadsId);
+          }
+        } else {
+          console.warn('No Threads ID in publishData; skipping job update');
+        }
+      } catch (e) {
+        console.error('Error updating self-reply job with Threads ID', e);
+      }
+
       // Kick off self-reply processor in background (do not await)
       try {
         // Safe fire-and-forget
