@@ -61,7 +61,7 @@ export default function AutoPostMode() {
             </CardContent>
           </Card>
 
-          <section className="grid gap-6 md:grid-cols-2">
+          <section>
             <Card>
               <CardHeader>
                 <CardTitle>クイックスタート</CardTitle>
