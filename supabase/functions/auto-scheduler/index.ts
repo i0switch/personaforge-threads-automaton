@@ -54,7 +54,7 @@ serve(async (req) => {
     // キューにない直接スケジュール済みの投稿を取得（重複を避けるため）
     const queuePostIds = queueItems?.map(item => item.post_id) || [];
     
-    const { data: scheduledPosts, error: scheduledError } = await supabase
+    const { data: scheduledPostsRaw, error: scheduledError } = await supabase
       .from('posts')
       .select(`
         *,
@@ -63,9 +63,11 @@ serve(async (req) => {
       .eq('status', 'scheduled')
       .not('scheduled_for', 'is', null)
       .lte('scheduled_for', timeBuffer.toISOString())
-      .not('id', 'in', `(${queuePostIds.length > 0 ? queuePostIds.map(id => `'${id}'`).join(',') : "''"})`)
       .order('scheduled_for', { ascending: true })
-      .limit(10);
+      .limit(20);
+
+    // キューに存在するpost_idを除外（クライアント側で安全にフィルタ）
+    const scheduledPosts = (scheduledPostsRaw || []).filter(post => !queuePostIds.includes(post.id));
 
     if (scheduledError) {
       console.error('Error fetching scheduled posts:', scheduledError);
