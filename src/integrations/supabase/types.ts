@@ -631,6 +631,78 @@ export type Database = {
         }
         Relationships: []
       }
+      self_reply_jobs: {
+        Row: {
+          attempt_count: number
+          created_at: string
+          id: string
+          last_error: string | null
+          persona_id: string
+          post_id: string
+          reply_id: string | null
+          status: string
+          threads_post_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          attempt_count?: number
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          persona_id: string
+          post_id: string
+          reply_id?: string | null
+          status?: string
+          threads_post_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          attempt_count?: number
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          persona_id?: string
+          post_id?: string
+          reply_id?: string | null
+          status?: string
+          threads_post_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      self_reply_settings: {
+        Row: {
+          created_at: string
+          enabled: boolean
+          id: string
+          messages: string[]
+          persona_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          messages?: string[]
+          persona_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          messages?: string[]
+          persona_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       thread_replies: {
         Row: {
           auto_reply_sent: boolean | null
