@@ -39,6 +39,7 @@ export default function AutoPostSchedules() {
 
   const [configs, setConfigs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [personaMap, setPersonaMap] = useState<Record<string, string>>({});
 
   const timeZone = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone, []);
 
@@ -51,20 +52,35 @@ export default function AutoPostSchedules() {
   const load = async () => {
     if (!user) return;
     setLoading(true);
-    const { data, error } = await supabase
-      .from('auto_post_configs')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false });
-    if (error) {
-      console.error(error);
+
+    const [configsRes, personasRes] = await Promise.all([
+      supabase
+        .from('auto_post_configs')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('personas')
+        .select('id, name')
+        .eq('user_id', user.id)
+    ]);
+
+    if (configsRes.error) {
+      console.error(configsRes.error);
       toast({ title: 'エラー', description: '設定の読み込みに失敗しました', variant: 'destructive' });
     } else {
-      setConfigs(data || []);
+      setConfigs(configsRes.data || []);
     }
+
+    if (personasRes.error) {
+      console.error(personasRes.error);
+    } else {
+      const map = Object.fromEntries((personasRes.data || []).map((p: any) => [p.id, p.name]));
+      setPersonaMap(map);
+    }
+
     setLoading(false);
   };
-
   useEffect(() => { load(); }, [user]);
 
   const toggleActive = async (id: string, active: boolean) => {
@@ -143,6 +159,7 @@ export default function AutoPostSchedules() {
                   <div key={c.id} className="border rounded-lg p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                     <div className="space-y-1">
                       <div className="text-sm text-muted-foreground">次回: {new Date(c.next_run_at).toLocaleString()}</div>
+                      <div className="text-sm">ペルソナ: {personaMap[c.persona_id as string] || '未設定'}</div>
                       <div className="text-sm">有効: {c.is_active ? 'ON' : 'OFF'}</div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -153,9 +170,19 @@ export default function AutoPostSchedules() {
                       <Button variant={c.is_active ? 'outline' : 'default'} onClick={() => toggleActive(c.id, c.is_active)}>{c.is_active ? '無効化' : '有効化'}</Button>
                       <Button variant="destructive" onClick={() => deleteConfig(c.id)}>削除</Button>
                     </div>
-                    <div className="w-full">
-                      <Label className="text-sm">カスタムプロンプト</Label>
-                      <Textarea defaultValue={c.prompt_template || ''} onBlur={(e) => updateConfig(c.id, { prompt_template: e.target.value })} />
+                    <div className="w-full space-y-2">
+                      <div>
+                        <Label className="text-sm">投稿方針</Label>
+                        <Textarea
+                          placeholder="例: 教育的・フレンドリー・短文中心 など"
+                          defaultValue={c.content_prefs || ''}
+                          onBlur={(e) => updateConfig(c.id, { content_prefs: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-sm">カスタムプロンプト</Label>
+                        <Textarea defaultValue={c.prompt_template || ''} onBlur={(e) => updateConfig(c.id, { prompt_template: e.target.value })} />
+                      </div>
                     </div>
                   </div>
                 ))}
