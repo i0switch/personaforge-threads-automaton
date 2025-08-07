@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { ArrowLeft } from "lucide-react";
 
 const setMeta = (name: string, content: string) => {
   const meta = document.querySelector(`meta[name="${name}"]`) as HTMLMetaElement | null;
@@ -38,12 +39,15 @@ export default function AutoPostMode() {
   return (
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-5xl mx-auto space-y-6">
-        <header className="flex items-center justify-between">
+        <header className="flex items-center gap-4">
+          <Button variant="outline" size="sm" onClick={() => navigate("/")}>
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            戻る
+          </Button>
           <div>
             <h1 className="text-3xl font-bold">完全オートポストモード</h1>
             <p className="text-muted-foreground mt-1">AIが生成→予約→投稿まで自動運用</p>
           </div>
-          <Button variant="outline" size="sm" onClick={() => navigate("/")}>ホームに戻る</Button>
         </header>
 
         <main className="space-y-6">

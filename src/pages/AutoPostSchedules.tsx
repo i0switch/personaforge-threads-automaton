@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { ArrowLeft } from "lucide-react";
 
 const setMeta = (name: string, content: string) => {
   const meta = document.querySelector(`meta[name="${name}"]`) as HTMLMetaElement | null;
@@ -132,12 +133,17 @@ export default function AutoPostSchedules() {
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-5xl mx-auto space-y-6">
         <header className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold">設定済みスケジュール編集</h1>
-            <p className="text-muted-foreground mt-1">自動投稿設定の有効化/編集/削除</p>
+          <div className="flex items-center gap-4">
+            <Button variant="outline" size="sm" onClick={() => navigate("/")}>
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              戻る
+            </Button>
+            <div>
+              <h1 className="text-3xl font-bold">設定済みスケジュール編集</h1>
+              <p className="text-muted-foreground mt-1">自動投稿設定の有効化/編集/削除</p>
+            </div>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => navigate('/auto-post-mode')}>戻る</Button>
             <Button size="sm" onClick={() => navigate('/auto-post-mode/wizard')}>新規ウィザード</Button>
           </div>
         </header>
