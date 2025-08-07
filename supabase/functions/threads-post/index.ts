@@ -199,6 +199,16 @@ serve(async (req) => {
       // Don't throw here as the post was successfully published
     } else {
       console.log('Post status updated successfully');
+      // Kick off self-reply processor in background (do not await)
+      try {
+        // Safe fire-and-forget
+        // eslint-disable-next-line @typescript-eslint/no-floating-promises
+        supabase.functions.invoke('self-reply-processor', { body: { limit: 10 } })
+          .then((res) => console.log('Triggered self-reply-processor:', res.status))
+          .catch((e) => console.error('Failed to trigger self-reply-processor', e));
+      } catch (e) {
+        console.error('Self-reply trigger error', e);
+      }
     }
 
     console.log(`Post ${postId} successfully published to Threads`);

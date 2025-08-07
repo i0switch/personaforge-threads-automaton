@@ -40,3 +40,6 @@ verify_jwt = false
 
 [functions.auto-post-generator]
 verify_jwt = false
+
+[functions.self-reply-processor]
+verify_jwt = false
