@@ -111,6 +111,16 @@ const Index = () => {
       disabled: false
     },
     {
+      title: "セルフリプライモード",
+      description: "自分の投稿へ自動リプライ設定",
+      icon: MessageSquare,
+      path: "/self-reply",
+      color: "from-fuchsia-600 to-violet-700",
+      bgGradient: "from-fuchsia-50 to-violet-50",
+      borderColor: "border-fuchsia-200",
+      disabled: !isApproved || !isActive
+    },
+    {
       title: "設定",
       description: "アカウント設定とAPIキー管理",
       icon: Settings,

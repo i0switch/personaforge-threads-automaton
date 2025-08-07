@@ -22,6 +22,7 @@ import DevelopmentGuide from "@/pages/DevelopmentGuide";
 import AutoPostMode from "@/pages/AutoPostMode";
 import AutoPostWizard from "@/pages/AutoPostWizard";
 import AutoPostSchedules from "@/pages/AutoPostSchedules";
+import SelfReplySettings from "@/pages/SelfReplySettings";
 
 const queryClient = new QueryClient();
 
@@ -145,6 +146,14 @@ function App() {
                       <ProtectedAdminRoute>
                         <SecurityManagement />
                       </ProtectedAdminRoute>
+                    }
+                  />
+                  <Route
+                    path="/self-reply"
+                    element={
+                      <ProtectedRoute>
+                        <SelfReplySettings />
+                      </ProtectedRoute>
                     }
                   />
                   <Route path="/development-guide" element={<DevelopmentGuide />} />
