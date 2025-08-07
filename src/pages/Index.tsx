@@ -192,7 +192,7 @@ const Index = () => {
             return (
               <Card 
                 key={feature.title} 
-                className={`group relative overflow-hidden border-0 bg-gradient-to-br ${feature.bgGradient} shadow-lg hover:shadow-xl transition-all duration-500 transform hover:scale-105 ${
+                className={`group relative h-full overflow-hidden border-0 bg-gradient-to-br ${feature.bgGradient} shadow-lg hover:shadow-xl transition-all duration-500 transform hover:scale-105 ${
                   feature.disabled ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'
                 }`}
                 onClick={() => !feature.disabled && navigate(feature.path)}
@@ -203,7 +203,7 @@ const Index = () => {
                 </div>
                 
                 {/* Content */}
-                <div className="relative z-10 h-full">
+                <div className="relative z-10 h-full flex flex-col">
                   <CardHeader className="pb-4">
                     <CardTitle className="flex items-center gap-4 text-xl">
                       <div className={`p-3 bg-gradient-to-r ${feature.color} rounded-xl shadow-md group-hover:scale-110 transition-transform duration-300`}>
@@ -224,7 +224,7 @@ const Index = () => {
                       {feature.description}
                     </CardDescription>
                   </CardHeader>
-                  <CardContent className="pt-0">
+                  <CardContent className="pt-0 mt-auto">
                     <Button 
                       variant="outline" 
                       className={`w-full h-12 border-2 font-semibold transition-all duration-300 flex items-center justify-center gap-2 ${
