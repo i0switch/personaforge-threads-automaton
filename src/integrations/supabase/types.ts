@@ -108,6 +108,56 @@ export type Database = {
           },
         ]
       }
+      auto_post_configs: {
+        Row: {
+          content_prefs: string | null
+          created_at: string
+          id: string
+          is_active: boolean
+          next_run_at: string
+          persona_id: string
+          post_time: string
+          prompt_template: string | null
+          timezone: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          content_prefs?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          next_run_at: string
+          persona_id: string
+          post_time: string
+          prompt_template?: string | null
+          timezone?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          content_prefs?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          next_run_at?: string
+          persona_id?: string
+          post_time?: string
+          prompt_template?: string | null
+          timezone?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "auto_post_configs_persona_id_fkey"
+            columns: ["persona_id"]
+            isOneToOne: false
+            referencedRelation: "personas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       auto_replies: {
         Row: {
           created_at: string

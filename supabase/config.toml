@@ -37,3 +37,6 @@ verify_jwt = false
 
 [functions.test-ai-auto-reply]
 verify_jwt = false
+
+[functions.auto-post-generator]
+verify_jwt = false

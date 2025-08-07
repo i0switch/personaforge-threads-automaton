@@ -1,0 +1,153 @@
+import "https://deno.land/x/xhr@0.1.0/mod.ts";
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
+
+const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+async function generateWithGemini(prompt: string): Promise<string> {
+  if (!GEMINI_API_KEY) throw new Error('Gemini API key is not configured');
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_API_KEY}`;
+
+  const body = {
+    contents: [
+      {
+        role: 'user',
+        parts: [{ text: prompt }],
+      },
+    ],
+  };
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error(`Gemini API error: ${res.status} ${txt}`);
+  }
+
+  const data = await res.json();
+  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  if (!text) throw new Error('Gemini returned empty content');
+  return text.trim();
+}
+
+function buildPrompt(persona: any, customPrompt?: string, contentPrefs?: string) {
+  const personaInfo = [
+    `ペルソナ名: ${persona?.name || '未設定'}`,
+    persona?.tone_of_voice ? `口調: ${persona.tone_of_voice}` : undefined,
+    persona?.expertise?.length ? `専門領域: ${persona.expertise.join(', ')}` : undefined,
+    persona?.personality ? `性格: ${persona.personality}` : undefined,
+  ].filter(Boolean).join('\n');
+
+  return `あなたは指定されたペルソナになりきってThreads用の短文投稿を1件だけ出力します。\n` +
+         `出力はテキスト本文のみ。絵文字やハッシュタグの使用は内容に応じて自然に。\n` +
+         `--- ペルソナ情報 ---\n${personaInfo}\n` +
+         (contentPrefs ? `--- 投稿方針 ---\n${contentPrefs}\n` : '') +
+         (customPrompt ? `--- カスタムプロンプト ---\n${customPrompt}\n` : '') +
+         `--- 出力ルール ---\n- 280文字程度以内\n- 攻撃的・不適切表現は禁止\n- 改行2回以内\n- 出力はテキスト本文のみ`;
+}
+
+serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    const now = new Date();
+
+    // 期限を迎えたアクティブな設定を取得
+    const { data: configs, error: cfgError } = await supabase
+      .from('auto_post_configs')
+      .select('*')
+      .eq('is_active', true)
+      .lte('next_run_at', now.toISOString())
+      .limit(25);
+
+    if (cfgError) throw cfgError;
+
+    let processed = 0, posted = 0, failed = 0;
+
+    for (const cfg of configs || []) {
+      try {
+        processed++;
+
+        // ペルソナ情報取得
+        const { data: persona, error: personaError } = await supabase
+          .from('personas')
+          .select('id, user_id, name, tone_of_voice, expertise, personality')
+          .eq('id', cfg.persona_id)
+          .single();
+        if (personaError) throw personaError;
+
+        // 生成
+        const prompt = buildPrompt(persona, cfg.prompt_template, cfg.content_prefs);
+        const content = await generateWithGemini(prompt);
+
+        // postsへ作成（予約投稿）
+        const { data: inserted, error: postErr } = await supabase
+          .from('posts')
+          .insert({
+            user_id: cfg.user_id,
+            persona_id: cfg.persona_id,
+            content,
+            status: 'scheduled',
+            scheduled_for: cfg.next_run_at,
+            auto_schedule: true,
+            platform: 'threads'
+          })
+          .select('id')
+          .single();
+        if (postErr) throw postErr;
+
+        // post_queueに投入（オートスケジューラが処理）
+        const { error: queueErr } = await supabase
+          .from('post_queue')
+          .insert({
+            user_id: cfg.user_id,
+            post_id: inserted.id,
+            scheduled_for: cfg.next_run_at,
+            queue_position: 0,
+            status: 'queued'
+          });
+        if (queueErr) throw queueErr;
+
+        // 次回実行時刻を+1日
+        const next = new Date(cfg.next_run_at);
+        next.setDate(next.getDate() + 1);
+        const { error: updErr } = await supabase
+          .from('auto_post_configs')
+          .update({ next_run_at: next.toISOString() })
+          .eq('id', cfg.id);
+        if (updErr) throw updErr;
+
+        posted++;
+      } catch (e) {
+        console.error('Auto post generation failed:', e);
+        failed++;
+      }
+    }
+
+    return new Response(
+      JSON.stringify({ message: 'auto-post-generator completed', processed, posted, failed }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  } catch (error: any) {
+    console.error('auto-post-generator error:', error);
+    return new Response(
+      JSON.stringify({ error: error.message || 'Unexpected error' }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+});

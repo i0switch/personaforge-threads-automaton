@@ -20,6 +20,8 @@ import AdminDashboard from "@/pages/AdminDashboard";
 import SecurityManagement from "@/pages/SecurityManagement";
 import DevelopmentGuide from "@/pages/DevelopmentGuide";
 import AutoPostMode from "@/pages/AutoPostMode";
+import AutoPostWizard from "@/pages/AutoPostWizard";
+import AutoPostSchedules from "@/pages/AutoPostSchedules";
 
 const queryClient = new QueryClient();
 
@@ -86,6 +88,22 @@ function App() {
                     element={
                       <ProtectedRoute>
                         <AutoPostMode />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/auto-post-mode/wizard"
+                    element={
+                      <ProtectedRoute>
+                        <AutoPostWizard />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/auto-post-mode/schedules"
+                    element={
+                      <ProtectedRoute>
+                        <AutoPostSchedules />
                       </ProtectedRoute>
                     }
                   />

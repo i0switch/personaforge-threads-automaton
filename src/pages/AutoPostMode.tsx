@@ -68,8 +68,16 @@ export default function AutoPostMode() {
                 <CardDescription>まずは基本設定から始めましょう</CardDescription>
               </CardHeader>
               <CardContent className="flex gap-3 flex-wrap">
-                <Button onClick={() => navigate("/scheduled-posts")}>スケジュール設定を開く</Button>
-                <Button variant="secondary" onClick={() => navigate("/create-posts")}>投稿テンプレートを作成</Button>
+                <Button onClick={() => navigate("/auto-post-mode/wizard")}>
+                  新規完全オートポストウィザード
+                </Button>
+                <Button variant="secondary" onClick={() => navigate("/auto-post-mode/schedules")}>
+                  設定済みスケジュール編集
+                </Button>
+                <Button variant="outline" onClick={() => navigate("/scheduled-posts")}>スケジュール設定を開く</Button>
+                <Button variant="outline" onClick={() => navigate("/create-posts")}>
+                  投稿テンプレートを作成
+                </Button>
               </CardContent>
             </Card>
 
