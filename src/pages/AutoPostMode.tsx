@@ -41,7 +41,7 @@ export default function AutoPostMode() {
         <header className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold">完全オートポストモード</h1>
-            <p className="text-muted-foreground mt-1">AIが生成→予約→投稿まで自動運用（ベータ）</p>
+            <p className="text-muted-foreground mt-1">AIが生成→予約→投稿まで自動運用</p>
           </div>
           <Button variant="outline" size="sm" onClick={() => navigate("/")}>ホームに戻る</Button>
         </header>
@@ -77,19 +77,6 @@ export default function AutoPostMode() {
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>注意事項</CardTitle>
-                <CardDescription>運用前にご確認ください</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ul className="list-disc pl-6 text-sm text-muted-foreground space-y-1">
-                  <li>本機能はベータ版です。想定外の出力が行われる可能性があります。</li>
-                  <li>各SNSのポリシーに反する内容の投稿は行われません。</li>
-                  <li>運用停止はいつでも可能です。</li>
-                </ul>
-              </CardContent>
-            </Card>
           </section>
         </main>
       </div>
