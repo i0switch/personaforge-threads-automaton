@@ -101,6 +101,16 @@ const Index = () => {
       disabled: !isApproved || !isActive
     },
     {
+      title: "完全オートポストモード",
+      description: "AIが生成・予約・投稿まで完全自動で実行",
+      icon: Zap,
+      path: "/auto-post-mode",
+      color: "from-blue-600 to-cyan-700",
+      bgGradient: "from-blue-50 to-cyan-50",
+      borderColor: "border-blue-200",
+      disabled: false
+    },
+    {
       title: "設定",
       description: "アカウント設定とAPIキー管理",
       icon: Settings,

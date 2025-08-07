@@ -19,6 +19,7 @@ import Settings from "@/pages/Settings";
 import AdminDashboard from "@/pages/AdminDashboard";
 import SecurityManagement from "@/pages/SecurityManagement";
 import DevelopmentGuide from "@/pages/DevelopmentGuide";
+import AutoPostMode from "@/pages/AutoPostMode";
 
 const queryClient = new QueryClient();
 
@@ -77,6 +78,14 @@ function App() {
                     element={
                       <ProtectedRoute>
                         <SchedulingDashboard />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/auto-post-mode"
+                    element={
+                      <ProtectedRoute>
+                        <AutoPostMode />
                       </ProtectedRoute>
                     }
                   />
