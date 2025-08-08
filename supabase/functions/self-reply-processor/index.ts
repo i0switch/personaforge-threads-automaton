@@ -67,7 +67,7 @@ async function fetchLatestThreadsPostId(persona: Persona, token: string): Promis
 
 async function sendReply(token: string, replyToId: string, message: string) {
   // 1) Create text container as reply
-  const createUrl = new URL("https://graph.threads.net/v1.0/threads");
+  const createUrl = new URL("https://graph.threads.net/v1.0/me/threads");
   createUrl.searchParams.set("access_token", token);
 
   const createRes = await fetch(createUrl.toString(), {
@@ -83,7 +83,7 @@ async function sendReply(token: string, replyToId: string, message: string) {
   if (!containerId) throw new Error("No container id returned");
 
   // 2) Publish container
-  const publishUrl = new URL("https://graph.threads.net/v1.0/threads_publish");
+  const publishUrl = new URL("https://graph.threads.net/v1.0/me/threads_publish");
   publishUrl.searchParams.set("access_token", token);
 
   const publishRes = await fetch(publishUrl.toString(), {
