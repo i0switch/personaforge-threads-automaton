@@ -73,7 +73,7 @@ async function sendReply(token: string, replyToId: string, message: string) {
   const createRes = await fetch(createUrl.toString(), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text: message, reply_to_id: replyToId }),
+    body: JSON.stringify({ media_type: "TEXT", text: message, reply_to_id: replyToId }),
   });
   const createBody = await createRes.text();
   console.log("Reply container response:", createRes.status, createBody);
