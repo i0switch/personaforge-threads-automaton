@@ -5,6 +5,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
@@ -198,13 +199,13 @@ async function sendThreadsReply(persona: any, accessToken: string, replyToId: st
     const userId = persona.threads_user_id || 'me';
 
     // コンテナを作成
-    const createResponse = await fetch(`https://graph.threads.net/v1.0/${userId}/threads`, {
+    const createResponse = await fetch(`https://graph.threads.net/v1.0/me/threads`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        media_type: 'TEXT_POST',
+        media_type: 'TEXT',
         text: responseText,
         reply_to_id: replyToId,
         access_token: accessToken
