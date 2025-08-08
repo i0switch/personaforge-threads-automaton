@@ -5,6 +5,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
@@ -59,10 +60,10 @@ serve(async (req) => {
       ai_auto_reply_enabled: persona.ai_auto_reply_enabled
     });
 
-    // OpenAI API キーの確認
-    const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
-    const hasOpenAIKey = !!openaiApiKey;
-    console.log(`🔑 OpenAI API Key設定状況: ${hasOpenAIKey ? '設定済み' : '未設定'}`);
+    // Gemini API キーの確認
+    const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
+    const hasGeminiKey = !!geminiApiKey;
+    console.log(`🔑 Gemini API Key設定状況: ${hasGeminiKey ? '設定済み' : '未設定'}`);
 
     // threads-auto-reply関数を直接呼び出してテスト
     console.log(`🚀 threads-auto-reply関数呼び出し開始`);
@@ -87,7 +88,7 @@ serve(async (req) => {
         auto_reply_enabled: persona.auto_reply_enabled,
         ai_auto_reply_enabled: persona.ai_auto_reply_enabled
       },
-      hasOpenAIKey,
+      hasGeminiKey,
       aiResponse,
       aiError
     }), {

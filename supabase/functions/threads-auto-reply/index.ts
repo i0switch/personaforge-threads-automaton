@@ -10,7 +10,7 @@ const corsHeaders = {
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const openaiApiKey = Deno.env.get('OPENAI_API_KEY')!;
+const geminiApiKey = Deno.env.get('GEMINI_API_KEY')!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 serve(async (req) => {
@@ -48,7 +48,7 @@ serve(async (req) => {
       });
     }
 
-    // OpenAI APIを使用してAI返信を生成
+    // Gemini APIを使用してAI返信を生成
     console.log(`🧠 AI返信生成開始 - リプライ内容: "${replyContent}"`);
     
     const aiPrompt = `
@@ -65,33 +65,40 @@ serve(async (req) => {
 
 返信:`;
 
-    const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`;
+    const geminiResponse = await fetch(geminiUrl, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${openaiApiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: 'あなたは指定されたペルソナとして自然な返信を生成するAIアシスタントです。' },
-          { role: 'user', content: aiPrompt }
+        contents: [
+          { role: 'user', parts: [{ text: aiPrompt }] }
         ],
-        max_tokens: 200,
-        temperature: 0.8
+        generationConfig: { temperature: 0.8, maxOutputTokens: 200 }
       }),
     });
 
-    if (!openaiResponse.ok) {
-      console.error('❌ OpenAI APIエラー:', await openaiResponse.text());
+    if (!geminiResponse.ok) {
+      console.error('❌ Gemini APIエラー:', await geminiResponse.text());
       return new Response(JSON.stringify({ error: 'AI response generation failed' }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
 
-    const aiData = await openaiResponse.json();
-    const aiReplyText = aiData.choices[0].message.content.trim();
+    const geminiData = await geminiResponse.json();
+    const aiReplyText = (geminiData.candidates?.[0]?.content?.parts || [])
+      .map((p: any) => p.text || '')
+      .join('')
+      .trim();
+    if (!aiReplyText) {
+      console.error('❌ Gemini応答にテキストがありません:', JSON.stringify(geminiData));
+      return new Response(JSON.stringify({ error: 'AI response generation failed' }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
     console.log(`✅ AI返信生成完了: "${aiReplyText}"`);
 
     // アクセストークンを取得
