@@ -13,9 +13,51 @@ const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-async function generateWithGemini(prompt: string): Promise<string> {
-  if (!GEMINI_API_KEY) throw new Error('Gemini API key is not configured');
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_API_KEY}`;
+async function getUserApiKey(userId: string, keyName: string): Promise<string | null> {
+  try {
+    const { data, error } = await supabase
+      .from('user_api_keys')
+      .select('encrypted_key')
+      .eq('user_id', userId)
+      .eq('key_name', keyName)
+      .single();
+
+    if (error || !data) return null;
+
+    const encryptionKey = Deno.env.get('ENCRYPTION_KEY');
+    if (!encryptionKey) return null;
+
+    const encoder = new TextEncoder();
+    const decoder = new TextDecoder();
+
+    const encryptedData = Uint8Array.from(atob(data.encrypted_key), c => c.charCodeAt(0));
+    const iv = encryptedData.slice(0, 12);
+    const ciphertext = encryptedData.slice(12);
+
+    const keyMaterial = await crypto.subtle.importKey(
+      'raw',
+      encoder.encode(encryptionKey.padEnd(32, '0').slice(0, 32)),
+      { name: 'AES-GCM' },
+      false,
+      ['decrypt']
+    );
+
+    const decrypted = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv },
+      keyMaterial,
+      ciphertext
+    );
+
+    return decoder.decode(decrypted);
+  } catch (e) {
+    console.error('Failed to get user API key:', e);
+    return null;
+  }
+}
+
+async function generateWithGemini(prompt: string, apiKey: string): Promise<string> {
+  if (!apiKey) throw new Error('Gemini API key is not configured');
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
 
   const body = {
     contents: [
@@ -91,9 +133,12 @@ serve(async (req) => {
           .single();
         if (personaError) throw personaError;
 
+        // APIキー解決（ユーザー個別優先）
+        const userGeminiApiKey = await getUserApiKey(cfg.user_id, 'GEMINI_API_KEY');
+        const geminiApiKeyToUse = userGeminiApiKey || GEMINI_API_KEY!;
         // 生成
         const prompt = buildPrompt(persona, cfg.prompt_template, cfg.content_prefs);
-        const content = await generateWithGemini(prompt);
+        const content = await generateWithGemini(prompt, geminiApiKeyToUse);
 
         // postsへ作成（予約投稿）
         const { data: inserted, error: postErr } = await supabase

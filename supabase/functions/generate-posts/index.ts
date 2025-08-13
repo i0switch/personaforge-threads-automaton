@@ -27,43 +27,35 @@ async function getUserApiKey(userId: string, keyName: string): Promise<string | 
       return null;
     }
 
-    // 復号化処理
-    const ENCRYPTION_KEY = 'AIThreadsSecretKey2024ForAPIEncryption';
-    
-    const enc = new TextEncoder();
+    // 復号化処理（save-secret/retrieve-secret と同じ方式に統一）
+    const encryptionKey = Deno.env.get('ENCRYPTION_KEY');
+    if (!encryptionKey) return null;
+
+    const encoder = new TextEncoder();
+    const decoder = new TextDecoder();
+
+    // Base64デコードして IV(先頭12byte) と 本文を分離
+    const encryptedData = Uint8Array.from(atob(data.encrypted_key), c => c.charCodeAt(0));
+    const iv = encryptedData.slice(0, 12);
+    const ciphertext = encryptedData.slice(12);
+
+    // 共有キーをAES-GCM用のCryptoKeyへ
     const keyMaterial = await crypto.subtle.importKey(
       'raw',
-      enc.encode(ENCRYPTION_KEY),
-      { name: 'PBKDF2' },
+      encoder.encode(encryptionKey.padEnd(32, '0').slice(0, 32)),
+      { name: 'AES-GCM' },
       false,
-      ['deriveKey']
-    );
-    
-    const key = await crypto.subtle.deriveKey(
-      {
-        name: 'PBKDF2',
-        salt: enc.encode('salt'),
-        iterations: 100000,
-        hash: 'SHA-256',
-      },
-      keyMaterial,
-      { name: 'AES-GCM', length: 256 },
-      false,
-      ['encrypt', 'decrypt']
+      ['decrypt']
     );
 
-    const combined = Uint8Array.from(atob(data.encrypted_key), c => c.charCodeAt(0));
-    const iv = combined.slice(0, 12);
-    const encrypted = combined.slice(12);
-    
+    // 復号
     const decrypted = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv: iv },
-      key,
-      encrypted
+      { name: 'AES-GCM', iv },
+      keyMaterial,
+      ciphertext
     );
-    
-    const dec = new TextDecoder();
-    return dec.decode(decrypted);
+
+    return decoder.decode(decrypted);
   } catch (error) {
     console.error('Error retrieving user API key:', error);
     return null;
