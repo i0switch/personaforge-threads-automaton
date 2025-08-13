@@ -12,3 +12,13 @@ Allow: /
 
 User-agent: *
 Allow: /
+
+# Security - Disallow sensitive directories
+Disallow: /admin
+Disallow: /.env
+Disallow: /config
+Disallow: /api/private
+Disallow: /BitKeeper
+Disallow: /~*
+
+Sitemap: https://threads-genius-ai.lovable.app/sitemap.xml
