@@ -948,6 +948,15 @@ export type Database = {
         Args: { token: string }
         Returns: string
       }
+      get_cron_job_status: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          active: boolean | null
+          jobid: number | null
+          jobname: string | null
+          schedule: string | null
+        }[]
+      }
       get_persona_for_auto_reply: {
         Args: { persona_id_param: string }
         Returns: {
@@ -985,6 +994,14 @@ export type Database = {
       is_admin: {
         Args: { _user_id: string }
         Returns: boolean
+      }
+      log_policy_violation: {
+        Args: {
+          table_name: string
+          operation: string
+          user_id_attempted?: string
+        }
+        Returns: undefined
       }
       log_security_event: {
         Args: {
