@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
+import { enhancedSecurity } from "@/utils/enhancedSecurity";
 
 export interface ImageGeneratorState {
   faceImage: File | null;
@@ -21,7 +23,7 @@ export interface ImageGeneratorState {
 
 export const useImageGenerator = () => {
   const { toast } = useToast();
-  
+  const { user } = useAuth();
   const [faceImage, setFaceImage] = useState<File | null>(null);
   const [faceImagePreview, setFaceImagePreview] = useState<string>("");
   const [subject, setSubject] = useState("a beautiful 20yo woman");
@@ -54,6 +56,18 @@ export const useImageGenerator = () => {
       toast({
         title: "エラー",
         description: "顔写真をアップロードしてください。",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // レート制限チェック（1分あたり60リクエスト）
+    const identifier = user?.id ?? 'anonymous';
+    const exceeded = await enhancedSecurity.checkRateLimit('generate_image', identifier);
+    if (exceeded) {
+      toast({
+        title: "制限超過",
+        description: "1分あたりのリクエスト上限に達しました。少し待ってから再度お試しください。",
         variant: "destructive",
       });
       return;
@@ -101,13 +115,16 @@ export const useImageGenerator = () => {
             title: "生成完了",
             description: "画像が正常に生成されました。",
           });
+
+          await enhancedSecurity.logApiRequest('generate_image', identifier, true);
         } catch (error) {
           console.error('Error generating image:', error);
           toast({
             title: "エラー",
-            description: error.message || "画像生成に失敗しました。",
+            description: (error as any).message || "画像生成に失敗しました。",
             variant: "destructive",
           });
+          await enhancedSecurity.logApiRequest('generate_image', identifier, false);
         } finally {
           setGenerating(false);
         }

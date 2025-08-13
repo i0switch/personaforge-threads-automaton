@@ -2,6 +2,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import { authSecurity } from "@/utils/authSecurity";
 
 interface AuthContextType {
   user: User | null;
@@ -163,16 +164,37 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         password,
       });
       console.log('Signin result:', error ? 'error' : 'success'); // デバッグ用ログ追加
+
+      if (!error) {
+        // セッション監視（ログイン）
+        setTimeout(() => {
+          supabase.auth.getUser().then(({ data: { user } }) => {
+            if (user?.id) {
+              authSecurity.monitorSession(user.id, 'login');
+            }
+          });
+        }, 0);
+      }
+
       return { error };
     } catch (error) {
       console.error('Signin error:', error); // デバッグ用ログ追加
       return { error };
     }
   };
-
   const signOut = async () => {
     try {
       console.log('Attempting signout'); // デバッグ用ログ追加
+
+      // セッション監視（ログアウト）
+      try {
+        if (user?.id) {
+          await authSecurity.monitorSession(user.id, 'logout');
+        }
+      } catch (e) {
+        console.error('Monitor logout error:', e);
+      }
+
       const { error } = await supabase.auth.signOut();
       if (error) {
         // Handle specific error cases
@@ -197,7 +219,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       throw error;
     }
   };
-
   const value = {
     user,
     session,
