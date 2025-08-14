@@ -51,8 +51,24 @@ export const ApiSettingsTab = () => {
     
     setSaving(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('認証が必要です');
+      // セッション更新を試行
+      let currentSession = null;
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError || !session) {
+        // セッションリフレッシュを試行
+        const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+        if (refreshError || !refreshData?.session) {
+          throw new Error('セッションの有効期限が切れています。再ログインしてください。');
+        }
+        currentSession = refreshData.session;
+      } else {
+        currentSession = session;
+      }
+
+      if (!currentSession) {
+        throw new Error('認証が必要です');
+      }
 
       const response = await supabase.functions.invoke('save-secret', {
         body: {
@@ -60,7 +76,7 @@ export const ApiSettingsTab = () => {
           keyValue: keyValue
         },
         headers: {
-          Authorization: `Bearer ${session.access_token}`,
+          Authorization: `Bearer ${currentSession.access_token}`,
         },
       });
 

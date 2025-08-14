@@ -26,10 +26,17 @@ serve(async (req) => {
     }
 
     const token = authHeader.replace('Bearer ', '');
+    
+    // セッション有効期限チェックを追加
     const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
     
-    if (authError || !user) {
-      throw new Error('認証に失敗しました');
+    if (authError) {
+      console.error('Auth error details:', authError);
+      throw new Error(`認証エラー: ${authError.message}`);
+    }
+    
+    if (!user) {
+      throw new Error('ユーザー情報を取得できません。再ログインしてください。');
     }
 
     const { keyName } = await req.json();
