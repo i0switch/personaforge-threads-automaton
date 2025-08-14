@@ -2,12 +2,22 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useState } from "react";
+import { useAuth } from "@/contexts/AuthContext";
+import { enhancedSecurity } from "@/utils/enhancedSecurity";
 
 export const AutoReplyTester = () => {
   const [testing, setTesting] = useState(false);
   const [result, setResult] = useState<any>(null);
+  const { user } = useAuth();
 
   const testAutoReply = async () => {
+    const identifier = user?.id ?? 'anonymous';
+    const exceeded = await enhancedSecurity.checkRateLimit('test_auto_reply', identifier);
+    if (exceeded) {
+      setResult({ error: '1分あたりのリクエスト上限に達しました。少し待ってから再度お試しください。' });
+      return;
+    }
+
     setTesting(true);
     setResult(null);
     
@@ -19,19 +29,29 @@ export const AutoReplyTester = () => {
       if (error) {
         console.error('テスト関数エラー:', error);
         setResult({ error: error.message });
+        await enhancedSecurity.logApiRequest('test_auto_reply', identifier, false);
       } else {
         console.log('テスト関数結果:', data);
         setResult(data);
+        await enhancedSecurity.logApiRequest('test_auto_reply', identifier, true);
       }
     } catch (error) {
       console.error('テスト実行エラー:', error);
-      setResult({ error: error.message });
+      setResult({ error: (error as any).message });
+      await enhancedSecurity.logApiRequest('test_auto_reply', identifier, false);
     } finally {
       setTesting(false);
     }
   };
 
   const testAIAutoReply = async () => {
+    const identifier = user?.id ?? 'anonymous';
+    const exceeded = await enhancedSecurity.checkRateLimit('test_ai_auto_reply', identifier);
+    if (exceeded) {
+      setResult({ error: '1分あたりのリクエスト上限に達しました。少し待ってから再度お試しください。' });
+      return;
+    }
+
     setTesting(true);
     setResult(null);
     
@@ -43,13 +63,16 @@ export const AutoReplyTester = () => {
       if (error) {
         console.error('AI自動返信テストエラー:', error);
         setResult({ error: error.message });
+        await enhancedSecurity.logApiRequest('test_ai_auto_reply', identifier, false);
       } else {
         console.log('AI自動返信テスト結果:', data);
         setResult(data);
+        await enhancedSecurity.logApiRequest('test_ai_auto_reply', identifier, true);
       }
     } catch (error) {
       console.error('AI自動返信テスト実行エラー:', error);
-      setResult({ error: error.message });
+      setResult({ error: (error as any).message });
+      await enhancedSecurity.logApiRequest('test_ai_auto_reply', identifier, false);
     } finally {
       setTesting(false);
     }
