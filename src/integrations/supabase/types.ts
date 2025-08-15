@@ -7,7 +7,7 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instanciate createClient with right options
+  // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
     PostgrestVersion: "12.2.3 (519615d)"
@@ -935,9 +935,9 @@ export type Database = {
       check_persona_limit: {
         Args: { user_id_param: string }
         Returns: {
+          can_create: boolean
           current_count: number
           persona_limit: number
-          can_create: boolean
         }[]
       }
       decrypt_access_token: {
@@ -960,34 +960,34 @@ export type Database = {
       get_persona_for_auto_reply: {
         Args: { persona_id_param: string }
         Returns: {
+          ai_auto_reply_enabled: boolean
+          auto_replies: Json
           id: string
           name: string
-          user_id: string
-          ai_auto_reply_enabled: boolean
           threads_access_token: string
-          auto_replies: Json
+          user_id: string
         }[]
       }
       get_user_emails_for_admin: {
         Args: Record<PropertyKey, never>
         Returns: {
-          user_id: string
           email: string
+          user_id: string
         }[]
       }
       get_user_stats: {
         Args: Record<PropertyKey, never>
         Returns: {
-          total_users: number
+          active_subscriptions: number
           approved_users: number
           pending_users: number
-          active_subscriptions: number
+          total_users: number
         }[]
       }
       has_role: {
         Args: {
-          _user_id: string
           _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
         }
         Returns: boolean
       }
@@ -997,19 +997,19 @@ export type Database = {
       }
       log_policy_violation: {
         Args: {
-          table_name: string
           operation: string
+          table_name: string
           user_id_attempted?: string
         }
         Returns: undefined
       }
       log_security_event: {
         Args: {
+          p_details?: Json
           p_event_type: string
-          p_user_id?: string
           p_ip_address?: string
           p_user_agent?: string
-          p_details?: Json
+          p_user_id?: string
         }
         Returns: undefined
       }
