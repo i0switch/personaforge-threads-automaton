@@ -78,39 +78,83 @@ serve(async (req) => {
 
     let containerId: string;
 
-    // Check if post has images
+    // Check if post has images and validate them
     if (post.images && post.images.length > 0) {
-      console.log(`Post has ${post.images.length} images, creating image container`);
+      console.log(`Post has ${post.images.length} images, validating...`);
       
-      // For image posts, create container with IMAGE media type
-      const createContainerResponse = await fetch('https://graph.threads.net/v1.0/me/threads', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          media_type: 'IMAGE',
-          image_url: post.images[0], // Use first image
-          text: post.content,
-          access_token: threadsAccessToken
-        }),
-      });
+      // Validate image URL format
+      const imageUrl = post.images[0];
+      const isValidUrl = (url: string): boolean => {
+        try {
+          const parsed = new URL(url);
+          return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+        } catch {
+          return false;
+        }
+      };
 
-      const responseText = await createContainerResponse.text();
-      console.log('Image container response:', {
-        status: createContainerResponse.status,
-        ok: createContainerResponse.ok,
-        body: responseText
-      });
+      if (!imageUrl || !isValidUrl(imageUrl)) {
+        console.warn('Invalid image URL detected, creating text-only post instead:', imageUrl);
+        // Fallback to text-only post for invalid image URLs
+        const createContainerResponse = await fetch('https://graph.threads.net/v1.0/me/threads', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            media_type: 'TEXT',
+            text: post.content,
+            access_token: threadsAccessToken
+          }),
+        });
 
-      if (!createContainerResponse.ok) {
-        console.error('Threads create image container error:', responseText);
-        throw new Error(`Failed to create Threads image container: ${createContainerResponse.status} ${responseText}`);
+        const responseText = await createContainerResponse.text();
+        console.log('Fallback text container response:', {
+          status: createContainerResponse.status,
+          ok: createContainerResponse.ok,
+          body: responseText
+        });
+
+        if (!createContainerResponse.ok) {
+          console.error('Threads create fallback text container error:', responseText);
+          throw new Error(`Failed to create Threads fallback text container: ${createContainerResponse.status} ${responseText}`);
+        }
+
+        const containerData = JSON.parse(responseText);
+        console.log('Fallback text container created:', containerData);
+        containerId = containerData.id;
+      } else {
+        console.log('Valid image URL detected, creating image container');
+        // For image posts, create container with IMAGE media type
+        const createContainerResponse = await fetch('https://graph.threads.net/v1.0/me/threads', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            media_type: 'IMAGE',
+            image_url: imageUrl,
+            text: post.content,
+            access_token: threadsAccessToken
+          }),
+        });
+
+        const responseText = await createContainerResponse.text();
+        console.log('Image container response:', {
+          status: createContainerResponse.status,
+          ok: createContainerResponse.ok,
+          body: responseText
+        });
+
+        if (!createContainerResponse.ok) {
+          console.error('Threads create image container error:', responseText);
+          throw new Error(`Failed to create Threads image container: ${createContainerResponse.status} ${responseText}`);
+        }
+
+        const containerData = JSON.parse(responseText);
+        console.log('Image container created:', containerData);
+        containerId = containerData.id;
       }
-
-      const containerData = JSON.parse(responseText);
-      console.log('Image container created:', containerData);
-      containerId = containerData.id;
 
     } else {
       console.log('Creating text-only container');
