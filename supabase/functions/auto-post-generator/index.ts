@@ -313,13 +313,37 @@ serve(async (req) => {
         const persona = randomCfg.personas;
         if (!persona) continue;
 
+        // 該当ペルソナの完全オートポスト設定を取得
+        const { data: autoConfigs, error: autoConfigError } = await supabase
+          .from('auto_post_configs')
+          .select('prompt_template, content_prefs')
+          .eq('persona_id', persona.id)
+          .eq('is_active', true);
+
+        if (autoConfigError) {
+          console.error('Failed to get auto post configs for random post:', autoConfigError);
+          continue;
+        }
+
+        if (!autoConfigs || autoConfigs.length === 0) {
+          console.log(`No active auto post configs found for persona ${persona.name}, skipping random post`);
+          continue;
+        }
+
+        // 完全オートポスト設定からランダムに1つ選択
+        const selectedConfig = autoConfigs[Math.floor(Math.random() * autoConfigs.length)];
+        console.log(`Selected random config for ${persona.name}:`, {
+          prompt_template: selectedConfig.prompt_template?.substring(0, 50) + '...',
+          content_prefs: selectedConfig.content_prefs?.substring(0, 50) + '...'
+        });
+
         // APIキー解決（ユーザー個別優先）
         const userGeminiApiKey = await getUserApiKey(persona.user_id, 'GEMINI_API_KEY');
         const geminiApiKeyToUse = userGeminiApiKey || GEMINI_API_KEY!;
 
-        // ランダムポスト用のプロンプト生成（よりランダム性を持たせる）
-        const randomPrompt = buildRandomPrompt(persona);
-        const content = await generateWithGemini(randomPrompt, geminiApiKeyToUse);
+        // 選択した完全オートポスト設定を使用してプロンプト生成
+        const prompt = buildPrompt(persona, selectedConfig.prompt_template, selectedConfig.content_prefs);
+        const content = await generateWithGemini(prompt, geminiApiKeyToUse);
 
         // postsへ作成（予約投稿）
         const { data: inserted, error: postErr } = await supabase
