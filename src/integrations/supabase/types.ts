@@ -428,6 +428,42 @@ export type Database = {
         }
         Relationships: []
       }
+      random_post_configs: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          next_run_at: string | null
+          persona_id: string
+          random_times: string[]
+          timezone: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          next_run_at?: string | null
+          persona_id: string
+          random_times?: string[]
+          timezone?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          next_run_at?: string | null
+          persona_id?: string
+          random_times?: string[]
+          timezone?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       rate_limits: {
         Row: {
           created_at: string | null

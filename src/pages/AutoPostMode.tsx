@@ -80,7 +80,20 @@ export default function AutoPostMode() {
                 </Button>
               </CardContent>
             </Card>
+          </section>
 
+          <section>
+            <Card>
+              <CardHeader>
+                <CardTitle>ランダムポスト設定</CardTitle>
+                <CardDescription>ペルソナごとにランダムな時間での自動投稿を設定</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button onClick={() => navigate("/auto-post-mode/random")}>
+                  ランダムポスト設定を開く
+                </Button>
+              </CardContent>
+            </Card>
           </section>
         </main>
       </div>
