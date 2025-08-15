@@ -203,12 +203,37 @@ serve(async (req) => {
           });
         if (queueErr) throw queueErr;
 
-        // 次回実行時刻を+1日
-        const next = new Date(cfg.next_run_at);
-        next.setDate(next.getDate() + 1);
+        // 次回実行時刻を計算（複数時間対応）
+        let nextRunAt: string;
+        
+        if (cfg.multi_time_enabled && cfg.post_times && cfg.post_times.length > 0) {
+          // 複数時間設定の場合：次の時間スロットを計算
+          const { data: nextTime, error: calcErr } = await supabase
+            .rpc('calculate_next_multi_time_run', {
+              p_current_time: new Date().toISOString(),
+              time_slots: cfg.post_times,
+              timezone_name: cfg.timezone || 'UTC'
+            });
+          
+          if (calcErr) {
+            console.error('Failed to calculate next multi-time run:', calcErr);
+            // フォールバック: 従来の方法で次の日の同時刻
+            const next = new Date(cfg.next_run_at);
+            next.setDate(next.getDate() + 1);
+            nextRunAt = next.toISOString();
+          } else {
+            nextRunAt = nextTime;
+          }
+        } else {
+          // 従来の単一時間設定：次の日の同時刻
+          const next = new Date(cfg.next_run_at);
+          next.setDate(next.getDate() + 1);
+          nextRunAt = next.toISOString();
+        }
+
         const { error: updErr } = await supabase
           .from('auto_post_configs')
-          .update({ next_run_at: next.toISOString() })
+          .update({ next_run_at: nextRunAt })
           .eq('id', cfg.id);
         if (updErr) throw updErr;
 

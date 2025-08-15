@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft } from "lucide-react";
+import { MultiTimeSelector } from "@/components/AutoPost/MultiTimeSelector";
 
 const setMeta = (name: string, content: string) => {
   const meta = document.querySelector(`meta[name="${name}"]`) as HTMLMetaElement | null;
@@ -57,7 +58,7 @@ export default function AutoPostSchedules() {
     const [configsRes, personasRes] = await Promise.all([
       supabase
         .from('auto_post_configs')
-        .select('*')
+        .select('*, post_times, multi_time_enabled')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false }),
       supabase
@@ -162,19 +163,53 @@ export default function AutoPostSchedules() {
             ) : (
               <div className="space-y-4">
                 {configs.map((c) => (
-                  <div key={c.id} className="border rounded-lg p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                    <div className="space-y-1">
-                      <div className="text-sm text-muted-foreground">次回: {new Date(c.next_run_at).toLocaleString()}</div>
-                      <div className="text-sm">ペルソナ: {personaMap[c.persona_id as string] || '未設定'}</div>
-                      <div className="text-sm">有効: {c.is_active ? 'ON' : 'OFF'}</div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="flex items-center gap-2">
-                        <Label htmlFor={`time-${c.id}`} className="text-sm">時間</Label>
-                        <Input id={`time-${c.id}`} type="time" defaultValue={String(c.post_time).slice(0,5)} onBlur={(e) => updateConfig(c.id, { post_time: `${e.target.value}:00`, next_run_at: computeNextRun(e.target.value, c.next_run_at) })} className="h-9 w-[120px]" />
+                  <div key={c.id} className="border rounded-lg p-4 space-y-4">
+                    {/* ヘッダー情報 */}
+                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="text-sm text-muted-foreground">次回: {new Date(c.next_run_at).toLocaleString()}</div>
+                        <div className="text-sm">ペルソナ: {personaMap[c.persona_id as string] || '未設定'}</div>
+                        <div className="text-sm">
+                          モード: {c.multi_time_enabled ? `複数時間（${c.post_times?.length || 0}個）` : '単一時間'}
+                        </div>
+                        <div className="text-sm">有効: {c.is_active ? 'ON' : 'OFF'}</div>
                       </div>
-                      <Button variant={c.is_active ? 'outline' : 'default'} onClick={() => toggleActive(c.id, c.is_active)}>{c.is_active ? '無効化' : '有効化'}</Button>
-                      <Button variant="destructive" onClick={() => deleteConfig(c.id)}>削除</Button>
+                      <div className="flex items-center gap-2">
+                        <Button variant={c.is_active ? 'outline' : 'default'} onClick={() => toggleActive(c.id, c.is_active)}>
+                          {c.is_active ? '無効化' : '有効化'}
+                        </Button>
+                        <Button variant="destructive" onClick={() => deleteConfig(c.id)}>削除</Button>
+                      </div>
+                    </div>
+
+                    {/* 時間設定 */}
+                    <div>
+                      {c.multi_time_enabled ? (
+                        <MultiTimeSelector
+                          times={(c.post_times || []).map((t: string) => t.slice(0, 5))}
+                          onChange={(newTimes) => {
+                            const postTimes = newTimes.map(t => t + ':00');
+                            updateConfig(c.id, { 
+                              post_times: postTimes,
+                              post_time: postTimes[0] || c.post_time // フォールバック
+                            });
+                          }}
+                        />
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <Label htmlFor={`time-${c.id}`} className="text-sm">投稿時間</Label>
+                          <Input 
+                            id={`time-${c.id}`} 
+                            type="time" 
+                            defaultValue={String(c.post_time).slice(0,5)} 
+                            onBlur={(e) => updateConfig(c.id, { 
+                              post_time: `${e.target.value}:00`, 
+                              next_run_at: computeNextRun(e.target.value, c.next_run_at) 
+                            })} 
+                            className="h-9 w-[120px]" 
+                          />
+                        </div>
+                      )}
                     </div>
                     <div className="w-full space-y-2">
                       <div>

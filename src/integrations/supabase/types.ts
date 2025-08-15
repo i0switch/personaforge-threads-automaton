@@ -114,9 +114,11 @@ export type Database = {
           created_at: string
           id: string
           is_active: boolean
+          multi_time_enabled: boolean | null
           next_run_at: string
           persona_id: string
           post_time: string
+          post_times: string[] | null
           prompt_template: string | null
           timezone: string
           updated_at: string
@@ -127,9 +129,11 @@ export type Database = {
           created_at?: string
           id?: string
           is_active?: boolean
+          multi_time_enabled?: boolean | null
           next_run_at: string
           persona_id: string
           post_time: string
+          post_times?: string[] | null
           prompt_template?: string | null
           timezone?: string
           updated_at?: string
@@ -140,9 +144,11 @@ export type Database = {
           created_at?: string
           id?: string
           is_active?: boolean
+          multi_time_enabled?: boolean | null
           next_run_at?: string
           persona_id?: string
           post_time?: string
+          post_times?: string[] | null
           prompt_template?: string | null
           timezone?: string
           updated_at?: string
@@ -927,6 +933,14 @@ export type Database = {
       authenticate_service_request: {
         Args: { request_headers: Json }
         Returns: boolean
+      }
+      calculate_next_multi_time_run: {
+        Args: {
+          p_current_time: string
+          time_slots: string[]
+          timezone_name?: string
+        }
+        Returns: string
       }
       check_login_attempts: {
         Args: { user_email: string }
