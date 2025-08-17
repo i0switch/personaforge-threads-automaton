@@ -10,7 +10,6 @@ const corsHeaders = {
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const fallbackGeminiApiKey = Deno.env.get('GEMINI_API_KEY'); // フォールバック用
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
@@ -138,7 +137,7 @@ serve(async (req) => {
 
     // Calculate total posts to generate
     const postCount = selectedDates.length * selectedTimes.length;
-    console.log(`Generating ${postCount} posts for persona ${personaId} using ${userGeminiApiKey ? 'user' : 'fallback'} API key`);
+    console.log(`Generating ${postCount} posts for persona ${personaId} using user API key`);
 
     // Get persona details
     const { data: persona, error: personaError } = await supabase
