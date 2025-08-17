@@ -164,97 +164,167 @@ serve(async (req) => {
       // Create prompt for Gemini with variety
       const prompt = createPostPrompt(persona, topics, i + 1, timeSlots.length, customPrompt, timeSlots[i]);
 
-      try {
-        // Call Gemini API
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${geminiApiKey}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            contents: [
-              {
-                parts: [
-                  {
-                    text: prompt
-                  }
-                ]
-              }
-            ],
-            generationConfig: {
-              temperature: 0.9,
-              topK: 1,
-              topP: 1,
-              maxOutputTokens: 2048,
+      let postGenerated = false;
+      let lastError = null;
+      
+      // リトライ機能付きでGemini APIを呼び出し
+      for (let retryCount = 0; retryCount < 3 && !postGenerated; retryCount++) {
+        try {
+          if (retryCount > 0) {
+            const backoffDelay = Math.min(1000 * Math.pow(2, retryCount - 1), 5000); // 指数バックオフ (1s, 2s, 4s)
+            console.log(`Retrying post ${i + 1}, attempt ${retryCount + 1}/3 after ${backoffDelay}ms delay`);
+            await new Promise(resolve => setTimeout(resolve, backoffDelay));
+          }
+
+          // Call Gemini API
+          const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${geminiApiKey}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
             },
-            safetySettings: [
-              {
-                category: "HARM_CATEGORY_HARASSMENT",
-                threshold: "BLOCK_MEDIUM_AND_ABOVE"
+            body: JSON.stringify({
+              contents: [
+                {
+                  parts: [
+                    {
+                      text: prompt
+                    }
+                  ]
+                }
+              ],
+              generationConfig: {
+                temperature: 0.9,
+                topK: 1,
+                topP: 1,
+                maxOutputTokens: 2048,
               },
-              {
-                category: "HARM_CATEGORY_HATE_SPEECH",
-                threshold: "BLOCK_MEDIUM_AND_ABOVE"
-              },
-              {
-                category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-                threshold: "BLOCK_MEDIUM_AND_ABOVE"
-              },
-              {
-                category: "HARM_CATEGORY_DANGEROUS_CONTENT",
-                threshold: "BLOCK_MEDIUM_AND_ABOVE"
-              }
-            ]
-          }),
-        });
+              safetySettings: [
+                {
+                  category: "HARM_CATEGORY_HARASSMENT",
+                  threshold: "BLOCK_MEDIUM_AND_ABOVE"
+                },
+                {
+                  category: "HARM_CATEGORY_HATE_SPEECH",
+                  threshold: "BLOCK_MEDIUM_AND_ABOVE"
+                },
+                {
+                  category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                  threshold: "BLOCK_MEDIUM_AND_ABOVE"
+                },
+                {
+                  category: "HARM_CATEGORY_DANGEROUS_CONTENT",
+                  threshold: "BLOCK_MEDIUM_AND_ABOVE"
+                }
+              ]
+            }),
+          });
 
-        if (!response.ok) {
-          throw new Error(`Gemini API error: ${response.status} ${response.statusText}`);
+          // レート制限エラーの詳細チェック
+          if (response.status === 429) {
+            const errorText = await response.text();
+            console.error(`Rate limit exceeded for post ${i + 1}, retry ${retryCount + 1}/3:`, errorText);
+            lastError = new Error(`Rate limit exceeded: ${errorText}`);
+            continue; // リトライを続行
+          }
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`Gemini API error for post ${i + 1}:`, response.status, response.statusText, errorText);
+            lastError = new Error(`Gemini API error: ${response.status} ${response.statusText} - ${errorText}`);
+            
+            // 500番台エラーの場合はリトライ、400番台エラーは即座に失敗
+            if (response.status >= 500) {
+              continue; // リトライを続行
+            } else {
+              break; // リトライを停止
+            }
+          }
+
+          const data = await response.json();
+
+          // APIレスポンスの詳細検証
+          if (!data) {
+            console.error(`Empty response from Gemini API for post ${i + 1}`);
+            lastError = new Error('Empty response from Gemini API');
+            continue;
+          }
+
+          if (!data.candidates) {
+            console.error(`No candidates in Gemini API response for post ${i + 1}:`, JSON.stringify(data));
+            lastError = new Error('No candidates in Gemini API response');
+            continue;
+          }
+
+          if (!data.candidates[0]) {
+            console.error(`Empty candidates array in Gemini API response for post ${i + 1}:`, JSON.stringify(data));
+            lastError = new Error('Empty candidates array in Gemini API response');
+            continue;
+          }
+
+          if (!data.candidates[0].content) {
+            console.error(`No content in candidate for post ${i + 1}:`, JSON.stringify(data.candidates[0]));
+            lastError = new Error('No content in candidate');
+            continue;
+          }
+
+          if (!data.candidates[0].content.parts || !data.candidates[0].content.parts[0]) {
+            console.error(`No parts in content for post ${i + 1}:`, JSON.stringify(data.candidates[0].content));
+            lastError = new Error('No parts in content');
+            continue;
+          }
+
+          const generatedContent = data.candidates[0].content.parts[0].text;
+          
+          if (!generatedContent || generatedContent.trim().length === 0) {
+            console.error(`Empty generated content for post ${i + 1}`);
+            lastError = new Error('Empty generated content');
+            continue;
+          }
+
+          // Use generated content as is, without hashtag extraction
+          const content = generatedContent.trim();
+          const hashtags: string[] = [];
+
+          // Save post to database
+          const { data: savedPost, error: saveError } = await supabase
+            .from('posts')
+            .insert([{
+              content,
+              hashtags,
+              scheduled_for: timeSlots[i],
+              persona_id: personaId,
+              user_id: user.id,
+              status: 'scheduled',
+              platform: 'threads'
+            }])
+            .select()
+            .single();
+
+          if (saveError) {
+            console.error(`Error saving post ${i + 1}:`, saveError);
+            lastError = saveError;
+            continue;
+          }
+
+          console.log(`Post ${i + 1} generated successfully and saved with ID: ${savedPost.id}`);
+          posts.push(savedPost);
+          postGenerated = true;
+
+        } catch (error) {
+          console.error(`Error generating post ${i + 1}, retry ${retryCount + 1}/3:`, error);
+          lastError = error;
+          continue;
         }
-
-        const data = await response.json();
-
-        if (!data.candidates || !data.candidates[0] || !data.candidates[0].content) {
-          throw new Error('Invalid response from Gemini API');
-        }
-
-        const generatedContent = data.candidates[0].content.parts[0].text;
-
-        // Use generated content as is, without hashtag extraction
-        const content = generatedContent.trim();
-        const hashtags: string[] = [];
-
-        // Save post to database
-        const { data: savedPost, error: saveError } = await supabase
-          .from('posts')
-          .insert([{
-            content,
-            hashtags,
-            scheduled_for: timeSlots[i],
-            persona_id: personaId,
-            user_id: user.id,
-            status: 'scheduled',
-            platform: 'threads'
-          }])
-          .select()
-          .single();
-
-        if (saveError) {
-          console.error('Error saving post:', saveError);
-          throw saveError;
-        }
-
-        console.log(`Post ${i + 1} saved with ID: ${savedPost.id}`);
-        posts.push(savedPost);
-
-      } catch (error) {
-        console.error(`Error generating post ${i + 1}:`, error);
-        // Continue with next post instead of failing completely
-        continue;
       }
 
-      // Add small delay to avoid rate limiting
-      await new Promise(resolve => setTimeout(resolve, 200));
+      // 3回リトライしても失敗した場合のログ
+      if (!postGenerated) {
+        console.error(`Failed to generate post ${i + 1} after 3 attempts. Last error:`, lastError);
+      }
+
+      // レート制限対策のための適切な遅延（成功/失敗に関わらず）
+      const delay = Math.max(500, Math.random() * 1000); // 500ms-1500msのランダム遅延
+      await new Promise(resolve => setTimeout(resolve, delay));
     }
 
     console.log(`Successfully generated ${posts.length} posts`);
