@@ -162,6 +162,13 @@ export type Database = {
             referencedRelation: "personas"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "fk_auto_post_configs_persona"
+            columns: ["persona_id"]
+            isOneToOne: false
+            referencedRelation: "personas"
+            referencedColumns: ["id"]
+          },
         ]
       }
       auto_replies: {
@@ -462,7 +469,15 @@ export type Database = {
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "fk_random_post_configs_persona"
+            columns: ["persona_id"]
+            isOneToOne: false
+            referencedRelation: "personas"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       rate_limits: {
         Row: {
