@@ -25,19 +25,31 @@ serve(async (req) => {
       throw new Error('認証が必要です');
     }
 
+    if (!authHeader.startsWith('Bearer ')) {
+      throw new Error('無効な認証形式です');
+    }
+
     const token = authHeader.replace('Bearer ', '');
+    
+    if (!token || token.length < 10) {
+      throw new Error('無効なトークンです');
+    }
     
     // セッション有効期限チェックを追加
     const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
     
     if (authError) {
       console.error('Auth error details:', authError);
+      console.error('Token length:', token.length);
+      console.error('Token prefix:', token.substring(0, 20));
       throw new Error(`認証エラー: ${authError.message}`);
     }
     
     if (!user) {
       throw new Error('ユーザー情報を取得できません。再ログインしてください。');
     }
+
+    console.log('User authenticated successfully:', user.id);
 
     const { keyName } = await req.json();
 
