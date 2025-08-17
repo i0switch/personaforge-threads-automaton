@@ -10,7 +10,6 @@ const corsHeaders = {
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const openaiApiKey = Deno.env.get('OPENAI_API_KEY')!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 serve(async (req) => {
@@ -48,11 +47,10 @@ serve(async (req) => {
       });
     }
 
-    // OpenAI APIを使用してAI返信を生成
+    // Gemini APIを使用してAI返信を生成
     console.log(`🧠 AI返信生成開始 - リプライ内容: "${replyContent}"`);
     
-    const aiPrompt = `
-あなたは${persona.name}というペルソナです。
+    const aiPrompt = `あなたは${persona.name}というペルソナです。
 年齢: ${persona.age || '不明'}
 性格: ${persona.personality || 'フレンドリー'}
 話し方: ${persona.tone_of_voice || 'カジュアル'}
@@ -65,33 +63,7 @@ serve(async (req) => {
 
 返信:`;
 
-    const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${openaiApiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: 'あなたは指定されたペルソナとして自然な返信を生成するAIアシスタントです。' },
-          { role: 'user', content: aiPrompt }
-        ],
-        max_tokens: 200,
-        temperature: 0.8
-      }),
-    });
-
-    if (!openaiResponse.ok) {
-      console.error('❌ OpenAI APIエラー:', await openaiResponse.text());
-      return new Response(JSON.stringify({ error: 'AI response generation failed' }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
-    }
-
-    const aiData = await openaiResponse.json();
-    const aiReplyText = aiData.choices[0].message.content.trim();
+    const aiReplyText = await generateWithGeminiRotation(aiPrompt, userId);
     console.log(`✅ AI返信生成完了: "${aiReplyText}"`);
 
     // アクセストークンを取得
@@ -153,6 +125,170 @@ serve(async (req) => {
     });
   }
 });
+
+// ユーザーAPIキーを取得する関数
+async function getUserApiKey(userId: string, keyName: string): Promise<string | null> {
+  try {
+    const { data, error } = await supabase
+      .from('user_api_keys')
+      .select('encrypted_key')
+      .eq('user_id', userId)
+      .eq('key_name', keyName)
+      .single();
+
+    if (error || !data) return null;
+
+    const encryptionKey = Deno.env.get('ENCRYPTION_KEY');
+    if (!encryptionKey) return null;
+
+    const encoder = new TextEncoder();
+    const decoder = new TextDecoder();
+
+    const encryptedData = Uint8Array.from(atob(data.encrypted_key), c => c.charCodeAt(0));
+    const iv = encryptedData.slice(0, 12);
+    const ciphertext = encryptedData.slice(12);
+
+    // Try current AES-GCM (raw key padded to 32 bytes)
+    try {
+      const keyMaterial = await crypto.subtle.importKey(
+        'raw',
+        encoder.encode(encryptionKey.padEnd(32, '0').slice(0, 32)),
+        { name: 'AES-GCM' },
+        false,
+        ['decrypt']
+      );
+
+      const decrypted = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv },
+        keyMaterial,
+        ciphertext
+      );
+      return decoder.decode(decrypted);
+    } catch (_e) {
+      // Fallback: legacy PBKDF2-derived AES-GCM
+      try {
+        const baseKey = await crypto.subtle.importKey(
+          'raw',
+          encoder.encode(encryptionKey),
+          { name: 'PBKDF2' },
+          false,
+          ['deriveKey']
+        );
+        const derivedKey = await crypto.subtle.deriveKey(
+          {
+            name: 'PBKDF2',
+            salt: encoder.encode('salt'),
+            iterations: 100000,
+            hash: 'SHA-256',
+          },
+          baseKey,
+          { name: 'AES-GCM', length: 256 },
+          false,
+          ['decrypt']
+        );
+        const decrypted = await crypto.subtle.decrypt(
+          { name: 'AES-GCM', iv },
+          derivedKey,
+          ciphertext
+        );
+        console.log('Legacy key decryption succeeded (PBKDF2 fallback).');
+        return decoder.decode(decrypted);
+      } catch (e2) {
+        console.error('Failed to decrypt user API key with both methods:', e2);
+        return null;
+      }
+    }
+  } catch (e) {
+    console.error('Failed to get user API key:', e);
+    return null;
+  }
+}
+
+// 全てのGemini APIキーを取得
+async function getAllGeminiApiKeys(userId: string): Promise<string[]> {
+  const apiKeys: string[] = [];
+  
+  // Try all possible Gemini API keys (1-10)
+  for (let i = 1; i <= 10; i++) {
+    const keyName = i === 1 ? 'GEMINI_API_KEY' : `GEMINI_API_KEY_${i}`;
+    const apiKey = await getUserApiKey(userId, keyName);
+    if (apiKey) {
+      apiKeys.push(apiKey);
+    }
+  }
+  
+  return apiKeys;
+}
+
+// Gemini APIローテーション機能付き生成
+async function generateWithGeminiRotation(prompt: string, userId: string): Promise<string> {
+  const apiKeys = await getAllGeminiApiKeys(userId);
+  
+  if (apiKeys.length === 0) {
+    throw new Error('Gemini API key is not configured. Please set your API key in Settings.');
+  }
+  
+  let lastError: Error | null = null;
+  
+  for (let i = 0; i < apiKeys.length; i++) {
+    const apiKey = apiKeys[i];
+    console.log(`Trying Gemini API key ${i + 1}/${apiKeys.length}`);
+    
+    try {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                {
+                  text: prompt
+                }
+              ]
+            }
+          ]
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Gemini API request failed with key ${i + 1}:`, response.status, response.statusText, errorText);
+        throw new Error(`Gemini API request failed: ${response.status} ${response.statusText}. Response: ${errorText}`);
+      }
+
+      const data = await response.json();
+
+      if (!data.candidates || !data.candidates[0] || !data.candidates[0].content) {
+        throw new Error('No content generated by Gemini API');
+      }
+
+      const generatedText = data.candidates[0].content.parts[0].text;
+      console.log(`Successfully generated content with API key ${i + 1}`);
+      return generatedText;
+    } catch (error) {
+      console.log(`API key ${i + 1} failed:`, error.message);
+      lastError = error;
+      
+      // Check if it's a quota/rate limit error that should trigger rotation
+      if (error.message.includes('429') || 
+          error.message.includes('quota') || 
+          error.message.includes('RESOURCE_EXHAUSTED') ||
+          error.message.includes('Rate limit')) {
+        console.log(`Rate limit/quota error detected, trying next API key...`);
+        continue;
+      } else {
+        // For other errors, don't continue trying other keys
+        throw error;
+      }
+    }
+  }
+  
+  // If all keys failed, throw the last error
+  throw lastError || new Error('All Gemini API keys failed');
+}
 
 // アクセストークンを取得
 async function getAccessToken(persona: any): Promise<string | null> {
