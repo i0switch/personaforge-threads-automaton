@@ -215,11 +215,21 @@ const CreatePosts = () => {
       }
     } catch (error) {
       console.error('Error generating posts:', error);
-      toast({
-        title: "エラー",
-        description: "投稿の生成に失敗しました。詳細はコンソールを確認してください。",
-        variant: "destructive",
-      });
+      
+      // Gemini APIキーエラーの特別処理
+      if (error?.message?.includes('GEMINI_API_KEY_REQUIRED')) {
+        toast({
+          title: "Gemini APIキーが必要です",
+          description: "Settings > API設定からGemini APIキーを設定してください。",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "エラー",
+          description: "投稿の生成に失敗しました。詳細はコンソールを確認してください。",
+          variant: "destructive",
+        });
+      }
     } finally {
       setIsGenerating(false);
     }

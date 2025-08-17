@@ -127,13 +127,14 @@ serve(async (req) => {
       throw new Error('Missing required fields: personaId, topics, selectedDates, selectedTimes');
     }
 
-    // ユーザーのGemini APIキーを取得
+    // ユーザーのGemini APIキーを取得（個人APIキー必須）
     const userGeminiApiKey = await getUserApiKey(user.id, 'GEMINI_API_KEY');
-    const geminiApiKey = userGeminiApiKey || fallbackGeminiApiKey;
 
-    if (!geminiApiKey) {
-      throw new Error('Gemini API key is not configured. Please set your API key in Settings.');
+    if (!userGeminiApiKey) {
+      throw new Error('GEMINI_API_KEY_REQUIRED: Gemini API key is not configured. Please set your API key in Settings.');
     }
+
+    const geminiApiKey = userGeminiApiKey;
 
     // Calculate total posts to generate
     const postCount = selectedDates.length * selectedTimes.length;

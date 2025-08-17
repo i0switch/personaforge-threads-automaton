@@ -229,9 +229,14 @@ serve(async (req) => {
           .single();
         if (personaError) throw personaError;
 
-        // APIキー解決（ユーザー個別優先）
+        // APIキー解決（個人APIキー必須）
         const userGeminiApiKey = await getUserApiKey(cfg.user_id, 'GEMINI_API_KEY');
-        const geminiApiKeyToUse = userGeminiApiKey || GEMINI_API_KEY!;
+        if (!userGeminiApiKey) {
+          console.error(`User ${cfg.user_id} does not have GEMINI_API_KEY configured, skipping post generation`);
+          failed++;
+          continue;
+        }
+        const geminiApiKeyToUse = userGeminiApiKey;
         // 生成
         const prompt = buildPrompt(persona, cfg.prompt_template, cfg.content_prefs);
         const content = await generateWithGemini(prompt, geminiApiKeyToUse);
@@ -337,9 +342,14 @@ serve(async (req) => {
           content_prefs: selectedConfig.content_prefs?.substring(0, 50) + '...'
         });
 
-        // APIキー解決（ユーザー個別優先）
+        // APIキー解決（個人APIキー必須）
         const userGeminiApiKey = await getUserApiKey(persona.user_id, 'GEMINI_API_KEY');
-        const geminiApiKeyToUse = userGeminiApiKey || GEMINI_API_KEY!;
+        if (!userGeminiApiKey) {
+          console.error(`User ${persona.user_id} does not have GEMINI_API_KEY configured, skipping random post generation`);
+          failed++;
+          continue;
+        }
+        const geminiApiKeyToUse = userGeminiApiKey;
 
         // 選択した完全オートポスト設定を使用してプロンプト生成
         const prompt = buildPrompt(persona, selectedConfig.prompt_template, selectedConfig.content_prefs);
