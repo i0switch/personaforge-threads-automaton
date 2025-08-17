@@ -140,6 +140,12 @@ const ImageGeneration = () => {
 
       if (error) {
         console.error('ImageGeneration: Function error:', error);
+        
+        // Gemini APIキーエラーの場合は特別なメッセージ
+        if (error.message && error.message.includes('GEMINI_API_KEY_REQUIRED')) {
+          throw new Error('Settings > API設定からGemini APIキーを設定してください');
+        }
+        
         throw new Error(`Function error: ${error.message}`);
       }
 

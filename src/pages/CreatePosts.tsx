@@ -247,6 +247,16 @@ const CreatePosts = () => {
 
       if (error) {
         console.error('Error generating image prompt:', error);
+        
+        // Gemini APIキーエラーの場合は特別なメッセージを表示
+        if (error.message && error.message.includes('GEMINI_API_KEY_REQUIRED')) {
+          toast({
+            title: "Gemini APIキーが必要です",
+            description: "Settings > API設定からGemini APIキーを設定してください",
+            variant: "destructive",
+          });
+        }
+        
         throw error;
       }
 
