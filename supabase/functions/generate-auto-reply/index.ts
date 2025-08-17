@@ -1,5 +1,3 @@
-
-import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
 
@@ -8,55 +6,60 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const encryptionKey = Deno.env.get('ENCRYPTION_KEY')!;
-
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return new Response('ok', { headers: corsHeaders });
   }
 
   try {
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+
     const { postContent, replyContent, persona } = await req.json();
 
-    console.log('Generating auto-reply with data:', {
-      postContent: postContent?.substring(0, 100) + '...',
-      replyContent: replyContent?.substring(0, 100) + '...',
-      persona: persona?.name
-    });
+    if (!postContent || !replyContent || !persona) {
+      throw new Error('Missing required fields: postContent, replyContent, persona');
+    }
+
+    const encryptionKey = Deno.env.get('ENCRYPTION_KEY');
+    if (!encryptionKey) {
+      throw new Error('暗号化キーが設定されていません');
+    }
 
     // Get authorization header to identify the user
     const authHeader = req.headers.get('Authorization');
-    let geminiApiKey = Deno.env.get('GEMINI_API_KEY'); // Default fallback
 
-    if (authHeader && persona?.user_id) {
+    // Get all Gemini API keys for the user
+    async function getUserApiKey(userId: string, keyName: string): Promise<string | null> {
       try {
-        // Get user's personal API key if available
         const { data: userApiKey, error: keyError } = await supabase
           .from('user_api_keys')
           .select('encrypted_key')
-          .eq('user_id', persona.user_id)
-          .eq('key_name', 'GEMINI_API_KEY')
+          .eq('user_id', userId)
+          .eq('key_name', keyName)
           .single();
 
-        if (!keyError && userApiKey?.encrypted_key) {
-          console.log('Found user personal Gemini API key, decrypting...');
-          
-          // Decrypt the user's API key
-          const encoder = new TextEncoder();
-          const decoder = new TextDecoder();
-          
-          // Base64デコード
-          const encryptedData = Uint8Array.from(atob(userApiKey.encrypted_key), c => c.charCodeAt(0));
-          
-          // IVと暗号化されたデータを分離
-          const iv = encryptedData.slice(0, 12);
-          const ciphertext = encryptedData.slice(12);
+        if (keyError || !userApiKey?.encrypted_key) {
+          return null;
+        }
 
-          // 暗号化キーをCryptoKeyに変換
+        console.log('Found user personal Gemini API key, decrypting...');
+        
+        // Decrypt the user's API key
+        const encoder = new TextEncoder();
+        const decoder = new TextDecoder();
+        
+        // Base64デコード
+        const encryptedData = Uint8Array.from(atob(userApiKey.encrypted_key), c => c.charCodeAt(0));
+        
+        // IVと暗号化されたデータを分離
+        const iv = encryptedData.slice(0, 12);
+        const ciphertext = encryptedData.slice(12);
+
+        // Try current AES-GCM (raw key padded to 32 bytes)
+        try {
           const keyMaterial = await crypto.subtle.importKey(
             'raw',
             encoder.encode(encryptionKey.padEnd(32, '0').slice(0, 32)),
@@ -65,117 +68,190 @@ serve(async (req) => {
             ['decrypt']
           );
 
-          // データを復号化
           const decryptedData = await crypto.subtle.decrypt(
             { name: 'AES-GCM', iv: iv },
             keyMaterial,
             ciphertext
           );
 
-          const decryptedKey = decoder.decode(decryptedData);
-          geminiApiKey = decryptedKey;
-          console.log('Successfully using user personal Gemini API key');
-        } else {
-          console.log('No user personal API key found, using global key');
+          return decoder.decode(decryptedData);
+        } catch (_e) {
+          // Fallback: legacy PBKDF2-derived AES-GCM
+          try {
+            const baseKey = await crypto.subtle.importKey(
+              'raw',
+              encoder.encode(encryptionKey),
+              { name: 'PBKDF2' },
+              false,
+              ['deriveKey']
+            );
+            const derivedKey = await crypto.subtle.deriveKey(
+              {
+                name: 'PBKDF2',
+                salt: encoder.encode('salt'),
+                iterations: 100000,
+                hash: 'SHA-256',
+              },
+              baseKey,
+              { name: 'AES-GCM', length: 256 },
+              false,
+              ['decrypt']
+            );
+            const decryptedData = await crypto.subtle.decrypt(
+              { name: 'AES-GCM', iv },
+              derivedKey,
+              ciphertext
+            );
+            console.log('Legacy key decryption succeeded (PBKDF2 fallback).');
+            return decoder.decode(decryptedData);
+          } catch (e2) {
+            console.error('Failed to decrypt user API key with both methods:', e2);
+            return null;
+          }
         }
       } catch (error) {
-        console.error('Error retrieving user API key, falling back to global key:', error);
+        console.error('Error retrieving user API key:', error);
+        return null;
       }
     }
 
-    if (!geminiApiKey) {
-      throw new Error('GEMINI_API_KEY is not configured');
+    async function getAllGeminiApiKeys(userId: string): Promise<string[]> {
+      const apiKeys: string[] = [];
+      
+      // Try all possible Gemini API keys (1-10)
+      for (let i = 1; i <= 10; i++) {
+        const keyName = i === 1 ? 'GEMINI_API_KEY' : `GEMINI_API_KEY_${i}`;
+        const apiKey = await getUserApiKey(userId, keyName);
+        if (apiKey) {
+          apiKeys.push(apiKey);
+        }
+      }
+      
+      return apiKeys;
+    }
+
+    async function generateWithGeminiRotation(prompt: string, userId: string): Promise<string> {
+      const apiKeys = await getAllGeminiApiKeys(userId);
+      
+      if (apiKeys.length === 0) {
+        throw new Error('No Gemini API keys configured');
+      }
+      
+      let lastError: Error | null = null;
+      
+      for (let i = 0; i < apiKeys.length; i++) {
+        const apiKey = apiKeys[i];
+        console.log(`Trying Gemini API key ${i + 1}/${apiKeys.length}`);
+        
+        try {
+          // Updated model name from gemini-pro to gemini-1.5-flash
+          const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              contents: [{
+                parts: [{
+                  text: prompt
+                }]
+              }]
+            })
+          });
+
+          if (!response.ok) {
+            const error = await response.text();
+            console.error('Gemini API error:', error);
+            throw new Error(`Gemini API error: ${response.status} ${error}`);
+          }
+
+          const data = await response.json();
+          console.log('Gemini API response:', data);
+
+          if (!data.candidates || !data.candidates[0] || !data.candidates[0].content) {
+            throw new Error('Invalid response from Gemini API');
+          }
+
+          const generatedReply = data.candidates[0].content.parts[0].text;
+          console.log(`Successfully generated content with API key ${i + 1}`);
+          return generatedReply;
+        } catch (error) {
+          console.log(`API key ${i + 1} failed:`, error.message);
+          lastError = error;
+          
+          // Check if it's a quota/rate limit error that should trigger rotation
+          if (error.message.includes('429') || 
+              error.message.includes('quota') || 
+              error.message.includes('RESOURCE_EXHAUSTED') ||
+              error.message.includes('Rate limit')) {
+            console.log(`Rate limit/quota error detected, trying next API key...`);
+            continue;
+          } else {
+            // For other errors, don't continue trying other keys
+            throw error;
+          }
+        }
+      }
+      
+      // If all keys failed, throw the last error
+      throw lastError || new Error('All Gemini API keys failed');
+    }
+
+    if (!authHeader || !persona?.user_id) {
+      throw new Error('認証情報またはペルソナ情報が不足しています');
     }
 
     const prompt = [
-      'あなたは、ソーシャルメディア「Threads」で活躍する、経験豊富なコミュニティマネージャーです。',
-      'あなたのゴールは、受信したリプライに対して、あなたのペルソナに沿った、人間らしく、魅力的で、気の利いた返信を生成し、会話を促進することです。',
-      '',
-      '## あなたのペルソナ情報',
-      `- **名前**: ${persona?.name || 'Unknown'}`,
-      `- **職業**: ${persona?.occupation || 'Unknown'}`,
-      `- **性格**: ${persona?.personality || 'Unknown'}`,
-      `- **話し方**: ${persona?.tone_of_voice || 'Unknown'}`,
-      `- **背景**: ${persona?.background || 'Unknown'}`,
-      '',
-      '## 返信タスクの背景',
-      '以下の「元の投稿」に対して、あるユーザーから「受信リプライ」が届きました。',
-      `* **元の投稿**: ${postContent || '(本文なし)'}`,
-      `* **受信リプライ**: ${replyContent}`,
-      '---',
-      '',
-      '## あなたへの指示',
-      '上記の「受信リプライ」に対して、以下の「厳格なルール」をすべて守り、最も適切で自然な返信を生成してください。',
-      '',
-      '### 厳格なルール',
-      '- **思考プロセス**: まず受信リプライの意図（質問、感想、共感など）を分析し、次にあなたのペルソナならどう応答するかを考え、それから返信文を作成してください。',
-      '- **ペルソナの一貫性**: 必ず上記「あなたのペルソナ情報」に記載された口調、スタイル、過去のサンプル投稿のトーンを忠実に守ってください。',
-      '- **自然な会話**: 機械的な応答は絶対に避けてください。人間同士の自然な会話の流れを意識してください。',
-      '- **簡潔さ**: 返信は簡潔に、最大でも280文字程度に収めてください。',
-      '- **絵文字**: ペルソナのスタイルに合致する場合のみ、控えめに使用してください。',
-      '- **禁止事項**: 署名や挨拶（「こんにちは」など）で始めないでください。ハッシュタグは使用しないでください。質問に質問で返すことは避けてください。',
-      '- **出力形式**: 生成する返信文のみを出力してください。思考プロセスや言い訳、前置きは一切含めないでください。'
+      `あなたは以下のペルソナになりきって、投稿に対する返信を生成してください：`,
+      ``,
+      `【ペルソナ情報】`,
+      `名前: ${persona.name}`,
+      `年齢: ${persona.age || '未設定'}`,
+      `性格: ${persona.personality || '未設定'}`,
+      `専門分野: ${persona.expertise?.join(', ') || '未設定'}`,
+      `口調: ${persona.tone_of_voice || '未設定'}`,
+      ``,
+      `【元の投稿】`,
+      postContent,
+      ``,
+      `【返信内容】`,
+      replyContent,
+      ``,
+      `【指示】`,
+      `- 上記のペルソナの特徴を活かした自然な返信を生成してください`,
+      `- 返信内容に対して適切にレスポンスしてください`,
+      `- 280文字以内で収めてください`,
+      `- 攻撃的や不適切な表現は避けてください`,
+      `- ペルソナらしい口調と個性を反映してください`,
+      ``,
+      `返信:`,
     ].join('\n');
 
-    // Updated model name from gemini-pro to gemini-1.5-flash
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        contents: [{
-          parts: [{
-            text: prompt
-          }]
-        }],
-        generationConfig: {
-          temperature: 0.7,
-          topK: 40,
-          topP: 0.95,
-          maxOutputTokens: 500,
-        },
-      }),
-    });
-
-    if (!response.ok) {
-      const error = await response.text();
-      console.error('Gemini API error:', error);
-      throw new Error(`Gemini API error: ${response.status} ${error}`);
-    }
-
-    const data = await response.json();
-    console.log('Gemini API response:', data);
-
-    if (!data.candidates || !data.candidates[0] || !data.candidates[0].content) {
-      throw new Error('Invalid response from Gemini API');
-    }
-
-    const generatedReply = data.candidates[0].content.parts[0].text.trim();
+    const generatedReply = await generateWithGeminiRotation(prompt, persona.user_id);
 
     return new Response(
-      JSON.stringify({
-        success: true,
-        reply: generatedReply,
-        message: 'Auto-reply generated successfully'
-      }),
-      {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200
+      JSON.stringify({ reply: generatedReply }),
+      { 
+        headers: { 
+          ...corsHeaders, 
+          'Content-Type': 'application/json' 
+        } 
       }
     );
 
   } catch (error) {
-    console.error('Error in generate-auto-reply function:', error);
+    console.error('Error in generate-auto-reply:', error);
+    
     return new Response(
-      JSON.stringify({
-        error: 'Failed to generate auto-reply',
-        details: error instanceof Error ? error.message : 'Unknown error',
-        success: false
+      JSON.stringify({ 
+        error: error.message || 'Failed to generate auto reply' 
       }),
-      {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 500
+      { 
+        status: 500,
+        headers: { 
+          ...corsHeaders, 
+          'Content-Type': 'application/json' 
+        } 
       }
     );
   }

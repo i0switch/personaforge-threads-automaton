@@ -89,6 +89,59 @@ async function getUserApiKey(userId: string, keyName: string): Promise<string | 
   }
 }
 
+async function getAllGeminiApiKeys(userId: string): Promise<string[]> {
+  const apiKeys: string[] = [];
+  
+  // Try all possible Gemini API keys (1-10)
+  for (let i = 1; i <= 10; i++) {
+    const keyName = i === 1 ? 'GEMINI_API_KEY' : `GEMINI_API_KEY_${i}`;
+    const apiKey = await getUserApiKey(userId, keyName);
+    if (apiKey) {
+      apiKeys.push(apiKey);
+    }
+  }
+  
+  return apiKeys;
+}
+
+async function generateWithGeminiRotation(prompt: string, userId: string): Promise<string> {
+  const apiKeys = await getAllGeminiApiKeys(userId);
+  
+  if (apiKeys.length === 0) {
+    throw new Error('No Gemini API keys configured');
+  }
+  
+  let lastError: Error | null = null;
+  
+  for (let i = 0; i < apiKeys.length; i++) {
+    const apiKey = apiKeys[i];
+    console.log(`Trying Gemini API key ${i + 1}/${apiKeys.length}`);
+    
+    try {
+      const result = await generateWithGemini(prompt, apiKey);
+      console.log(`Successfully generated content with API key ${i + 1}`);
+      return result;
+    } catch (error) {
+      console.log(`API key ${i + 1} failed:`, error.message);
+      lastError = error;
+      
+      // Check if it's a quota/rate limit error that should trigger rotation
+      if (error.message.includes('429') || 
+          error.message.includes('quota') || 
+          error.message.includes('RESOURCE_EXHAUSTED') ||
+          error.message.includes('Rate limit')) {
+        console.log(`Rate limit/quota error detected, trying next API key...`);
+        continue;
+      } else {
+        // For other errors, don't continue trying other keys
+        throw error;
+      }
+    }
+  }
+  
+  // If all keys failed, throw the last error
+  throw lastError || new Error('All Gemini API keys failed');
+}
 async function generateWithGemini(prompt: string, apiKey: string): Promise<string> {
   if (!apiKey) throw new Error('Gemini API key is not configured');
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
@@ -228,17 +281,9 @@ serve(async (req) => {
           .single();
         if (personaError) throw personaError;
 
-        // APIキー解決（個人APIキー必須）
-        const userGeminiApiKey = await getUserApiKey(cfg.user_id, 'GEMINI_API_KEY');
-        if (!userGeminiApiKey) {
-          console.error(`User ${cfg.user_id} does not have GEMINI_API_KEY configured, skipping post generation`);
-          failed++;
-          continue;
-        }
-        const geminiApiKeyToUse = userGeminiApiKey;
-        // 生成
+        // APIキー解決とコンテンツ生成（エラー時は自動ローテーション）
         const prompt = buildPrompt(persona, cfg.prompt_template, cfg.content_prefs);
-        const content = await generateWithGemini(prompt, geminiApiKeyToUse);
+        const content = await generateWithGeminiRotation(prompt, cfg.user_id);
 
         // postsへ作成（予約投稿）
         const { data: inserted, error: postErr } = await supabase
@@ -341,18 +386,9 @@ serve(async (req) => {
           content_prefs: selectedConfig.content_prefs?.substring(0, 50) + '...'
         });
 
-        // APIキー解決（個人APIキー必須）
-        const userGeminiApiKey = await getUserApiKey(persona.user_id, 'GEMINI_API_KEY');
-        if (!userGeminiApiKey) {
-          console.error(`User ${persona.user_id} does not have GEMINI_API_KEY configured, skipping random post generation`);
-          failed++;
-          continue;
-        }
-        const geminiApiKeyToUse = userGeminiApiKey;
-
-        // 選択した完全オートポスト設定を使用してプロンプト生成
+        // APIキー解決とコンテンツ生成（エラー時は自動ローテーション）
         const prompt = buildPrompt(persona, selectedConfig.prompt_template, selectedConfig.content_prefs);
-        const content = await generateWithGemini(prompt, geminiApiKeyToUse);
+        const content = await generateWithGeminiRotation(prompt, persona.user_id);
 
         // postsへ作成（予約投稿）
         const { data: inserted, error: postErr } = await supabase

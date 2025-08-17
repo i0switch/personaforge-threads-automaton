@@ -1,4 +1,3 @@
-
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
@@ -92,6 +91,129 @@ async function getUserApiKey(userId: string, keyName: string): Promise<string | 
   }
 }
 
+async function getAllGeminiApiKeys(userId: string): Promise<string[]> {
+  const apiKeys: string[] = [];
+  
+  // Try all possible Gemini API keys (1-10)
+  for (let i = 1; i <= 10; i++) {
+    const keyName = i === 1 ? 'GEMINI_API_KEY' : `GEMINI_API_KEY_${i}`;
+    const apiKey = await getUserApiKey(userId, keyName);
+    if (apiKey) {
+      apiKeys.push(apiKey);
+    }
+  }
+  
+  return apiKeys;
+}
+
+async function generateWithGeminiRotation(prompt: string, userId: string): Promise<string> {
+  const apiKeys = await getAllGeminiApiKeys(userId);
+  
+  if (apiKeys.length === 0) {
+    throw new Error('GEMINI_API_KEY_REQUIRED: Gemini API key is not configured. Please set your API key in Settings.');
+  }
+  
+  let lastError: Error | null = null;
+  
+  for (let i = 0; i < apiKeys.length; i++) {
+    const apiKey = apiKeys[i];
+    console.log(`Trying Gemini API key ${i + 1}/${apiKeys.length}`);
+    
+    try {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                {
+                  text: prompt
+                }
+              ]
+            }
+          ],
+          generationConfig: {
+            temperature: 0.9,
+            topK: 1,
+            topP: 1,
+            maxOutputTokens: 2048,
+          },
+          safetySettings: [
+            {
+              category: "HARM_CATEGORY_HARASSMENT",
+              threshold: "BLOCK_MEDIUM_AND_ABOVE"
+            },
+            {
+              category: "HARM_CATEGORY_HATE_SPEECH",
+              threshold: "BLOCK_MEDIUM_AND_ABOVE"
+            },
+            {
+              category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+              threshold: "BLOCK_MEDIUM_AND_ABOVE"
+            },
+            {
+              category: "HARM_CATEGORY_DANGEROUS_CONTENT",
+              threshold: "BLOCK_MEDIUM_AND_ABOVE"
+            }
+          ]
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Gemini API error with key ${i + 1}:`, response.status, response.statusText, errorText);
+        throw new Error(`Gemini API error: ${response.status} ${response.statusText} - ${errorText}`);
+      }
+
+      const data = await response.json();
+
+      if (!data || !data.candidates) {
+        console.error(`Empty response from Gemini API with key ${i + 1}`);
+        throw new Error('Empty response from Gemini API');
+      }
+
+      if (!data.candidates || data.candidates.length === 0) {
+        console.error(`No candidates in Gemini API response with key ${i + 1}:`, JSON.stringify(data));
+        throw new Error('No candidates in Gemini API response');
+      }
+
+      if (!data.candidates[0] || !data.candidates[0].content || !data.candidates[0].content.parts) {
+        console.error(`Empty candidates array in Gemini API response with key ${i + 1}:`, JSON.stringify(data));
+        throw new Error('Empty candidates array in Gemini API response');
+      }
+
+      const content = data.candidates[0].content.parts[0].text;
+      if (content && content.trim()) {
+        console.log(`Successfully generated content with API key ${i + 1}`);
+        return content.trim();
+      } else {
+        throw new Error('Generated content is empty');
+      }
+    } catch (error) {
+      console.log(`API key ${i + 1} failed:`, error.message);
+      lastError = error;
+      
+      // Check if it's a quota/rate limit error that should trigger rotation
+      if (error.message.includes('429') || 
+          error.message.includes('quota') || 
+          error.message.includes('RESOURCE_EXHAUSTED') ||
+          error.message.includes('Rate limit')) {
+        console.log(`Rate limit/quota error detected, trying next API key...`);
+        continue;
+      } else {
+        // For other errors, don't continue trying other keys
+        throw error;
+      }
+    }
+  }
+  
+  // If all keys failed, throw the last error
+  throw lastError || new Error('All Gemini API keys failed');
+}
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -126,18 +248,9 @@ serve(async (req) => {
       throw new Error('Missing required fields: personaId, topics, selectedDates, selectedTimes');
     }
 
-    // ユーザーのGemini APIキーを取得（個人APIキー必須）
-    const userGeminiApiKey = await getUserApiKey(user.id, 'GEMINI_API_KEY');
-
-    if (!userGeminiApiKey) {
-      throw new Error('GEMINI_API_KEY_REQUIRED: Gemini API key is not configured. Please set your API key in Settings.');
-    }
-
-    const geminiApiKey = userGeminiApiKey;
-
     // Calculate total posts to generate
     const postCount = selectedDates.length * selectedTimes.length;
-    console.log(`Generating ${postCount} posts for persona ${personaId} using user API key`);
+    console.log(`Generating ${postCount} posts for persona ${personaId} using user API key rotation`);
 
     // Get persona details
     const { data: persona, error: personaError } = await supabase
@@ -163,126 +276,23 @@ serve(async (req) => {
 
       // Create prompt for Gemini with variety
       const prompt = createPostPrompt(persona, topics, i + 1, timeSlots.length, customPrompt, timeSlots[i]);
+      
+      // Create variation for this iteration
+      const promptWithVariation = prompt + `\n\n今回の投稿では、「${Math.random() > 0.5 ? '具体例を交えて' : '感情を込めて'}」アプローチしてください。`;
 
       let postGenerated = false;
       let lastError = null;
       
-      // リトライ機能付きでGemini APIを呼び出し
-      for (let retryCount = 0; retryCount < 3 && !postGenerated; retryCount++) {
-        try {
-          if (retryCount > 0) {
-            const backoffDelay = Math.min(1000 * Math.pow(2, retryCount - 1), 5000); // 指数バックオフ (1s, 2s, 4s)
-            console.log(`Retrying post ${i + 1}, attempt ${retryCount + 1}/3 after ${backoffDelay}ms delay`);
-            await new Promise(resolve => setTimeout(resolve, backoffDelay));
-          }
-
-          // Call Gemini API
-          const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${geminiApiKey}`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              contents: [
-                {
-                  parts: [
-                    {
-                      text: prompt
-                    }
-                  ]
-                }
-              ],
-              generationConfig: {
-                temperature: 0.9,
-                topK: 1,
-                topP: 1,
-                maxOutputTokens: 2048,
-              },
-              safetySettings: [
-                {
-                  category: "HARM_CATEGORY_HARASSMENT",
-                  threshold: "BLOCK_MEDIUM_AND_ABOVE"
-                },
-                {
-                  category: "HARM_CATEGORY_HATE_SPEECH",
-                  threshold: "BLOCK_MEDIUM_AND_ABOVE"
-                },
-                {
-                  category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-                  threshold: "BLOCK_MEDIUM_AND_ABOVE"
-                },
-                {
-                  category: "HARM_CATEGORY_DANGEROUS_CONTENT",
-                  threshold: "BLOCK_MEDIUM_AND_ABOVE"
-                }
-              ]
-            }),
-          });
-
-          // レート制限エラーの詳細チェック
-          if (response.status === 429) {
-            const errorText = await response.text();
-            console.error(`Rate limit exceeded for post ${i + 1}, retry ${retryCount + 1}/3:`, errorText);
-            lastError = new Error(`Rate limit exceeded: ${errorText}`);
-            continue; // リトライを続行
-          }
-
-          if (!response.ok) {
-            const errorText = await response.text();
-            console.error(`Gemini API error for post ${i + 1}:`, response.status, response.statusText, errorText);
-            lastError = new Error(`Gemini API error: ${response.status} ${response.statusText} - ${errorText}`);
-            
-            // 500番台エラーの場合はリトライ、400番台エラーは即座に失敗
-            if (response.status >= 500) {
-              continue; // リトライを続行
-            } else {
-              break; // リトライを停止
-            }
-          }
-
-          const data = await response.json();
-
-          // APIレスポンスの詳細検証
-          if (!data) {
-            console.error(`Empty response from Gemini API for post ${i + 1}`);
-            lastError = new Error('Empty response from Gemini API');
-            continue;
-          }
-
-          if (!data.candidates) {
-            console.error(`No candidates in Gemini API response for post ${i + 1}:`, JSON.stringify(data));
-            lastError = new Error('No candidates in Gemini API response');
-            continue;
-          }
-
-          if (!data.candidates[0]) {
-            console.error(`Empty candidates array in Gemini API response for post ${i + 1}:`, JSON.stringify(data));
-            lastError = new Error('Empty candidates array in Gemini API response');
-            continue;
-          }
-
-          if (!data.candidates[0].content) {
-            console.error(`No content in candidate for post ${i + 1}:`, JSON.stringify(data.candidates[0]));
-            lastError = new Error('No content in candidate');
-            continue;
-          }
-
-          if (!data.candidates[0].content.parts || !data.candidates[0].content.parts[0]) {
-            console.error(`No parts in content for post ${i + 1}:`, JSON.stringify(data.candidates[0].content));
-            lastError = new Error('No parts in content');
-            continue;
-          }
-
-          const generatedContent = data.candidates[0].content.parts[0].text;
-          
-          if (!generatedContent || generatedContent.trim().length === 0) {
-            console.error(`Empty generated content for post ${i + 1}`);
-            lastError = new Error('Empty generated content');
-            continue;
-          }
-
+      // Generate with API key rotation instead of retry loop
+      try {
+        const generatedPost = await generateWithGeminiRotation(promptWithVariation, user.id);
+        
+        if (!generatedPost || generatedPost.trim().length === 0) {
+          console.error(`Empty generated content for post ${i + 1}`);
+          lastError = new Error('Empty generated content');
+        } else {
           // Use generated content as is, without hashtag extraction
-          const content = generatedContent.trim();
+          const content = generatedPost.trim();
           const hashtags: string[] = [];
 
           // Save post to database
@@ -303,33 +313,30 @@ serve(async (req) => {
           if (saveError) {
             console.error(`Error saving post ${i + 1}:`, saveError);
             lastError = saveError;
-            continue;
+          } else {
+            console.log(`Post ${i + 1} generated successfully and saved with ID: ${savedPost.id}`);
+            posts.push(savedPost);
+            postGenerated = true;
           }
-
-          console.log(`Post ${i + 1} generated successfully and saved with ID: ${savedPost.id}`);
-          posts.push(savedPost);
-          postGenerated = true;
-
-        } catch (error) {
-          console.error(`Error generating post ${i + 1}, retry ${retryCount + 1}/3:`, error);
-          lastError = error;
-          continue;
         }
+      } catch (error) {
+        console.error(`Error generating post ${i + 1}:`, error);
+        lastError = error;
       }
 
-      // 3回リトライしても失敗した場合のログ
+      // 失敗した場合のログ
       if (!postGenerated) {
-        console.error(`Failed to generate post ${i + 1} after 3 attempts. Last error:`, lastError);
+        console.error(`Failed to generate post ${i + 1}. Last error:`, lastError);
       }
 
-      // レート制限対策のための適切な遅延（成功/失敗に関わらず）
+      // Rate limit handling delay
       const delay = Math.max(500, Math.random() * 1000); // 500ms-1500msのランダム遅延
       await new Promise(resolve => setTimeout(resolve, delay));
     }
 
     console.log(`Successfully generated ${posts.length} posts`);
 
-        return new Response(
+    return new Response(
       JSON.stringify({ 
         posts,
         success: true,
