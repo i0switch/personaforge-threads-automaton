@@ -328,37 +328,111 @@ async function getAccessToken(persona: any): Promise<string | null> {
 }
 
 // Threads APIを使用して返信を送信
-async function sendThreadsReply(persona: any, accessToken: string, replyToId: string, responseText: string): Promise<boolean> {
+async function sendThreadsReply(persona: any, accessToken: string, replyToId: string, responseText: string, images?: string[]): Promise<boolean> {
   try {
     console.log(`📤 Threads返信送信開始: "${responseText}" (Reply to: ${replyToId})`);
 
     const userId = persona.threads_user_id || 'me';
+    let containerId: string;
 
-    // コンテナを作成
-    const createResponse = await fetch(`https://graph.threads.net/v1.0/me/threads`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        media_type: 'TEXT',
-        text: responseText,
-        reply_to_id: replyToId,
-        access_token: accessToken
-      })
-    });
+    // Check if reply has images and validate them
+    if (images && images.length > 0) {
+      console.log(`Reply has ${images.length} images, validating...`);
+      
+      // Validate image URL format
+      const imageUrl = images[0];
+      const isValidUrl = (url: string): boolean => {
+        try {
+          const parsed = new URL(url);
+          return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+        } catch {
+          return false;
+        }
+      };
 
-    if (!createResponse.ok) {
-      const errorText = await createResponse.text();
-      console.error('❌ Threads コンテナ作成失敗:', errorText);
-      return false;
+      if (!imageUrl || !isValidUrl(imageUrl)) {
+        console.warn('Invalid image URL detected, creating text-only reply instead:', imageUrl);
+        // Fallback to text-only reply for invalid image URLs
+        const createResponse = await fetch(`https://graph.threads.net/v1.0/me/threads`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            media_type: 'TEXT',
+            text: responseText,
+            reply_to_id: replyToId,
+            access_token: accessToken
+          })
+        });
+
+        if (!createResponse.ok) {
+          const errorText = await createResponse.text();
+          console.error('❌ Threads フォールバックテキストコンテナ作成失敗:', errorText);
+          return false;
+        }
+
+        const containerData = await createResponse.json();
+        console.log(`✅ フォールバックテキストコンテナ作成成功: ${containerData.id}`);
+        containerId = containerData.id;
+      } else {
+        console.log('Valid image URL detected, creating image reply container');
+        // For image replies, create container with IMAGE media type
+        const createResponse = await fetch(`https://graph.threads.net/v1.0/me/threads`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            media_type: 'IMAGE',
+            image_url: imageUrl,
+            text: responseText,
+            reply_to_id: replyToId,
+            access_token: accessToken
+          })
+        });
+
+        if (!createResponse.ok) {
+          const errorText = await createResponse.text();
+          console.error('❌ Threads 画像コンテナ作成失敗:', errorText);
+          return false;
+        }
+
+        const containerData = await createResponse.json();
+        console.log(`✅ 画像コンテナ作成成功: ${containerData.id}`);
+        containerId = containerData.id;
+      }
+    } else {
+      console.log('Creating text-only reply container');
+      // コンテナを作成
+      const createResponse = await fetch(`https://graph.threads.net/v1.0/me/threads`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          media_type: 'TEXT',
+          text: responseText,
+          reply_to_id: replyToId,
+          access_token: accessToken
+        })
+      });
+
+      if (!createResponse.ok) {
+        const errorText = await createResponse.text();
+        console.error('❌ Threads コンテナ作成失敗:', errorText);
+        return false;
+      }
+
+      const containerData = await createResponse.json();
+      console.log(`✅ コンテナ作成成功: ${containerData.id}`);
+      containerId = containerData.id;
     }
 
-    const containerData = await createResponse.json();
-    console.log(`✅ コンテナ作成成功: ${containerData.id}`);
-
-    // 少し待機してから投稿
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    // Wait longer for image processing if images are present
+    const waitTime = images && images.length > 0 ? 5000 : 2000;
+    console.log(`Waiting ${waitTime}ms for reply container processing...`);
+    await new Promise(resolve => setTimeout(resolve, waitTime));
 
     // 投稿を公開
     const publishResponse = await fetch('https://graph.threads.net/v1.0/me/threads_publish', {
@@ -367,7 +441,7 @@ async function sendThreadsReply(persona: any, accessToken: string, replyToId: st
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        creation_id: containerData.id,
+        creation_id: containerId,
         access_token: accessToken
       })
     });

@@ -66,22 +66,89 @@ async function fetchLatestThreadsPostId(persona: Persona, token: string): Promis
   }
 }
 
-async function sendReply(token: string, replyToId: string, message: string) {
-  // 1) Create text container as reply
-  const createUrl = new URL("https://graph.threads.net/v1.0/me/threads");
-  createUrl.searchParams.set("access_token", token);
+async function sendReply(token: string, replyToId: string, message: string, images?: string[]) {
+  let containerId: string;
 
-  const createRes = await fetch(createUrl.toString(), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ media_type: "TEXT", text: message, reply_to_id: replyToId }),
-  });
-  const createBody = await createRes.text();
-  console.log("Reply container response:", createRes.status, createBody);
-  if (!createRes.ok) throw new Error(`Failed to create reply container: ${createBody}`);
+  // Check if reply has images and validate them
+  if (images && images.length > 0) {
+    console.log(`Reply has ${images.length} images, validating...`);
+    
+    // Validate image URL format
+    const imageUrl = images[0];
+    const isValidUrl = (url: string): boolean => {
+      try {
+        const parsed = new URL(url);
+        return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+      } catch {
+        return false;
+      }
+    };
 
-  const containerId = JSON.parse(createBody)?.id;
+    if (!imageUrl || !isValidUrl(imageUrl)) {
+      console.warn('Invalid image URL detected, creating text-only reply instead:', imageUrl);
+      // Fallback to text-only reply for invalid image URLs
+      const createUrl = new URL("https://graph.threads.net/v1.0/me/threads");
+      createUrl.searchParams.set("access_token", token);
+
+      const createRes = await fetch(createUrl.toString(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ media_type: "TEXT", text: message, reply_to_id: replyToId }),
+      });
+      const createBody = await createRes.text();
+      console.log("Fallback text reply container response:", createRes.status, createBody);
+      if (!createRes.ok) throw new Error(`Failed to create fallback text reply container: ${createBody}`);
+
+      const containerData = JSON.parse(createBody);
+      containerId = containerData.id;
+    } else {
+      console.log('Valid image URL detected, creating image reply container');
+      // For image replies, create container with IMAGE media type
+      const createUrl = new URL("https://graph.threads.net/v1.0/me/threads");
+      createUrl.searchParams.set("access_token", token);
+
+      const createRes = await fetch(createUrl.toString(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          media_type: "IMAGE",
+          image_url: imageUrl,
+          text: message,
+          reply_to_id: replyToId
+        }),
+      });
+      const createBody = await createRes.text();
+      console.log("Image reply container response:", createRes.status, createBody);
+      if (!createRes.ok) throw new Error(`Failed to create image reply container: ${createBody}`);
+
+      const containerData = JSON.parse(createBody);
+      containerId = containerData.id;
+    }
+  } else {
+    console.log('Creating text-only reply container');
+    // For text-only replies
+    const createUrl = new URL("https://graph.threads.net/v1.0/me/threads");
+    createUrl.searchParams.set("access_token", token);
+
+    const createRes = await fetch(createUrl.toString(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ media_type: "TEXT", text: message, reply_to_id: replyToId }),
+    });
+    const createBody = await createRes.text();
+    console.log("Text reply container response:", createRes.status, createBody);
+    if (!createRes.ok) throw new Error(`Failed to create text reply container: ${createBody}`);
+
+    const containerData = JSON.parse(createBody);
+    containerId = containerData.id;
+  }
+
   if (!containerId) throw new Error("No container id returned");
+
+  // Wait longer for image processing if images are present
+  const waitTime = images && images.length > 0 ? 5000 : 2000;
+  console.log(`Waiting ${waitTime}ms for reply container processing...`);
+  await new Promise(resolve => setTimeout(resolve, waitTime));
 
   // 2) Publish container
   const publishUrl = new URL("https://graph.threads.net/v1.0/me/threads_publish");
@@ -132,6 +199,14 @@ serve(async (req) => {
         if (personaErr) throw personaErr;
         if (!persona) throw new Error("Persona not found");
 
+        // Fetch original post to get image information
+        const { data: originalPost, error: postErr } = await supabaseAdmin
+          .from("posts")
+          .select("images")
+          .eq("id", job.post_id)
+          .maybeSingle();
+        if (postErr) throw postErr;
+
         // Fetch settings
         const { data: settings } = await supabaseAdmin
           .from("self_reply_settings")
@@ -169,7 +244,9 @@ serve(async (req) => {
         }
         if (!replyTargetId) throw new Error("Could not resolve Threads post id to reply to");
 
-        const replyId = await sendReply(token, replyTargetId, message);
+        // Include images from original post in the reply
+        const images = originalPost?.images || [];
+        const replyId = await sendReply(token, replyTargetId, message, images);
 
         await supabaseAdmin
           .from("self_reply_jobs")
