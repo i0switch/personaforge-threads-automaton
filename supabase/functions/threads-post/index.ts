@@ -124,8 +124,48 @@ serve(async (req) => {
         console.log('Fallback text container created:', containerData);
         containerId = containerData.id;
       } else {
-        console.log('Valid image URL detected, creating image container');
-        // For image posts, create container with IMAGE media type
+        console.log('Valid image URL detected, attempting to ensure permanent hosting');
+
+        // Ensure image is hosted on our Supabase storage (avoid expiring external URLs)
+        let finalImageUrl = imageUrl;
+        try {
+          const supaHost = new URL(supabaseUrl).host;
+          const srcHost = new URL(imageUrl).host;
+
+          if (supaHost !== srcHost) {
+            console.log('Rehosting external image to Supabase Storage:', imageUrl);
+            const imgRes = await fetch(imageUrl);
+            if (!imgRes.ok) throw new Error(`Failed to fetch source image: ${imgRes.status}`);
+
+            const contentType = imgRes.headers.get('content-type') || 'image/jpeg';
+            const arrayBuf = await imgRes.arrayBuffer();
+
+            // Derive extension from content-type or fallback to webp/jpg
+            const extFromType = contentType.includes('png') ? 'png' : contentType.includes('webp') ? 'webp' : contentType.includes('jpeg') ? 'jpg' : 'jpg';
+            const path = `${post.user_id}/${post.id}/${Date.now()}.${extFromType}`;
+
+            const { data: upData, error: upErr } = await supabase
+              .storage
+              .from('post-images')
+              .upload(path, new Uint8Array(arrayBuf), { contentType, upsert: true });
+
+            if (upErr) {
+              console.warn('Supabase upload failed, will use original URL:', upErr);
+            } else {
+              const { data: pub } = supabase.storage.from('post-images').getPublicUrl(path);
+              if (pub?.publicUrl) {
+                finalImageUrl = pub.publicUrl;
+                // Persist back to DB so future operations use the stable URL
+                await supabase.from('posts').update({ images: [finalImageUrl] }).eq('id', post.id);
+                console.log('Image rehosted to Supabase Storage:', finalImageUrl);
+              }
+            }
+          }
+        } catch (rehostErr) {
+          console.warn('Image rehosting skipped due to error, proceeding with original URL:', rehostErr);
+        }
+
+        // Create image container on Threads using the final (possibly rehosted) URL
         const createContainerResponse = await fetch('https://graph.threads.net/v1.0/me/threads', {
           method: 'POST',
           headers: {
@@ -133,7 +173,7 @@ serve(async (req) => {
           },
           body: JSON.stringify({
             media_type: 'IMAGE',
-            image_url: imageUrl,
+            image_url: finalImageUrl,
             text: post.content,
             access_token: threadsAccessToken
           }),
