@@ -246,17 +246,35 @@ serve(async (req) => {
   try {
     const now = new Date();
 
-    // 1. 通常のオートポスト設定を取得
-    const { data: configs, error: cfgError } = await supabase
+    // 1. ランダムポスト設定がアクティブなペルソナIDを取得
+    const { data: randomActivePersonas, error: randomPersonaError } = await supabase
+      .from('random_post_configs')
+      .select('persona_id')
+      .eq('is_active', true);
+
+    if (randomPersonaError) throw randomPersonaError;
+
+    const excludePersonaIds = (randomActivePersonas || []).map(r => r.persona_id);
+    console.log('Personas with active random post configs (will skip auto-post):', excludePersonaIds);
+
+    // 2. 通常のオートポスト設定を取得（ランダムポスト設定がアクティブなペルソナは除外）
+    let configsQuery = supabase
       .from('auto_post_configs')
       .select('*')
       .eq('is_active', true)
       .lte('next_run_at', now.toISOString())
       .limit(25);
 
+    // ランダムポスト設定がアクティブなペルソナは除外
+    if (excludePersonaIds.length > 0) {
+      configsQuery = configsQuery.not('persona_id', 'in', `(${excludePersonaIds.join(',')})`);
+    }
+
+    const { data: configs, error: cfgError } = await configsQuery;
+
     if (cfgError) throw cfgError;
 
-    // 2. ランダムポスト設定を取得
+    // 3. ランダムポスト設定を取得
     const { data: randomConfigs, error: randomCfgError } = await supabase
       .from('random_post_configs')
       .select('*, personas!inner(id, user_id, name, tone_of_voice, expertise, personality)')
@@ -268,7 +286,7 @@ serve(async (req) => {
 
     let processed = 0, posted = 0, failed = 0;
 
-    // 3. 通常のオートポスト処理
+    // 4. 通常のオートポスト処理
     for (const cfg of configs || []) {
       try {
         processed++;
@@ -354,7 +372,7 @@ serve(async (req) => {
       }
     }
 
-    // 4. ランダムポスト処理
+    // 5. ランダムポスト処理
     for (const randomCfg of randomConfigs || []) {
       try {
         processed++;
