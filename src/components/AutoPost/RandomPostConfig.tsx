@@ -28,6 +28,7 @@ export function RandomPostConfig() {
   const [personas, setPersonas] = useState<Persona[]>([]);
   const [configs, setConfigs] = useState<RandomPostConfig[]>([]);
   const [loading, setLoading] = useState(true);
+  const [processingPersonas, setProcessingPersonas] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (user) {
@@ -102,9 +103,15 @@ export function RandomPostConfig() {
   };
 
   const togglePersonaConfig = async (persona: Persona) => {
+    // 処理中は重複操作を防ぐ
+    if (processingPersonas.has(persona.id)) return;
+    
     const existingConfig = getConfigForPersona(persona.id);
 
     try {
+      // 処理開始
+      setProcessingPersonas(prev => new Set([...prev, persona.id]));
+
       if (existingConfig) {
         // 既存設定の ON/OFF 切り替え
         const newActive = !existingConfig.is_active;
@@ -141,7 +148,20 @@ export function RandomPostConfig() {
           .select()
           .single();
 
-        if (error) throw error;
+        if (error) {
+          // エラーが23505（一意制約違反）の場合は重複として処理
+          if (error.code === '23505') {
+            toast({
+              title: '設定済み',
+              description: 'このペルソナのランダムポスト設定は既に存在します',
+              variant: 'default'
+            });
+            // データを再読み込みして最新の状態に同期
+            await loadData();
+            return;
+          }
+          throw error;
+        }
 
         setConfigs(prev => [...prev, data]);
         toast({
@@ -155,6 +175,13 @@ export function RandomPostConfig() {
         title: 'エラー',
         description: '設定の更新に失敗しました',
         variant: 'destructive'
+      });
+    } finally {
+      // 処理終了
+      setProcessingPersonas(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(persona.id);
+        return newSet;
       });
     }
   };
@@ -244,6 +271,7 @@ export function RandomPostConfig() {
                   <div className="flex items-center space-x-2">
                     <Switch
                       checked={isActive}
+                      disabled={processingPersonas.has(persona.id)}
                       onCheckedChange={() => togglePersonaConfig(persona)}
                     />
                     <Label>有効</Label>
