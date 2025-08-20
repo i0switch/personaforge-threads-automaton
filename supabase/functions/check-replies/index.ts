@@ -165,6 +165,7 @@ async function checkRepliesForPost(persona: any, postId: string): Promise<number
   try {
     // Threads APIを使用してメンション・リプライを検索
     // Note: Threads APIの実際のエンドポイントは公式ドキュメントを確認してください
+    console.log(`🔍 Fetching threads for persona ${persona.id}`);
     const response = await fetch(`https://graph.threads.net/v1.0/me/threads?fields=id,text,username,timestamp,reply_to_id&access_token=${persona.threads_access_token}`);
     
     if (!response.ok) {

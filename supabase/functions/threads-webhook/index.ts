@@ -36,7 +36,7 @@ serve(async (req) => {
       const challenge = url.searchParams.get('hub.challenge');
       const verifyToken = url.searchParams.get('hub.verify_token');
       
-      console.log(`🔐 Facebook Webhook認証 - challenge: ${challenge}, verify_token: ${verifyToken}`);
+      console.log(`🔐 Facebook Webhook認証 - challenge received, verify_token validation`);
       
       // ペルソナのwebhook_verify_tokenを取得
       const { data: persona } = await supabase
@@ -326,6 +326,7 @@ async function processAIAutoReply(persona: any, reply: any): Promise<{ sent: boo
           const accessToken = await getAccessToken(persona);
           if (accessToken) {
             try {
+              console.log(`🔍 Fetching root post data for reply processing`);
               const response = await fetch(`https://graph.threads.net/v1.0/${reply.root_post.id}?fields=text&access_token=${accessToken}`);
               if (response.ok) {
                 const postData = await response.json();

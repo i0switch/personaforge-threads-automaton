@@ -167,6 +167,7 @@ async function checkRepliesForPost(post: any, persona: any, accessToken: string)
     console.log(`Checking replies for post: ${post.id}`);
     
     // Threads APIから投稿のリプライを取得
+    console.log(`🔍 Checking replies for post ${post.id}`);
     const threadsApiUrl = `https://graph.threads.net/v1.0/${post.id}/replies?fields=id,username,text,timestamp,media_type,permalink&access_token=${accessToken}`;
     
     const response = await fetch(threadsApiUrl);
