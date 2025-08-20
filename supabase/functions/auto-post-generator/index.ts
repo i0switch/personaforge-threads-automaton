@@ -255,7 +255,7 @@ serve(async (req) => {
     if (randomPersonaError) throw randomPersonaError;
 
     const excludePersonaIds = (randomActivePersonas || []).map(r => r.persona_id);
-    console.log('Personas with active random post configs (will skip auto-post):', excludePersonaIds);
+    console.log('🚫 Personas with active random post configs (will skip auto-post):', excludePersonaIds);
 
     // 2. 通常のオートポスト設定を取得（ランダムポスト設定がアクティブなペルソナは除外）
     let configsQuery = supabase
@@ -268,11 +268,23 @@ serve(async (req) => {
     // ランダムポスト設定がアクティブなペルソナは除外
     if (excludePersonaIds.length > 0) {
       configsQuery = configsQuery.not('persona_id', 'in', `(${excludePersonaIds.join(',')})`);
+      console.log(`⚠️ Excluding ${excludePersonaIds.length} personas from auto-post due to active random posting`);
     }
 
     const { data: configs, error: cfgError } = await configsQuery;
 
     if (cfgError) throw cfgError;
+
+    console.log(`📋 Found ${configs?.length || 0} auto-post configs to process (after random post exclusion)`);
+    
+    // ランダムポスト有効ペルソナの除外確認ログ
+    if (configs && excludePersonaIds.length > 0) {
+      const conflictingConfigs = configs.filter(cfg => excludePersonaIds.includes(cfg.persona_id));
+      if (conflictingConfigs.length > 0) {
+        console.error('⚠️ CONFLICT: Found auto-post configs for personas with active random posting:', 
+          conflictingConfigs.map(c => c.persona_id));
+      }
+    }
 
     // 3. ランダムポスト設定を取得
     const { data: randomConfigs, error: randomCfgError } = await supabase
