@@ -24,8 +24,8 @@ serve(async (req) => {
     const now = new Date();
     console.log(`Current time: ${now.toISOString()}`);
 
-    // 現在時刻より前にスケジュールされた投稿を取得（バッファ時間を追加）
-    const timeBuffer = new Date(now.getTime() + 5 * 60 * 1000); // 5分後まで
+    // 現在時刻より前にスケジュールされた投稿を取得（バッファ時間を1分に縮小）
+    const timeBuffer = new Date(now.getTime() + 1 * 60 * 1000); // 1分後まで
     
     console.log(`Searching for posts scheduled before: ${timeBuffer.toISOString()}`);
     

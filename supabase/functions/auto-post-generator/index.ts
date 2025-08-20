@@ -227,15 +227,44 @@ function calculateRandomNextRun(randomTimes: string[], timezone: string = 'UTC')
     randomTimes = defaultTimes;
   }
 
-  // 次の日のランダムな時間を選択
+  // 現在時刻をタイムゾーンに合わせて取得
+  const now = new Date();
   const randomTime = randomTimes[Math.floor(Math.random() * randomTimes.length)];
-  const [hours, minutes] = randomTime.split(':').map(Number);
+  const [hours, minutes, seconds = 0] = randomTime.split(':').map(Number);
   
-  const nextRun = new Date();
-  nextRun.setDate(nextRun.getDate() + 1); // 明日
-  nextRun.setHours(hours, minutes, 0, 0);
-  
-  return nextRun.toISOString();
+  // タイムゾーン考慮した次回実行時刻の計算
+  if (timezone === 'UTC') {
+    const nextRun = new Date();
+    nextRun.setDate(nextRun.getDate() + 1); // 明日
+    nextRun.setUTCHours(hours, minutes, seconds, 0);
+    return nextRun.toISOString();
+  } else {
+    // Asia/Tokyo等のタイムゾーン対応
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
+    
+    const tomorrowLocal = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    const localDateString = formatter.format(tomorrowLocal);
+    
+    // ローカル時間で次回実行時刻を作成し、UTCに変換
+    const localDateTime = new Date(`${localDateString}T${randomTime}`);
+    const utcOffset = getTimezoneOffset(timezone);
+    const utcTime = new Date(localDateTime.getTime() - utcOffset * 60 * 1000);
+    
+    return utcTime.toISOString();
+  }
+}
+
+// タイムゾーンオフセットを取得する関数
+function getTimezoneOffset(timezone: string): number {
+  const now = new Date();
+  const utc = new Date(now.getTime() + (now.getTimezoneOffset() * 60000));
+  const targetTime = new Date(utc.toLocaleString("en-US", {timeZone: timezone}));
+  return (utc.getTime() - targetTime.getTime()) / (1000 * 60);
 }
 
 serve(async (req) => {
@@ -357,18 +386,40 @@ serve(async (req) => {
           
           if (calcErr) {
             console.error('Failed to calculate next multi-time run:', calcErr);
-            // フォールバック: 従来の方法で次の日の同時刻
-            const next = new Date(cfg.next_run_at);
-            next.setDate(next.getDate() + 1);
-            nextRunAt = next.toISOString();
+            // フォールバック: タイムゾーン考慮した次の日の同時刻
+            const { data: fallbackTime, error: fallbackErr } = await supabase
+              .rpc('calculate_timezone_aware_next_run', {
+                current_schedule_time: cfg.next_run_at,
+                timezone_name: cfg.timezone || 'UTC'
+              });
+            
+            if (fallbackErr) {
+              console.error('Fallback calculation failed:', fallbackErr);
+              const next = new Date(cfg.next_run_at);
+              next.setDate(next.getDate() + 1);
+              nextRunAt = next.toISOString();
+            } else {
+              nextRunAt = fallbackTime;
+            }
           } else {
             nextRunAt = nextTime;
           }
         } else {
-          // 従来の単一時間設定：次の日の同時刻
-          const next = new Date(cfg.next_run_at);
-          next.setDate(next.getDate() + 1);
-          nextRunAt = next.toISOString();
+          // 従来の単一時間設定：タイムゾーン考慮した次の日の同時刻
+          const { data: nextTimeCalculated, error: calcErr } = await supabase
+            .rpc('calculate_timezone_aware_next_run', {
+              current_schedule_time: cfg.next_run_at,
+              timezone_name: cfg.timezone || 'UTC'
+            });
+            
+          if (calcErr) {
+            console.error('Failed to calculate timezone-aware next run:', calcErr);
+            const next = new Date(cfg.next_run_at);
+            next.setDate(next.getDate() + 1);
+            nextRunAt = next.toISOString();
+          } else {
+            nextRunAt = nextTimeCalculated;
+          }
         }
 
         const { error: updErr } = await supabase

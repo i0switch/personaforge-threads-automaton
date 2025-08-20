@@ -112,6 +112,16 @@ export function RandomPostConfig() {
       // 処理開始
       setProcessingPersonas(prev => new Set([...prev, persona.id]));
 
+      // ペルソナのpost_queueをクリーンアップ
+      const { error: cleanupError } = await supabase.rpc('cleanup_post_queue_for_persona', {
+        p_persona_id: persona.id
+      });
+      
+      if (cleanupError) {
+        console.error('Failed to cleanup post queue:', cleanupError);
+        // クリーンアップエラーは警告のみ、処理続行
+      }
+
       if (existingConfig) {
         // 既存設定の ON/OFF 切り替え
         const newActive = !existingConfig.is_active;
@@ -191,6 +201,16 @@ export function RandomPostConfig() {
     if (!config) return;
 
     try {
+      // ペルソナのpost_queueをクリーンアップ
+      const { error: cleanupError } = await supabase.rpc('cleanup_post_queue_for_persona', {
+        p_persona_id: personaId
+      });
+      
+      if (cleanupError) {
+        console.error('Failed to cleanup post queue:', cleanupError);
+        // クリーンアップエラーは警告のみ、処理続行
+      }
+
       const formattedTimes = newTimes.map(t => t + ':00');
       const nextRunAt = calculateNextRun(newTimes, config.timezone);
 

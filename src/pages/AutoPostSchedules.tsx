@@ -86,6 +86,19 @@ export default function AutoPostSchedules() {
   useEffect(() => { load(); }, [user]);
 
   const toggleActive = async (id: string, active: boolean) => {
+    const config = configs.find(c => c.id === id);
+    if (!config) return;
+
+    // ペルソナのpost_queueをクリーンアップ
+    const { error: cleanupError } = await supabase.rpc('cleanup_post_queue_for_persona', {
+      p_persona_id: config.persona_id
+    });
+    
+    if (cleanupError) {
+      console.error('Failed to cleanup post queue:', cleanupError);
+      // クリーンアップエラーは警告のみ、処理続行
+    }
+
     const { error } = await supabase.from('auto_post_configs').update({ is_active: !active }).eq('id', id);
     if (error) {
       toast({ title: 'エラー', description: '更新に失敗しました', variant: 'destructive' });
@@ -106,6 +119,21 @@ export default function AutoPostSchedules() {
   };
 
   const updateConfig = async (id: string, fields: any) => {
+    const config = configs.find(c => c.id === id);
+    if (!config) return;
+
+    // ペルソナのpost_queueをクリーンアップ（時間関連の変更の場合）
+    if (fields.post_time || fields.post_times || fields.next_run_at) {
+      const { error: cleanupError } = await supabase.rpc('cleanup_post_queue_for_persona', {
+        p_persona_id: config.persona_id
+      });
+      
+      if (cleanupError) {
+        console.error('Failed to cleanup post queue:', cleanupError);
+        // クリーンアップエラーは警告のみ、処理続行
+      }
+    }
+
     const { error } = await supabase.from('auto_post_configs').update(fields).eq('id', id);
     if (error) {
       toast({ title: 'エラー', description: '保存に失敗しました', variant: 'destructive' });
