@@ -6,17 +6,18 @@ import { SecureInput, SecureTextarea } from "@/components/SecureInput";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
-import { Bot, MessageSquare, Settings, User } from "lucide-react";
+import { Bot, MessageSquare, Settings, User, Clock } from "lucide-react";
 import { AvatarUpload } from "./AvatarUpload";
+import type { Persona, PersonaFormData } from "@/types/persona";
 
 interface PersonaFormProps {
-  editingPersona: any;
-  onSubmit: (data: any) => Promise<void>;
+  editingPersona: Persona | null;
+  onSubmit: (data: PersonaFormData) => Promise<void>;
   onCancel: () => void;
 }
 
 export const PersonaForm = ({ editingPersona, onSubmit, onCancel }: PersonaFormProps) => {
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<PersonaFormData>({
     name: "",
     age: "",
     personality: "",
@@ -29,7 +30,8 @@ export const PersonaForm = ({ editingPersona, onSubmit, onCancel }: PersonaFormP
     threads_username: "",
     webhook_verify_token: "",
     auto_reply_enabled: false,
-    ai_auto_reply_enabled: false
+    ai_auto_reply_enabled: false,
+    auto_reply_delay_minutes: 0
   });
   const [loading, setLoading] = useState(false);
 
@@ -50,7 +52,8 @@ export const PersonaForm = ({ editingPersona, onSubmit, onCancel }: PersonaFormP
         threads_username: editingPersona.threads_username || "",
         webhook_verify_token: editingPersona.webhook_verify_token || "",
         auto_reply_enabled: editingPersona.auto_reply_enabled || false,
-        ai_auto_reply_enabled: editingPersona.ai_auto_reply_enabled || false
+        ai_auto_reply_enabled: editingPersona.ai_auto_reply_enabled || false,
+        auto_reply_delay_minutes: editingPersona.auto_reply_delay_minutes || 0
       });
     }
   }, [editingPersona]);
@@ -204,6 +207,28 @@ export const PersonaForm = ({ editingPersona, onSubmit, onCancel }: PersonaFormP
                     onCheckedChange={handleAiAutoReplyChange}
                   />
                 </div>
+
+                {/* 自動返信遅延設定 */}
+                {(formData.auto_reply_enabled || formData.ai_auto_reply_enabled) && (
+                  <div className="space-y-2">
+                    <Label htmlFor="auto_reply_delay" className="flex items-center gap-2">
+                      <Clock className="h-4 w-4" />
+                      自動返信の遅延時間（分）
+                    </Label>
+                    <SecureInput
+                      id="auto_reply_delay"
+                      type="number"
+                      min="0"
+                      max="1440"
+                      value={formData.auto_reply_delay_minutes.toString()}
+                      onChange={(e) => handleInputChange("auto_reply_delay_minutes", parseInt(e.target.value) || 0)}
+                      placeholder="0"
+                    />
+                    <p className="text-sm text-muted-foreground">
+                      リプライ受信から返信までの遅延時間を設定します（0-1440分）
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
 

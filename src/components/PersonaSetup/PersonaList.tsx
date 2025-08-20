@@ -2,21 +2,7 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PersonaCard } from "./PersonaCard";
-
-interface Persona {
-  id: string;
-  name: string;
-  age: string;
-  personality: string;
-  expertise: string[];
-  tone_of_voice: string;
-  avatar_url?: string;
-  is_active: boolean;
-  threads_app_id?: string;
-  threads_app_secret?: string;
-  webhook_verify_token?: string;
-  reply_mode?: string;
-}
+import type { Persona } from "@/types/persona";
 
 interface PersonaListProps {
   personas: Persona[];

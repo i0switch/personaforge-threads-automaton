@@ -12,23 +12,7 @@ import { PersonaWebhookSettings } from "@/components/ReplyMonitoring/PersonaWebh
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { usePersonaLimit } from "@/hooks/usePersonaLimit";
 import { PersonaLimitDialog } from "@/components/PersonaLimit/PersonaLimitDialog";
-
-interface Persona {
-  id: string;
-  name: string;
-  age: string;
-  personality: string;
-  expertise: string[];
-  tone_of_voice: string;
-  avatar_url?: string;
-  is_active: boolean;
-  threads_app_id?: string;
-  threads_app_secret?: string;
-  threads_access_token?: string;
-  threads_username?: string;
-  webhook_verify_token?: string;
-  reply_mode?: string;
-}
+import type { Persona, PersonaFormData } from "@/types/persona";
 
 const PersonaSetup = () => {
   const { user } = useAuth();
@@ -79,7 +63,7 @@ const PersonaSetup = () => {
     }
   };
 
-  const handleSubmit = async (formData: any) => {
+  const handleSubmit = async (formData: PersonaFormData) => {
     if (!user) return;
 
     // 新規作成時のペルソナ上限チェック（最新の情報で再確認）
@@ -130,6 +114,7 @@ const PersonaSetup = () => {
         webhook_verify_token: formData.webhook_verify_token || null,
         auto_reply_enabled: formData.auto_reply_enabled || false,
         ai_auto_reply_enabled: formData.ai_auto_reply_enabled || false,
+        auto_reply_delay_minutes: formData.auto_reply_delay_minutes || 0,
         user_id: user.id
       };
 

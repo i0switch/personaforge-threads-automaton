@@ -3,21 +3,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Trash2 } from "lucide-react";
-
-interface Persona {
-  id: string;
-  name: string;
-  age: string;
-  personality: string;
-  expertise: string[];
-  tone_of_voice: string;
-  avatar_url?: string;
-  is_active: boolean;
-  threads_app_id?: string;
-  threads_app_secret?: string;
-  webhook_verify_token?: string;
-  reply_mode?: string;
-}
+import type { Persona } from "@/types/persona";
+import { getPersonaReplyMode, getReplyModeLabel } from "@/types/persona";
 
 interface PersonaCardProps {
   persona: Persona;
@@ -26,19 +13,9 @@ interface PersonaCardProps {
   onToggleActive: (id: string, currentStatus: boolean) => void;
 }
 
-const getReplyModeLabel = (mode: string) => {
-  switch (mode) {
-    case 'ai':
-      return { label: 'AI自動返信', variant: 'default' as const };
-    case 'keyword':
-      return { label: 'キーワード返信', variant: 'secondary' as const };
-    default:
-      return { label: '無効', variant: 'outline' as const };
-  }
-};
-
 export const PersonaCard = ({ persona, onEdit, onDelete, onToggleActive }: PersonaCardProps) => {
-  const replyModeInfo = getReplyModeLabel(persona.reply_mode || 'disabled');
+  const replyMode = getPersonaReplyMode(persona);
+  const replyModeInfo = getReplyModeLabel(replyMode);
 
   return (
     <Card className="hover:shadow-lg transition-shadow">
