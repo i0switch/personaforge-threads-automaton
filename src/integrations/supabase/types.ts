@@ -1024,6 +1024,10 @@ export type Database = {
         }
         Returns: string
       }
+      calculate_timezone_aware_next_run: {
+        Args: { current_schedule_time: string; timezone_name?: string }
+        Returns: string
+      }
       check_login_attempts: {
         Args: { user_email: string }
         Returns: boolean
@@ -1035,6 +1039,10 @@ export type Database = {
           current_count: number
           persona_limit: number
         }[]
+      }
+      cleanup_post_queue_for_persona: {
+        Args: { p_persona_id: string }
+        Returns: undefined
       }
       decrypt_access_token: {
         Args: { encrypted_token: string }
