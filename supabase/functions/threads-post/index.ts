@@ -67,13 +67,38 @@ serve(async (req) => {
       hasToken: !!post.personas?.threads_access_token
     });
 
-    if (!post.personas?.threads_access_token) {
-      const error = 'Threads access token not configured for this persona';
-      console.error(error, { personaId: post.persona_id });
-      throw new Error(error);
+    // Threads APIトークンの取得と復号化
+    let threadsAccessToken: string | null = null;
+    
+    try {
+      // retrieve-secretファンクションを使用してトークンを取得
+      const { data: tokenData, error: tokenError } = await supabase.functions.invoke('retrieve-secret', {
+        body: { 
+          key: `threads_access_token_${post.persona_id}`,
+          fallback: post.personas?.threads_access_token
+        }
+      });
+
+      if (tokenData?.secret && !tokenError) {
+        console.log('✅ トークン取得成功（retrieve-secret）');
+        threadsAccessToken = tokenData.secret;
+      } else if (post.personas?.threads_access_token?.startsWith('THAA')) {
+        console.log('✅ 非暗号化トークン使用');
+        threadsAccessToken = post.personas.threads_access_token;
+      }
+    } catch (error) {
+      console.error('❌ トークン復号化エラー:', error);
     }
 
-    const threadsAccessToken = post.personas.threads_access_token;
+    if (!threadsAccessToken) {
+      const error = 'Threads access token not configured or decryption failed for this persona';
+      console.error(error, { 
+        personaId: post.persona_id,
+        hasToken: !!post.personas?.threads_access_token,
+        tokenPrefix: post.personas?.threads_access_token?.substring(0, 8) + '...'
+      });
+      throw new Error(error);
+    }
     console.log(`Publishing post: ${post.content.substring(0, 100)}...`);
 
     let containerId: string;

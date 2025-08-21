@@ -293,7 +293,7 @@ async function generateWithGeminiRotation(prompt: string, userId: string): Promi
 // アクセストークンを取得
 async function getAccessToken(persona: any): Promise<string | null> {
   try {
-    console.log('🔑 アクセストークン取得開始');
+    console.log('🔑 アクセストークン取得開始 - ペルソナ:', persona.name);
 
     // retrieve-secret関数を使用してトークンを取得
     try {
@@ -305,24 +305,29 @@ async function getAccessToken(persona: any): Promise<string | null> {
       });
 
       if (tokenData?.secret && !tokenError) {
-        console.log('✅ トークン取得成功（retrieve-secret）');
+        console.log('✅ 暗号化トークン復号化成功 - persona:', persona.name);
         return tokenData.secret;
+      } else if (tokenError) {
+        console.error('❌ retrieve-secret エラー:', tokenError);
       }
     } catch (error) {
-      console.log('🔄 retrieve-secret方式エラー:', error);
+      console.error('🔄 retrieve-secret方式エラー:', error);
     }
 
     // 暗号化されていないトークンかチェック
     if (persona.threads_access_token?.startsWith('THAA')) {
-      console.log('✅ 非暗号化トークン使用');
+      console.log('✅ 非暗号化トークン使用 - persona:', persona.name);
       return persona.threads_access_token;
     }
 
-    console.error('❌ 全ての方式でアクセストークン取得失敗');
+    console.error('❌ 全ての方式でアクセストークン取得失敗 - persona:', persona.name, {
+      hasToken: !!persona.threads_access_token,
+      tokenPrefix: persona.threads_access_token?.substring(0, 8) + '...'
+    });
     return null;
 
   } catch (error) {
-    console.error('❌ トークン取得エラー:', error);
+    console.error('❌ トークン取得エラー - persona:', persona.name, error);
     return null;
   }
 }

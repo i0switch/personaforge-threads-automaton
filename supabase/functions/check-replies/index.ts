@@ -65,6 +65,8 @@ serve(async (req) => {
         continue;
       }
 
+      console.log(`🚀 リプライチェック開始 - persona: ${persona.name} (ID: ${persona.id})`);
+      
       // アクセストークンを取得
       let accessToken = null;
       try {
@@ -78,17 +80,21 @@ serve(async (req) => {
         
         if (tokenResult.data?.secret) {
           accessToken = tokenResult.data.secret;
-          console.log(`✅ アクセストークン取得成功 - persona: ${persona.name}`);
+          console.log(`✅ 暗号化トークン復号化成功 - persona: ${persona.name}`);
         } else if (personaWithToken.threads_access_token.startsWith('THAA')) {
           // 暗号化されていないトークンをそのまま使用
           accessToken = personaWithToken.threads_access_token;
           console.log(`✅ 非暗号化トークン使用 - persona: ${persona.name}`);
         } else {
-          console.log(`❌ アクセストークン取得失敗 - persona: ${persona.name}`);
+          console.error(`❌ アクセストークン取得失敗 - persona: ${persona.name}`, {
+            hasToken: !!personaWithToken.threads_access_token,
+            tokenPrefix: personaWithToken.threads_access_token?.substring(0, 8) + '...',
+            retrieveError: tokenResult.error
+          });
           continue;
         }
       } catch (error) {
-        console.error(`アクセストークン処理エラー - persona: ${persona.name}:`, error);
+        console.error(`❌ アクセストークン処理エラー - persona: ${persona.name}:`, error);
         // フォールバック：暗号化されていないトークンを試す
         if (personaWithToken.threads_access_token?.startsWith('THAA')) {
           accessToken = personaWithToken.threads_access_token;
@@ -106,7 +112,6 @@ serve(async (req) => {
       };
 
       try {
-        console.log(`🚀 リプライチェック開始 - persona: ${personaWithDecryptedToken.name} (ID: ${personaWithDecryptedToken.id})`);
         console.log(`Checking replies for persona: ${personaWithDecryptedToken.name}`);
 
         // 最近投稿された投稿のIDを取得
@@ -199,44 +204,75 @@ async function checkRepliesForPost(persona: any, postId: string): Promise<number
             .eq('reply_id', thread.id)
             .single();
 
-          let shouldProcessAutoReply = false;
+           let shouldProcessAutoReply = false;
 
-          if (!existingReply) {
-            // 新しいリプライを保存
-            console.log(`🆕 新しいリプライを保存中: ${thread.id} - "${thread.text}"`);
-            const { error: insertError } = await supabase
-              .from('thread_replies')
-              .insert({
-                user_id: persona.user_id,
-                persona_id: persona.id,
-                original_post_id: thread.reply_to_id,
-                reply_id: thread.id,
-                reply_text: thread.text || '',
-                reply_author_id: thread.username || '',
-                reply_author_username: thread.username,
-                reply_timestamp: new Date(thread.timestamp || Date.now()).toISOString()
-              });
+           if (!existingReply) {
+             // 新しいリプライを保存
+             console.log(`🆕 新しいリプライを保存中: ${thread.id} - "${thread.text}"`);
+             const { error: insertError } = await supabase
+               .from('thread_replies')
+               .insert({
+                 user_id: persona.user_id,
+                 persona_id: persona.id,
+                 original_post_id: thread.reply_to_id,
+                 reply_id: thread.id,
+                 reply_text: thread.text || '',
+                 reply_author_id: thread.username || '',
+                 reply_author_username: thread.username,
+                 reply_timestamp: new Date(thread.timestamp || Date.now()).toISOString()
+               });
 
-            if (!insertError) {
-              newRepliesCount++;
-              console.log(`✅ 新しいリプライ保存完了: ${thread.id}`);
-              
-              // アクティビティログを記録
-              await supabase
-                .from('activity_logs')
-                .insert({
-                  user_id: persona.user_id,
-                  persona_id: persona.id,
-                  action_type: 'reply_received',
-                  description: `新しいリプライを受信: @${thread.username}`,
-                  metadata: {
-                    author: thread.username,
-                    reply_id: thread.id,
-                    reply_text: thread.text
-                  }
-                });
-            }
-          }
+             if (!insertError) {
+               newRepliesCount++;
+               shouldProcessAutoReply = true;
+               console.log(`✅ 新しいリプライ保存完了: ${thread.id}`);
+               
+               // アクティビティログを記録
+               await supabase
+                 .from('activity_logs')
+                 .insert({
+                   user_id: persona.user_id,
+                   persona_id: persona.id,
+                   action_type: 'reply_received',
+                   description: `新しいリプライを受信: @${thread.username}`,
+                   metadata: {
+                     author: thread.username,
+                     reply_id: thread.id,
+                     reply_text: thread.text
+                   }
+                 });
+             } else {
+               console.error(`❌ リプライ保存エラー: ${thread.id}`, insertError);
+             }
+           } else if (!existingReply.auto_reply_sent && persona.ai_auto_reply_enabled) {
+             // 既存のリプライで、まだAI自動返信が送信されていない場合
+             shouldProcessAutoReply = true;
+             console.log(`🔄 未送信AI自動返信を処理: ${thread.id}`);
+           }
+
+           // AI自動返信の処理
+           if (shouldProcessAutoReply && persona.ai_auto_reply_enabled) {
+             console.log(`🤖 AI自動返信処理開始: ${thread.id} for persona ${persona.name}`);
+             try {
+               const autoReplyResult = await supabase.functions.invoke('threads-auto-reply', {
+                 body: {
+                   postContent: 'Original post content', // 必要に応じて実際の投稿内容を取得
+                   replyContent: thread.text,
+                   replyId: thread.id,
+                   personaId: persona.id,
+                   userId: persona.user_id
+                 }
+               });
+
+               if (autoReplyResult.error) {
+                 console.error(`❌ AI自動返信呼び出しエラー:`, autoReplyResult.error);
+               } else {
+                 console.log(`✅ AI自動返信呼び出し成功: ${thread.id}`);
+               }
+             } catch (error) {
+               console.error(`❌ AI自動返信処理エラー:`, error);
+             }
+           }
         }
       }
     }
