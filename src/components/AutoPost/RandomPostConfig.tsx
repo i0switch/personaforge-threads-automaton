@@ -112,6 +112,25 @@ export function RandomPostConfig() {
       // 処理開始
       setProcessingPersonas(prev => new Set([...prev, persona.id]));
 
+      // ランダムポスト機能を有効にする場合、完全オートポスト設定をチェック
+      if (!existingConfig || !existingConfig.is_active) {
+        const { data: autoPostConfigs, error: checkError } = await supabase
+          .from('auto_post_configs')
+          .select('id, is_active')
+          .eq('persona_id', persona.id)
+          .eq('is_active', true);
+
+        if (checkError) throw checkError;
+
+        if (autoPostConfigs && autoPostConfigs.length > 0) {
+          toast({
+            title: '完全オートポスト設定を無効化',
+            description: `${persona.name}の完全オートポスト設定（${autoPostConfigs.length}件）が自動的に無効になります`,
+            variant: 'default'
+          });
+        }
+      }
+
       // ペルソナのpost_queueをクリーンアップ
       const { error: cleanupError } = await supabase.rpc('cleanup_post_queue_for_persona', {
         p_persona_id: persona.id

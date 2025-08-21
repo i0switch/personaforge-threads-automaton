@@ -10,6 +10,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft } from "lucide-react";
 import { MultiTimeSelector } from "@/components/AutoPost/MultiTimeSelector";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { AlertTriangle } from "lucide-react";
 
 const setMeta = (name: string, content: string) => {
   const meta = document.querySelector(`meta[name="${name}"]`) as HTMLMetaElement | null;

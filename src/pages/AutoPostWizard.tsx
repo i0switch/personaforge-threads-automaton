@@ -11,6 +11,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { MultiTimeSelector } from "@/components/AutoPost/MultiTimeSelector";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { AlertTriangle } from "lucide-react";
 
 const setMeta = (name: string, content: string) => {
   const meta = document.querySelector(`meta[name="${name}"]`) as HTMLMetaElement | null;
@@ -51,6 +53,7 @@ export default function AutoPostWizard() {
 
   const [personas, setPersonas] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [randomPostPersonas, setRandomPostPersonas] = useState<Set<string>>(new Set());
 
   // form state
   const [personaId, setPersonaId] = useState("");
@@ -71,17 +74,35 @@ export default function AutoPostWizard() {
   useEffect(() => {
     const load = async () => {
       if (!user) return;
-      const { data, error } = await supabase
-        .from('personas')
-        .select('id, name, is_active')
-        .eq('user_id', user.id)
-        .eq('is_active', true)
-        .order('created_at', { ascending: false });
-      if (error) {
-        console.error(error);
+      
+      // ペルソナとランダムポスト設定を並行取得
+      const [personasResult, randomPostResult] = await Promise.all([
+        supabase
+          .from('personas')
+          .select('id, name, is_active')
+          .eq('user_id', user.id)
+          .eq('is_active', true)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('random_post_configs')
+          .select('persona_id')
+          .eq('user_id', user.id)
+          .eq('is_active', true)
+      ]);
+      
+      if (personasResult.error) {
+        console.error(personasResult.error);
       } else {
-        setPersonas(data || []);
+        setPersonas(personasResult.data || []);
       }
+      
+      if (randomPostResult.error) {
+        console.error('Failed to load random post configs:', randomPostResult.error);
+      } else {
+        const randomPersonaIds = new Set((randomPostResult.data || []).map(r => r.persona_id));
+        setRandomPostPersonas(randomPersonaIds);
+      }
+      
       setLoading(false);
     };
     load();
@@ -216,6 +237,16 @@ export default function AutoPostWizard() {
                   ))}
                 </select>
               </div>
+
+              {/* ランダムポスト設定の警告 */}
+              {personaId && randomPostPersonas.has(personaId) && (
+                <Alert>
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertDescription>
+                    このペルソナはランダムポスト機能が有効になっています。完全オートポスト設定を作成すると、ランダムポスト設定が自動的に無効化されます。
+                  </AlertDescription>
+                </Alert>
+              )}
 
               {/* 時間設定切り替えスイッチ */}
               <div className="flex items-center space-x-2">
