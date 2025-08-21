@@ -146,6 +146,8 @@ const PersonaSetup = () => {
         personaData.threads_app_secret = editingPersona.threads_app_secret;
       }
 
+      let personaId: string;
+      
       if (editingPersona) {
         const { error } = await supabase
           .from("personas")
@@ -154,21 +156,59 @@ const PersonaSetup = () => {
 
         if (error) throw error;
         
+        personaId = editingPersona.id;
+        
         toast({
           title: "成功",
           description: "ペルソナが更新されました。",
         });
       } else {
-        const { error } = await supabase
+        const { data: insertedData, error } = await supabase
           .from("personas")
-          .insert([personaData]);
+          .insert([personaData])
+          .select('id')
+          .single();
 
         if (error) throw error;
+        
+        personaId = insertedData.id;
         
         toast({
           title: "成功",
           description: "ペルソナが作成されました。",
         });
+      }
+
+      // AI自動返信または定型文返信がONの場合、リプライ監視設定を自動作成
+      if (formData.ai_auto_reply_enabled || formData.auto_reply_enabled) {
+        // 既存のreply_check_settingsがあるかチェック
+        const { data: existingSettings } = await supabase
+          .from("reply_check_settings")
+          .select("id")
+          .eq("persona_id", personaId)
+          .single();
+
+        // 設定が存在しない場合のみ作成
+        if (!existingSettings) {
+          const { error: replySettingsError } = await supabase
+            .from("reply_check_settings")
+            .insert({
+              user_id: user.id,
+              persona_id: personaId,
+              check_interval_minutes: 5,
+              is_active: true
+            });
+
+          if (replySettingsError) {
+            console.error("Error creating reply check settings:", replySettingsError);
+            // リプライ設定の作成失敗は警告のみで処理を続行
+            toast({
+              title: "警告",
+              description: "リプライ監視設定の自動作成に失敗しました。手動で設定してください。",
+              variant: "destructive",
+            });
+          }
+        }
       }
 
       handleCancel();
