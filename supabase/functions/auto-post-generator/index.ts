@@ -315,12 +315,11 @@ serve(async (req) => {
       }
     }
 
-    // 3. ランダムポスト設定を取得
+    // 3. ランダムポスト設定を取得（すべてのアクティブな設定）
     const { data: randomConfigs, error: randomCfgError } = await supabase
       .from('random_post_configs')
       .select('*, personas!random_post_configs_persona_id_fkey(id, user_id, name, tone_of_voice, expertise, personality)')
       .eq('is_active', true)
-      .lte('next_run_at', now.toISOString())
       .limit(25);
 
     if (randomCfgError) throw randomCfgError;
@@ -435,83 +434,149 @@ serve(async (req) => {
       }
     }
 
-    // 5. ランダムポスト処理
+    // 5. ランダムポスト処理（設定したすべての時間で投稿）
     for (const randomCfg of randomConfigs || []) {
       try {
-        processed++;
-
         const persona = randomCfg.personas;
         if (!persona) continue;
 
-        // 該当ペルソナの完全オートポスト設定を取得
-        const { data: autoConfigs, error: autoConfigError } = await supabase
-          .from('auto_post_configs')
-          .select('prompt_template, content_prefs')
-          .eq('persona_id', persona.id)
-          .eq('is_active', true);
-
-        if (autoConfigError) {
-          console.error('Failed to get auto post configs for random post:', autoConfigError);
-          continue;
-        }
-
-        if (!autoConfigs || autoConfigs.length === 0) {
-          console.log(`No active auto post configs found for persona ${persona.name}, skipping random post`);
-          continue;
-        }
-
-        // 完全オートポスト設定からランダムに1つ選択
-        const selectedConfig = autoConfigs[Math.floor(Math.random() * autoConfigs.length)];
-        console.log(`Selected random config for ${persona.name}:`, {
-          prompt_template: selectedConfig.prompt_template?.substring(0, 50) + '...',
-          content_prefs: selectedConfig.content_prefs?.substring(0, 50) + '...'
+        // 今日の日付を取得（設定のタイムゾーンで）
+        const today = new Date().toLocaleDateString('en-CA', { 
+          timeZone: randomCfg.timezone || 'UTC' 
         });
+        
+        // 日付が変わったかチェックし、必要に応じてposted_times_todayをリセット
+        let postedTimesToday = randomCfg.posted_times_today || [];
+        if (randomCfg.last_posted_date !== today) {
+          postedTimesToday = [];
+          // データベースも更新
+          await supabase
+            .from('random_post_configs')
+            .update({ 
+              last_posted_date: today,
+              posted_times_today: []
+            })
+            .eq('id', randomCfg.id);
+        }
 
-        // APIキー解決とコンテンツ生成（エラー時は自動ローテーション）
-        const prompt = buildPrompt(persona, selectedConfig.prompt_template, selectedConfig.content_prefs);
-        const content = await generateWithGeminiRotation(prompt, persona.user_id);
+        // 設定された各時間をチェック
+        const randomTimes = randomCfg.random_times || ['09:00:00', '12:00:00', '18:00:00'];
+        let hasPosted = false;
 
-        // postsへ作成（予約投稿）
-        const { data: inserted, error: postErr } = await supabase
-          .from('posts')
-          .insert({
-            user_id: persona.user_id,
-            persona_id: persona.id,
-            content,
-            status: 'scheduled',
-            scheduled_for: randomCfg.next_run_at,
-            auto_schedule: true,
-            platform: 'threads'
-          })
-          .select('id')
-          .single();
-        if (postErr) throw postErr;
+        for (const timeStr of randomTimes) {
+          // 既に投稿済みの時間はスキップ
+          if (postedTimesToday.includes(timeStr)) {
+            continue;
+          }
 
-        // post_queueに投入（オートスケジューラが処理）
-        const { error: queueErr } = await supabase
-          .from('post_queue')
-          .insert({
-            user_id: persona.user_id,
-            post_id: inserted.id,
-            scheduled_for: randomCfg.next_run_at,
-            queue_position: 0,
-            status: 'queued'
+          // 現在時刻と設定時刻を比較
+          const [hours, minutes, seconds = 0] = timeStr.split(':').map(Number);
+          const targetTime = new Date();
+          
+          // タイムゾーンを考慮して今日の設定時刻を作成
+          if (randomCfg.timezone === 'UTC') {
+            targetTime.setUTCHours(hours, minutes, seconds, 0);
+          } else {
+            // 指定タイムゾーンでの時刻を作成
+            const formatter = new Intl.DateTimeFormat('en-CA', {
+              timeZone: randomCfg.timezone,
+              year: 'numeric',
+              month: '2-digit',
+              day: '2-digit'
+            });
+            const todayStr = formatter.format(new Date());
+            const localDateTime = new Date(`${todayStr}T${timeStr}`);
+            const utcOffset = getTimezoneOffset(randomCfg.timezone);
+            targetTime.setTime(localDateTime.getTime() - utcOffset * 60 * 1000);
+          }
+
+          // 現在時刻が設定時刻を過ぎているかチェック
+          if (new Date() < targetTime) {
+            continue;
+          }
+
+          console.log(`Processing random post for ${persona.name} at ${timeStr}`);
+
+          // 該当ペルソナの完全オートポスト設定を取得
+          const { data: autoConfigs, error: autoConfigError } = await supabase
+            .from('auto_post_configs')
+            .select('prompt_template, content_prefs')
+            .eq('persona_id', persona.id)
+            .eq('is_active', true);
+
+          if (autoConfigError) {
+            console.error('Failed to get auto post configs for random post:', autoConfigError);
+            continue;
+          }
+
+          if (!autoConfigs || autoConfigs.length === 0) {
+            console.log(`No active auto post configs found for persona ${persona.name}, skipping random post at ${timeStr}`);
+            continue;
+          }
+
+          // 完全オートポスト設定からランダムに1つ選択
+          const selectedConfig = autoConfigs[Math.floor(Math.random() * autoConfigs.length)];
+          console.log(`Selected random config for ${persona.name} at ${timeStr}:`, {
+            prompt_template: selectedConfig.prompt_template?.substring(0, 50) + '...',
+            content_prefs: selectedConfig.content_prefs?.substring(0, 50) + '...'
           });
-        if (queueErr) throw queueErr;
 
-        // 次回実行時刻をランダムに選択
-        const nextRunAt = calculateRandomNextRun(randomCfg.random_times, randomCfg.timezone);
+          // APIキー解決とコンテンツ生成（エラー時は自動ローテーション）
+          const prompt = buildPrompt(persona, selectedConfig.prompt_template, selectedConfig.content_prefs);
+          const content = await generateWithGeminiRotation(prompt, persona.user_id);
 
-        const { error: updErr } = await supabase
-          .from('random_post_configs')
-          .update({ next_run_at: nextRunAt })
-          .eq('id', randomCfg.id);
-        if (updErr) throw updErr;
+          // postsへ作成（予約投稿）
+          const { data: inserted, error: postErr } = await supabase
+            .from('posts')
+            .insert({
+              user_id: persona.user_id,
+              persona_id: persona.id,
+              content,
+              status: 'scheduled',
+              scheduled_for: targetTime.toISOString(),
+              auto_schedule: true,
+              platform: 'threads'
+            })
+            .select('id')
+            .single();
+          if (postErr) throw postErr;
 
-        posted++;
+          // post_queueに投入（オートスケジューラが処理）
+          const { error: queueErr } = await supabase
+            .from('post_queue')
+            .insert({
+              user_id: persona.user_id,
+              post_id: inserted.id,
+              scheduled_for: targetTime.toISOString(),
+              queue_position: 0,
+              status: 'queued'
+            });
+          if (queueErr) throw queueErr;
+
+          // この時間を投稿済みとしてマーク
+          postedTimesToday.push(timeStr);
+          hasPosted = true;
+          posted++;
+
+          console.log(`Successfully processed random post for ${persona.name} at ${timeStr}`);
+        }
+
+        // 投稿があった場合、posted_times_todayを更新
+        if (hasPosted) {
+          await supabase
+            .from('random_post_configs')
+            .update({ 
+              posted_times_today: postedTimesToday,
+              last_posted_date: today
+            })
+            .eq('id', randomCfg.id);
+        }
+
+        if (hasPosted) processed++;
       } catch (e) {
         console.error('Random post generation failed:', e);
         failed++;
+        processed++;
       }
     }
 
