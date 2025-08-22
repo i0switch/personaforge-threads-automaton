@@ -72,14 +72,28 @@ export const usePersonaLimit = () => {
       console.log('Updated limit info:', newLimitInfo);
 
     } catch (err) {
-      console.error('Unexpected error:', err);
-      setError('予期しないエラーが発生しました');
+      console.error('Unexpected error in usePersonaLimit:', err);
+      // エラーが発生してもデフォルト値でフォールバック
+      setLimitInfo({
+        currentCount: 0,
+        personaLimit: 1,
+        canCreate: true
+      });
+      setError(null); // エラーメッセージは表示せず、デフォルト値で動作を継続
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
+    // userが存在する場合のみ処理を実行
+    if (!user) {
+      setLoading(false);
+      setLimitInfo(null);
+      setError(null);
+      return;
+    }
+
     checkPersonaLimit();
 
     // user_account_statusテーブルの変更をリアルタイムで監視
@@ -91,7 +105,7 @@ export const usePersonaLimit = () => {
           event: '*',
           schema: 'public',
           table: 'user_account_status',
-          filter: `user_id=eq.${user?.id}`
+          filter: `user_id=eq.${user.id}`
         },
         (payload) => {
           console.log('Account status updated:', payload);
@@ -109,7 +123,7 @@ export const usePersonaLimit = () => {
           event: '*',
           schema: 'public',
           table: 'personas',
-          filter: `user_id=eq.${user?.id}`
+          filter: `user_id=eq.${user.id}`
         },
         (payload) => {
           console.log('Personas updated:', payload);
