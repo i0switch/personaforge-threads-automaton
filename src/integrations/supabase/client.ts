@@ -3,28 +3,16 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
-// Environment variable validation with fallback
-const validateEnvironment = () => {
-  const requiredVars = {
-    VITE_SUPABASE_URL: import.meta.env.VITE_SUPABASE_URL || 'https://tqcgbsnoiarnawnppwia.supabase.co',
-    VITE_SUPABASE_ANON_KEY: import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRxY2dic25vaWFybmF3bnBwd2lhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk5MTUxODEsImV4cCI6MjA2NTQ5MTE4MX0.5_mXobtncEbIHyigC_EqP-z1cr7AWYepR7L2CZwjBvI',
-  };
-
-  // Use fallback values if environment variables are not set
-  if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
-    console.warn('Using fallback Supabase configuration. For production, set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY environment variables.');
-  }
-
-  return requiredVars;
+// Direct configuration (recommended for Lovable)
+const supabaseConfig = {
+  url: 'https://tqcgbsnoiarnawnppwia.supabase.co',
+  anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRxY2dic25vaWFybmF3bnBwd2lhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk5MTUxODEsImV4cCI6MjA2NTQ5MTE4MX0.5_mXobtncEbIHyigC_EqP-z1cr7AWYepR7L2CZwjBvI'
 };
-
-// Validate and get environment variables
-const env = validateEnvironment();
 
 // Configure Supabase client with proper auth settings
 export const supabase = createClient<Database>(
-  env.VITE_SUPABASE_URL,
-  env.VITE_SUPABASE_ANON_KEY,
+  supabaseConfig.url,
+  supabaseConfig.anonKey,
   {
     auth: {
       storage: localStorage,
@@ -38,5 +26,5 @@ export const supabase = createClient<Database>(
 // Log configuration status (development only)
 if (import.meta.env.DEV) {
   console.log('Supabase client configured successfully');
-  console.log('Project URL:', env.VITE_SUPABASE_URL);
+  console.log('Project URL:', supabaseConfig.url);
 }

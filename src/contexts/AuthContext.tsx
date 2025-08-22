@@ -24,7 +24,10 @@ export const useAuth = () => {
 };
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
-  console.log('AuthProvider initialized'); // デバッグ用ログ追加
+  // Development logging only
+  if (import.meta.env.DEV) {
+    console.log('AuthProvider initialized');
+  }
   
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
@@ -40,7 +43,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       async (event, session) => {
         if (!mounted) return;
         
-        console.log('Auth state change:', event, session?.user?.id);
+        if (import.meta.env.DEV) {
+          console.log('Auth state change:', event, session?.user?.id);
+        }
         
         // Handle token revoked or signed out events
         if (event === 'TOKEN_REFRESHED' && !session) {
