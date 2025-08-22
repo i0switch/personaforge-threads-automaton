@@ -411,14 +411,14 @@ async function sendThreadsReply(persona: any, replyToId: string, responseText: s
 
     const userId = persona.threads_user_id || 'me';
 
-    // コンテナを作成
-    const createResponse = await fetch(`https://graph.threads.net/v1.0/${userId}/threads`, {
+    // コンテナを作成（エンドポイントとmedia_typeを統一）
+    const createResponse = await fetch(`https://graph.threads.net/v1.0/me/threads`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        media_type: 'TEXT_POST',
+        media_type: 'TEXT',
         text: responseText,
         reply_to_id: replyToId,
         access_token: accessToken
@@ -470,12 +470,12 @@ async function getAccessToken(persona: any): Promise<string | null> {
   try {
     console.log('🔑 アクセストークン取得開始');
 
-    // Step 1: 新しい方法でトークンを取得
+    // Step 1: 新しい方法でトークンを取得（キー名を統一）
     try {
       const { data: tokenData, error: tokenError } = await supabase.functions.invoke('retrieve-secret', {
         body: { 
-          key: `persona_${persona.id}_threads_token`,
-          user_id: persona.user_id
+          key: `threads_access_token_${persona.id}`,
+          fallback: persona.threads_access_token
         }
       });
 
