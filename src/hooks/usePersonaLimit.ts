@@ -32,6 +32,17 @@ export const usePersonaLimit = () => {
 
       if (personasError) {
         console.error('Error fetching personas:', personasError);
+        // 認証関連のエラーの場合は静かに失敗させる
+        if (personasError.message.includes('invalid claim') || personasError.message.includes('bad_jwt')) {
+          console.log('Authentication error in usePersonaLimit, using default values');
+          setLimitInfo({
+            currentCount: 0,
+            personaLimit: 1,
+            canCreate: true
+          });
+          setLoading(false);
+          return;
+        }
         throw personasError;
       }
 

@@ -38,6 +38,16 @@ export const useAccountStatus = () => {
 
         if (fetchError) {
           console.error('useAccountStatus: Error fetching account status:', fetchError);
+          // 認証関連のエラーの場合は静かに失敗させる
+          if (fetchError.message.includes('invalid claim') || fetchError.message.includes('bad_jwt')) {
+            console.log('Authentication error in useAccountStatus, setting default values');
+            setAccountStatus({
+              is_active: false,
+              is_approved: false,
+              subscription_status: 'free'
+            });
+            return;
+          }
           setError('アカウント状態の取得に失敗しました');
           return;
         }

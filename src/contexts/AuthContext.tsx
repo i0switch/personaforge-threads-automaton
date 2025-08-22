@@ -95,10 +95,22 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         
         // Validate session if it exists
         if (session) {
-          // Check if token is still valid by making a simple API call
-          const { error: testError } = await supabase.from('user_account_status').select('user_id').limit(1);
-          if (testError && testError.message.includes('invalid claim')) {
-            console.log('Session token invalid, clearing session');
+          try {
+            // Check if token is still valid by making a simple API call
+            const { error: testError } = await supabase.from('user_account_status').select('user_id').limit(1);
+            if (testError && (testError.message.includes('invalid claim') || testError.message.includes('bad_jwt'))) {
+              console.log('Session token invalid, clearing session');
+              await supabase.auth.signOut({ scope: 'local' });
+              if (mounted && !initialLoadComplete) {
+                setSession(null);
+                setUser(null);
+                setLoading(false);
+                initialLoadComplete = true;
+              }
+              return;
+            }
+          } catch (tokenError) {
+            console.log('Token validation failed, clearing session:', tokenError);
             await supabase.auth.signOut({ scope: 'local' });
             if (mounted && !initialLoadComplete) {
               setSession(null);
