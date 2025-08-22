@@ -230,7 +230,7 @@ serve(async (req) => {
     const generatedReply = await generateWithGeminiRotation(prompt, persona.user_id);
 
     return new Response(
-      JSON.stringify({ reply: generatedReply }),
+      JSON.stringify({ success: true, reply: generatedReply }),
       { 
         headers: { 
           ...corsHeaders, 

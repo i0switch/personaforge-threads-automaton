@@ -122,15 +122,36 @@ function extractRepliesFromPayload(payload: any): any[] {
   
   const replies = [];
   
-  if (payload.values && Array.isArray(payload.values)) {
-    for (const valueItem of payload.values) {
-      if (valueItem.field === 'replies' && valueItem.value) {
-        replies.push(valueItem.value);
-        console.log(`✅ リプライ抽出: ${valueItem.value.id} - "${valueItem.value.text}"`);
+  // Meta/Threadsの標準的なwebhook形式
+  if (payload.entry && Array.isArray(payload.entry)) {
+    for (const entry of payload.entry) {
+      if (entry.changes && Array.isArray(entry.changes)) {
+        for (const change of entry.changes) {
+          if (change.field === 'mention' && change.value) {
+            // メンション形式のリプライ
+            replies.push(change.value);
+            console.log(`✅ メンションリプライ抽出: ${change.value.id} - "${change.value.text}"`);
+          } else if (change.field === 'reply' && change.value) {
+            // リプライ形式
+            replies.push(change.value);
+            console.log(`✅ リプライ抽出: ${change.value.id} - "${change.value.text}"`);
+          }
+        }
       }
     }
   }
   
+  // 既存の形式も保持（後方互換性）
+  if (payload.values && Array.isArray(payload.values)) {
+    for (const valueItem of payload.values) {
+      if (valueItem.field === 'replies' && valueItem.value) {
+        replies.push(valueItem.value);
+        console.log(`✅ レガシーリプライ抽出: ${valueItem.value.id} - "${valueItem.value.text}"`);
+      }
+    }
+  }
+  
+  console.log(`📊 合計抽出リプライ数: ${replies.length}`);
   return replies;
 }
 
