@@ -378,31 +378,34 @@ serve(async (req) => {
           // 複数時間設定の場合：次の時間スロットを計算
           const { data: nextTime, error: calcErr } = await supabase
             .rpc('calculate_next_multi_time_run', {
-              p_current_time: new Date().toISOString(),
+              p_current_time: now.toISOString(), // 現在時刻を使用
               time_slots: cfg.post_times,
               timezone_name: cfg.timezone || 'UTC'
             });
           
           if (calcErr) {
             console.error('Failed to calculate next multi-time run:', calcErr);
-            // フォールバック: タイムゾーン考慮した次の日の同時刻
-            const { data: fallbackTime, error: fallbackErr } = await supabase
-              .rpc('calculate_timezone_aware_next_run', {
-                current_schedule_time: cfg.next_run_at,
-                timezone_name: cfg.timezone || 'UTC'
-              });
+            // フォールバック: 翌日の最初の時間スロットを使用
+            const firstTime = cfg.post_times[0];
+            const nextDay = new Date(now);
+            nextDay.setDate(nextDay.getDate() + 1);
+            const [hours, minutes] = firstTime.split(':').map(Number);
             
-            if (fallbackErr) {
-              console.error('Fallback calculation failed:', fallbackErr);
-              const next = new Date(cfg.next_run_at);
-              next.setDate(next.getDate() + 1);
-              nextRunAt = next.toISOString();
+            // タイムゾーンを考慮して翌日の最初の時間を設定
+            if (cfg.timezone && cfg.timezone !== 'UTC') {
+              // タイムゾーンを考慮した計算
+              const localNextDay = new Date(nextDay.toLocaleString("en-US", {timeZone: cfg.timezone}));
+              localNextDay.setHours(hours, minutes, 0, 0);
+              nextRunAt = localNextDay.toISOString();
             } else {
-              nextRunAt = fallbackTime;
+              nextDay.setHours(hours, minutes, 0, 0);
+              nextRunAt = nextDay.toISOString();
             }
           } else {
             nextRunAt = nextTime;
           }
+          
+          console.log(`📅 Multi-time persona ${cfg.persona_id}: Next run calculated as ${nextRunAt}`);
         } else {
           // 従来の単一時間設定：タイムゾーン考慮した次の日の同時刻
           const { data: nextTimeCalculated, error: calcErr } = await supabase
@@ -421,11 +424,20 @@ serve(async (req) => {
           }
         }
 
-        const { error: updErr } = await supabase
+        // 設定を更新（次回実行時刻）
+        const { error: updateErr } = await supabase
           .from('auto_post_configs')
-          .update({ next_run_at: nextRunAt })
+          .update({ 
+            next_run_at: nextRunAt,
+            updated_at: new Date().toISOString()
+          })
           .eq('id', cfg.id);
-        if (updErr) throw updErr;
+        
+        if (updateErr) {
+          console.error('Failed to update next_run_at for config', cfg.id, updateErr);
+        } else {
+          console.log(`✅ Config ${cfg.id} updated with next_run_at: ${nextRunAt}`);
+        }
 
         posted++;
       } catch (e) {
