@@ -424,14 +424,37 @@ serve(async (req) => {
           }
         }
 
-        // 設定を更新（次回実行時刻）
+        // 排他制御：設定更新前に現在の状態を確認
+        const { data: currentConfig, error: checkError } = await supabase
+          .from('auto_post_configs')
+          .select('next_run_at, updated_at')
+          .eq('id', cfg.id)
+          .eq('is_active', true)
+          .single();
+          
+        if (checkError || !currentConfig) {
+          console.error(`設定 ${cfg.id} の確認に失敗またはすでに非アクティブ:`, checkError);
+          failed++;
+          processed++;
+          continue;
+        }
+        
+        // 次回実行時刻が変更されていないかチェック（並行実行防止）
+        if (currentConfig.next_run_at !== cfg.next_run_at) {
+          console.log(`⚠️ 設定 ${cfg.id} の次回実行時刻が既に更新済み。スキップします。`);
+          processed++;
+          continue;
+        }
+
+        // 設定を更新（楽観的排他制御）
         const { error: updateErr } = await supabase
           .from('auto_post_configs')
           .update({ 
             next_run_at: nextRunAt,
             updated_at: new Date().toISOString()
           })
-          .eq('id', cfg.id);
+          .eq('id', cfg.id)
+          .eq('next_run_at', cfg.next_run_at); // 元の値と一致する場合のみ更新
         
         if (updateErr) {
           console.error('Failed to update next_run_at for config', cfg.id, updateErr);
