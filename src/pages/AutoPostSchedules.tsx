@@ -136,12 +136,31 @@ export default function AutoPostSchedules() {
       }
     }
 
+    // 複数時間設定の場合、next_run_atを計算
+    if (fields.post_times && config.multi_time_enabled) {
+      const { data: nextRunAt, error: calcError } = await supabase.rpc('calculate_next_multi_time_run', {
+        p_current_time: new Date().toISOString(),
+        time_slots: fields.post_times,
+        timezone_name: config.timezone || 'UTC'
+      });
+      
+      if (calcError) {
+        console.error('Failed to calculate next run time:', calcError);
+        toast({ title: 'エラー', description: '次回実行時刻の計算に失敗しました', variant: 'destructive' });
+        return;
+      }
+      
+      fields.next_run_at = nextRunAt;
+    }
+
     const { error } = await supabase.from('auto_post_configs').update(fields).eq('id', id);
     if (error) {
       toast({ title: 'エラー', description: '保存に失敗しました', variant: 'destructive' });
     } else {
       setConfigs(prev => prev.map(c => c.id === id ? { ...c, ...fields } : c));
       toast({ title: '保存しました', description: '設定を更新しました' });
+      // 設定を再読み込みして最新の状態を表示
+      load();
     }
   };
 
