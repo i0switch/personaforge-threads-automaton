@@ -43,3 +43,6 @@ verify_jwt = false
 
 [functions.self-reply-processor]
 verify_jwt = false
+
+[functions.test-modified-features]
+verify_jwt = false
