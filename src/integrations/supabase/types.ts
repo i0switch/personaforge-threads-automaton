@@ -1046,6 +1046,10 @@ export type Database = {
           persona_limit: number
         }[]
       }
+      cleanup_persona_schedules: {
+        Args: { p_persona_id: string }
+        Returns: undefined
+      }
       cleanup_post_queue_for_persona: {
         Args: { p_persona_id: string }
         Returns: undefined
