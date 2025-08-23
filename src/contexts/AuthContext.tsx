@@ -75,9 +75,28 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       }
     );
 
+    // プレビュー→本番リダイレクトガード
+    const checkAndRedirectFromPreview = () => {
+      const currentHost = window.location.hostname;
+      const currentUrl = window.location.href;
+      
+      if (currentHost.includes('preview--threads-genius-ai.lovable.app')) {
+        console.log('プレビュー環境を検出。本番環境にリダイレクトします...');
+        const targetUrl = currentUrl.replace('preview--threads-genius-ai.lovable.app', 'threads-genius-ai.lovable.app');
+        window.location.replace(targetUrl);
+        return true; // リダイレクト実行
+      }
+      return false; // リダイレクトなし
+    };
+
     // Check for existing session
     const initializeAuth = async () => {
       try {
+        // プレビュー→本番リダイレクトチェック
+        if (checkAndRedirectFromPreview()) {
+          return; // リダイレクト中のため処理中断
+        }
+
         console.log('Checking for existing session');
         const { data: { session }, error } = await supabase.auth.getSession();
         if (error) {
@@ -154,7 +173,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const signUp = async (email: string, password: string, displayName?: string) => {
     try {
       console.log('Attempting signup for:', email); // デバッグ用ログ追加
-      const redirectUrl = `${window.location.origin}/`;
+      // 本番環境のURLを強制使用
+      const redirectUrl = 'https://threads-genius-ai.lovable.app/';
       const { error } = await supabase.auth.signUp({
         email,
         password,
