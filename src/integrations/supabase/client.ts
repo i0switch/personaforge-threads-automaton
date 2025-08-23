@@ -9,20 +9,38 @@ const supabaseConfig = {
   anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRxY2dic25vaWFybmF3bnBwd2lhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk5MTUxODEsImV4cCI6MjA2NTQ5MTE4MX0.5_mXobtncEbIHyigC_EqP-z1cr7AWYepR7L2CZwjBvI'
 };
 
-// Safe storage wrapper for environments where localStorage is unavailable or blocked
+// iOS Safari対応の安全なストレージラッパー
 const createSafeStorage = () => {
+  // iOS Safari特有の問題を検出
+  const isIOSSafari = /iPad|iPhone|iPod/.test(navigator.userAgent) && 
+                     /WebKit/.test(navigator.userAgent) && 
+                     !/CriOS|FxiOS|OPiOS|mercury/.test(navigator.userAgent);
+  
   try {
     const testKey = '__supabase_test__';
     window.localStorage.setItem(testKey, '1');
     window.localStorage.removeItem(testKey);
+    
+    // iOS Safariの場合、追加チェック
+    if (isIOSSafari) {
+      // プライベートブラウジングモードでは quota exceeded エラーになる
+      try {
+        window.localStorage.setItem('__ios_test__', 'test');
+        window.localStorage.removeItem('__ios_test__');
+      } catch (quotaError) {
+        console.warn('iOS Safari プライベートモード検出、メモリストレージを使用');
+        throw new Error('iOS Private browsing detected');
+      }
+    }
+    
     return window.localStorage;
-  } catch {
+  } catch (error) {
+    console.warn('localStorage使用不可、メモリストレージを使用:', error);
     const memoryStore = new Map<string, string>();
     const memoryStorage = {
       getItem: (key: string) => memoryStore.get(key) ?? null,
       setItem: (key: string, value: string) => { memoryStore.set(key, value); },
       removeItem: (key: string) => { memoryStore.delete(key); },
-      // The following methods are optional for Supabase, but we provide no-ops for completeness
       clear: () => memoryStore.clear(),
       key: (_index: number) => null,
       length: 0,
