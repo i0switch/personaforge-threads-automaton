@@ -42,10 +42,22 @@ const Index = () => {
     if (!user) return;
     
     try {
-      const { data } = await supabase.rpc('is_admin', { _user_id: user.id });
+      const { data, error } = await supabase.rpc('is_admin', { _user_id: user.id });
+      
+      if (error) {
+        // 認証関連のエラーの場合は静かに失敗させる
+        if (error.message.includes('invalid claim') || error.message.includes('bad_jwt')) {
+          console.log('Authentication error in checkAdminStatus, setting admin to false');
+          setIsAdmin(false);
+          return;
+        }
+        throw error;
+      }
+      
       setIsAdmin(data || false);
     } catch (error) {
       console.error('Error checking admin status:', error);
+      setIsAdmin(false);
     }
   };
 

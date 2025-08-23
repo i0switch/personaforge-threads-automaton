@@ -44,7 +44,15 @@ const PersonaSetup = () => {
         .eq("user_id", user?.id)
         .order("created_at", { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        // 認証関連のエラーの場合は静かに失敗させる
+        if (error.message.includes('invalid claim') || error.message.includes('bad_jwt')) {
+          console.log('Authentication error in PersonaSetup loadPersonas, setting empty personas');
+          setPersonas([]);
+          return;
+        }
+        throw error;
+      }
       setPersonas(data || []);
       
       // ペルソナ読み込み後にリミット情報を強制的に再取得

@@ -49,7 +49,15 @@ export const PersonaList = () => {
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        // 認証関連のエラーの場合は静かに失敗させる
+        if (error.message.includes('invalid claim') || error.message.includes('bad_jwt')) {
+          console.log('Authentication error in PersonaList, setting empty personas');
+          setPersonas([]);
+          return;
+        }
+        throw error;
+      }
 
       setPersonas(data || []);
     } catch (error) {
@@ -82,7 +90,14 @@ export const PersonaList = () => {
         .eq('id', personaId)
         .eq('user_id', user?.id);
 
-      if (error) throw error;
+      if (error) {
+        // 認証関連のエラーの場合は静かに失敗させる
+        if (error.message.includes('invalid claim') || error.message.includes('bad_jwt')) {
+          console.log('Authentication error in deletePersona, skipping delete');
+          return;
+        }
+        throw error;
+      }
 
       toast({
         title: "成功",
