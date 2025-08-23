@@ -29,13 +29,13 @@ const queryClient = new QueryClient();
 
 function App() {
   return (
-    <ErrorBoundary>
-      <AuthProvider>
-        <QueryClientProvider client={queryClient}>
-          <div className="min-h-screen bg-gray-50">
-            <Router>
-              <div className="flex h-screen">
-                <main className="flex-1 overflow-auto">
+    <AuthProvider>
+      <QueryClientProvider client={queryClient}>
+        <div className="min-h-screen bg-gray-50">
+          <Router>
+            <div className="flex h-screen">
+              <main className="flex-1 overflow-auto">
+                <ErrorBoundary>
                   <Routes>
                     <Route path="/auth" element={<Auth />} />
                     <Route
@@ -168,14 +168,14 @@ function App() {
                     />
                     <Route path="/development-guide" element={<DevelopmentGuide />} />
                   </Routes>
-                </main>
-              </div>
-            </Router>
-          </div>
-          <Toaster />
-        </QueryClientProvider>
-      </AuthProvider>
-    </ErrorBoundary>
+                </ErrorBoundary>
+              </main>
+            </div>
+          </Router>
+        </div>
+        <Toaster />
+      </QueryClientProvider>
+    </AuthProvider>
   );
 }
 
