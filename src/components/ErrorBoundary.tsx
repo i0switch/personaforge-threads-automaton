@@ -22,17 +22,55 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('ErrorBoundary caught an error:', error, errorInfo);
-    console.error('Error stack:', error.stack);
-    console.error('Component stack:', errorInfo.componentStack);
+    console.error('======= ErrorBoundary: 詳細エラーログ開始 =======');
+    console.error('エラーメッセージ:', error.message);
+    console.error('エラースタック:', error.stack);
+    console.error('コンポーネントスタック:', errorInfo.componentStack);
     
-    // iOS Safari特有の問題を検出
+    // 環境情報の詳細収集
     const isIOSSafari = /iPad|iPhone|iPod/.test(navigator.userAgent) && 
                        /WebKit/.test(navigator.userAgent) && 
                        !/CriOS|FxiOS|OPiOS|mercury/.test(navigator.userAgent);
-    
-    // プレビュー環境チェック
     const isPreview = window.location.hostname.includes('preview--threads-genius-ai.lovable.app');
+    const currentTime = new Date().toISOString();
+    
+    // 詳細情報をコンソールに出力
+    console.error('環境情報:', {
+      userAgent: navigator.userAgent,
+      url: window.location.href,
+      hostname: window.location.hostname,
+      isIOSSafari,
+      isPreview,
+      timestamp: currentTime,
+      language: navigator.language,
+      platform: navigator.platform,
+      cookieEnabled: navigator.cookieEnabled,
+      onLine: navigator.onLine,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+      localStorageAvailable: (() => {
+        try {
+          const test = '__test__';
+          localStorage.setItem(test, test);
+          localStorage.removeItem(test);
+          return true;
+        } catch {
+          return false;
+        }
+      })(),
+      sessionStorageAvailable: (() => {
+        try {
+          const test = '__test__';
+          sessionStorage.setItem(test, test);
+          sessionStorage.removeItem(test);
+          return true;
+        } catch {
+          return false;
+        }
+      })()
+    });
+    
+    // プレビュー環境からの即座リダイレクト
     if (isPreview) {
       console.log('プレビュー環境でエラー発生。本番環境にリダイレクトします...');
       const targetUrl = window.location.href.replace('preview--threads-genius-ai.lovable.app', 'threads-genius-ai.lovable.app');
@@ -40,40 +78,118 @@ export class ErrorBoundary extends Component<Props, State> {
       return;
     }
     
-    // Store error details for better debugging
+    // グローバルエラー情報の保存
     if (typeof window !== 'undefined') {
       (window as any).__lastErrorInfo = {
         error: error.message,
         stack: error.stack,
         componentStack: errorInfo.componentStack,
-        timestamp: new Date().toISOString(),
-        isPreview: isPreview,
+        timestamp: currentTime,
+        isPreview,
         hostname: window.location.hostname,
-        isIOSSafari: isIOSSafari
+        isIOSSafari,
+        userAgent: navigator.userAgent,
+        url: window.location.href,
+        viewportSize: `${window.innerWidth}x${window.innerHeight}`,
+        storageStatus: {
+          localStorage: (() => {
+            try {
+              const test = '__test__';
+              localStorage.setItem(test, test);
+              localStorage.removeItem(test);
+              return 'available';
+            } catch {
+              return 'unavailable';
+            }
+          })(),
+          sessionStorage: (() => {
+            try {
+              const test = '__test__';
+              sessionStorage.setItem(test, test);
+              sessionStorage.removeItem(test);
+              return 'available';
+            } catch {
+              return 'unavailable';
+            }
+          })()
+        }
       };
     }
     
-    // エラー詳細をSupabaseにログ送信（非同期、エラーを投げない）
-    setTimeout(async () => {
+    // Supabaseへの詳細ログ送信（複数回リトライ）
+    const sendErrorLog = async (retryCount = 0) => {
       try {
-        await supabase.from('security_events').insert({
-          event_type: 'client_error',
+        console.log(`エラーログ送信試行 ${retryCount + 1}/3`);
+        
+        const logData = {
+          event_type: 'critical_client_error',
+          user_id: null, // 認証エラーの可能性があるため
           details: {
             error_message: error.message,
+            error_name: error.name,
             error_stack: error.stack,
             component_stack: errorInfo.componentStack,
             user_agent: navigator.userAgent,
-            is_ios_safari: isIOSSafari,
-            timestamp: new Date().toISOString(),
             url: window.location.href,
-            is_preview: isPreview
+            hostname: window.location.hostname,
+            is_ios_safari: isIOSSafari,
+            is_preview: isPreview,
+            timestamp: currentTime,
+            language: navigator.language,
+            platform: navigator.platform,
+            cookie_enabled: navigator.cookieEnabled,
+            online_status: navigator.onLine,
+            viewport_size: `${window.innerWidth}x${window.innerHeight}`,
+            local_storage_available: (() => {
+              try {
+                const test = '__test__';
+                localStorage.setItem(test, test);
+                localStorage.removeItem(test);
+                return true;
+              } catch {
+                return false;
+              }
+            })(),
+            session_storage_available: (() => {
+              try {
+                const test = '__test__';
+                sessionStorage.setItem(test, test);
+                sessionStorage.removeItem(test);
+                return true;
+              } catch {
+                return false;
+              }
+            })(),
+            retry_count: retryCount
           }
-        });
-        console.log('エラーログをSupabaseに送信しました');
+        };
+        
+        const { data, error: insertError } = await supabase
+          .from('security_events')
+          .insert(logData);
+        
+        if (insertError) {
+          throw insertError;
+        }
+        
+        console.log('✅ エラーログをSupabaseに送信成功:', data);
+        console.error('======= ErrorBoundary: 詳細エラーログ終了 =======');
+        
       } catch (logError) {
-        console.warn('エラーログ送信失敗:', logError);
+        console.warn(`❌ エラーログ送信失敗 (試行 ${retryCount + 1}/3):`, logError);
+        
+        if (retryCount < 2) {
+          // 1秒後にリトライ
+          setTimeout(() => sendErrorLog(retryCount + 1), 1000);
+        } else {
+          console.error('❌ エラーログ送信を諦めました');
+          console.error('======= ErrorBoundary: 詳細エラーログ終了 =======');
+        }
       }
-    }, 0);
+    };
+    
+    // 非同期でログ送信（即座に実行）
+    sendErrorLog();
   }
 
   public render() {
