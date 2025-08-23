@@ -9,13 +9,37 @@ const supabaseConfig = {
   anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRxY2dic25vaWFybmF3bnBwd2lhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk5MTUxODEsImV4cCI6MjA2NTQ5MTE4MX0.5_mXobtncEbIHyigC_EqP-z1cr7AWYepR7L2CZwjBvI'
 };
 
+// Safe storage wrapper for environments where localStorage is unavailable or blocked
+const createSafeStorage = () => {
+  try {
+    const testKey = '__supabase_test__';
+    window.localStorage.setItem(testKey, '1');
+    window.localStorage.removeItem(testKey);
+    return window.localStorage;
+  } catch {
+    const memoryStore = new Map<string, string>();
+    const memoryStorage = {
+      getItem: (key: string) => memoryStore.get(key) ?? null,
+      setItem: (key: string, value: string) => { memoryStore.set(key, value); },
+      removeItem: (key: string) => { memoryStore.delete(key); },
+      // The following methods are optional for Supabase, but we provide no-ops for completeness
+      clear: () => memoryStore.clear(),
+      key: (_index: number) => null,
+      length: 0,
+    } as unknown as Storage;
+    return memoryStorage;
+  }
+};
+
+const safeStorage = createSafeStorage();
+
 // Configure Supabase client with proper auth settings
 export const supabase = createClient<Database>(
   supabaseConfig.url,
   supabaseConfig.anonKey,
   {
     auth: {
-      storage: localStorage,
+      storage: safeStorage,
       persistSession: true,
       autoRefreshToken: true,
       detectSessionInUrl: true
@@ -27,4 +51,5 @@ export const supabase = createClient<Database>(
 if (import.meta.env.DEV) {
   console.log('Supabase client configured successfully');
   console.log('Project URL:', supabaseConfig.url);
+  console.log('Auth storage:', safeStorage === window.localStorage ? 'localStorage' : 'in-memory');
 }
