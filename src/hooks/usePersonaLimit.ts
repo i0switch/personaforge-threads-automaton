@@ -17,13 +17,19 @@ export const usePersonaLimit = () => {
   const [error, setError] = useState<string | null>(null);
 
   const checkPersonaLimit = async () => {
-    if (!user) {
+    if (!user?.id) {
+      console.debug('[usePersonaLimit] early return (no user/session)');
+      setLimitInfo({
+        currentCount: 0,
+        personaLimit: 1,
+        canCreate: true
+      });
       setLoading(false);
       return;
     }
 
     try {
-      console.log(`Checking persona limit for user: ${user.id}`);
+      console.log(`[usePersonaLimit] Checking persona limit for user: ${user.id}`);
       
       // 最新のペルソナ数を取得
       const { data: personasData, error: personasError } = await supabase

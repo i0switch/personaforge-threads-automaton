@@ -143,3 +143,5 @@ export const AutoReplyTester = () => {
     </Card>
   );
 };
+
+export { AutoReplyTester as default };

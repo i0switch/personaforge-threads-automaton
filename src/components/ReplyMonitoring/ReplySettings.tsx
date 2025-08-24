@@ -129,3 +129,5 @@ export const ReplySettings = () => {
     </div>
   );
 };
+
+export { ReplySettings as default };

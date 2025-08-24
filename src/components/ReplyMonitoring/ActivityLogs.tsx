@@ -46,8 +46,12 @@ export const ActivityLogs = () => {
         .order('created_at', { ascending: false })
         .limit(100);
 
-      if (error) throw error;
-      setLogs(data || []);
+      if (error) {
+        console.error('[ActivityLogs] supabase error', error);
+        setLogs([]);
+        return;
+      }
+      setLogs(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error fetching activity logs:', error);
       toast({
@@ -111,7 +115,7 @@ export const ActivityLogs = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {logs.map((log) => (
+                {(logs ?? []).map((log) => (
                   <TableRow key={log.id}>
                     <TableCell className="text-sm">
                       {new Date(log.created_at).toLocaleString()}
@@ -169,3 +173,5 @@ export const ActivityLogs = () => {
     </div>
   );
 };
+
+export { ActivityLogs as default };

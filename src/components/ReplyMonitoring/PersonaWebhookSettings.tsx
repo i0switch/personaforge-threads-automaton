@@ -38,8 +38,12 @@ export const PersonaWebhookSettings = () => {
         .eq('user_id', user!.id)
         .eq('is_active', true);
 
-      if (error) throw error;
-      setPersonas(data || []);
+      if (error) {
+        console.error('[PersonaWebhookSettings] supabase error', error);
+        setPersonas([]);
+        return;
+      }
+      setPersonas(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error fetching personas:', error);
       toast({
@@ -180,3 +184,5 @@ export const PersonaWebhookSettings = () => {
     </div>
   );
 };
+
+export { PersonaWebhookSettings as default };

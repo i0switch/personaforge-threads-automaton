@@ -35,6 +35,7 @@ export const ReplyList = () => {
   const fetchReplies = async () => {
     try {
       setLoading(true);
+      console.debug('[ReplyList] fetching replies for user:', user?.id);
       
       const { data, error } = await supabase
         .from('thread_replies')
@@ -48,10 +49,18 @@ export const ReplyList = () => {
         .order('reply_timestamp', { ascending: false })
         .limit(50);
 
-      if (error) throw error;
-      setReplies(data || []);
+      console.debug('[ReplyList] fetched', { error, hasData: !!data });
+      
+      if (error) {
+        console.error('[ReplyList] supabase error', error);
+        setReplies([]);
+        return;
+      }
+      
+      setReplies(Array.isArray(data) ? data : []);
     } catch (error) {
-      console.error('Error fetching replies:', error);
+      console.error('[ReplyList] unexpected error:', error);
+      setReplies([]);
       toast({
         title: 'エラー',
         description: 'リプライの取得に失敗しました',
@@ -77,7 +86,7 @@ export const ReplyList = () => {
             <p className="text-gray-500">まだリプライはありません</p>
           ) : (
             <div className="space-y-4">
-              {replies.map((reply) => (
+              {(replies ?? []).map((reply) => (
                 <Card key={reply.id} className="border border-gray-200">
                   <CardContent className="p-4">
                     <div className="space-y-2">
@@ -112,3 +121,5 @@ export const ReplyList = () => {
     </div>
   );
 };
+
+export { ReplyList as default };
