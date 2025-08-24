@@ -101,10 +101,36 @@ export const supabase = createClient<Database>(
       detectSessionInUrl: true
     }
   }
-);
+  );
 
-// Log configuration status (development only)
-if (import.meta.env.DEV) {
+  // Disable Supabase Realtime on iOS WebKit within iframes to avoid SecurityError: "The operation is insecure"
+  try {
+    const ua = navigator.userAgent;
+    const isIpadOS13Plus = navigator.platform === 'MacIntel' && (navigator as any).maxTouchPoints > 1;
+    const isIOS = /iPad|iPhone|iPod/.test(ua) || isIpadOS13Plus;
+    const isWebKit = /AppleWebKit/.test(ua) || /WebKit/.test(ua);
+    const isIOSWebKit = isIOS && isWebKit;
+    const isInIframe = (() => { try { return window.self !== window.top; } catch { return true; } })();
+
+    if (isIOSWebKit) {
+      const noopChannel = () => {
+        const stub: any = {
+          on: () => stub,
+          subscribe: () => stub,
+          unsubscribe: () => {},
+        };
+        return stub;
+      };
+      // @ts-ignore - override for iOS iframe
+      (supabase as any).channel = noopChannel;
+      // @ts-ignore
+      (supabase as any).removeChannel = () => {};
+      console.warn('Supabase Realtime is disabled on iOS WebKit within iframes to avoid SecurityError.');
+    }
+  } catch {}
+
+  // Log configuration status (development only)
+  if (import.meta.env.DEV) {
   console.log('Supabase client configured successfully');
   console.log('Project URL:', supabaseConfig.url);
   console.log('Auth storage:', safeStorage === window.localStorage ? 'localStorage' : 'in-memory');

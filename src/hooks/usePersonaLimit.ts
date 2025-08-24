@@ -126,9 +126,10 @@ export const usePersonaLimit = () => {
       pollTimer = window.setInterval(checkPersonaLimit, 10000);
     } else {
       try {
+        const channelId = Math.random().toString(36).slice(2, 10);
         // user_account_statusテーブルの変更をリアルタイムで監視
         accountChannel = supabase
-          .channel('user_account_status_changes')
+          .channel(`user_account_status_changes_${user.id}_${channelId}`)
           .on(
             'postgres_changes',
             {
@@ -146,7 +147,7 @@ export const usePersonaLimit = () => {
 
         // personasテーブルの変更も監視
         personasChannel = supabase
-          .channel('personas_changes')
+          .channel(`personas_changes_${user.id}_${channelId}`)
           .on(
             'postgres_changes',
             {
