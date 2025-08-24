@@ -81,7 +81,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     } else {
       // 通常のブラウザではRealtime監視
       subscription = supabase.auth.onAuthStateChange(
-        async (event, session) => {
+        (event, session) => {
           if (!mounted) return;
           
           if (import.meta.env.DEV) {

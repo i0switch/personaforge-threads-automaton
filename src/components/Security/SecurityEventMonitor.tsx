@@ -27,6 +27,7 @@ export const SecurityEventMonitor = () => {
   const [loading, setLoading] = useState(true);
   const [realTimeEnabled, setRealTimeEnabled] = useState(false);
   const pollTimerRef = useRef<number | null>(null);
+  const channelRef = useRef<any | null>(null);
 
   useEffect(() => {
     if (user) {
@@ -38,6 +39,16 @@ export const SecurityEventMonitor = () => {
       if (pollTimerRef.current) {
         window.clearInterval(pollTimerRef.current);
         pollTimerRef.current = null;
+      }
+      if (channelRef.current) {
+        try {
+          supabase.removeChannel(channelRef.current);
+        } catch (e) {
+          console.warn('Failed to remove realtime channel:', e);
+        } finally {
+          channelRef.current = null;
+          setRealTimeEnabled(false);
+        }
       }
     };
   }, [user]);
@@ -102,6 +113,7 @@ export const SecurityEventMonitor = () => {
       )
       .subscribe();
 
+    channelRef.current = channel;
     setRealTimeEnabled(true);
   };
 

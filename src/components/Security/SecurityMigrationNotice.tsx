@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, X } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -13,6 +14,7 @@ export const SecurityMigrationNotice = ({ userId }: SecurityMigrationNoticeProps
   const [shouldShow, setShouldShow] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
+  const navigate = useNavigate();
 
   useEffect(() => {
     checkIfShouldShowNotice();
@@ -86,8 +88,8 @@ export const SecurityMigrationNotice = ({ userId }: SecurityMigrationNoticeProps
 
   const goToSettings = () => {
     markAsNotified();
-    // 設定ページに移動
-    window.location.href = '/settings';
+    // 設定ページに移動（SPAナビゲーション）
+    navigate('/settings');
   };
 
   if (isLoading || !shouldShow) {

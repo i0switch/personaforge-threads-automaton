@@ -1,9 +1,10 @@
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 
 const NotFound = () => {
   const location = useLocation();
+  const navigate = useNavigate();
 
   useEffect(() => {
     console.error(
@@ -20,7 +21,7 @@ const NotFound = () => {
         <p className="text-sm text-muted-foreground mb-6">
           お探しのページは存在しないか、移動された可能性があります。
         </p>
-        <Button onClick={() => window.location.href = "/"} variant="outline">
+        <Button onClick={() => navigate('/')} variant="outline">
           ホームに戻る
         </Button>
       </div>
