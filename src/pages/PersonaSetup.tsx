@@ -24,6 +24,7 @@ const PersonaSetup = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [editingPersona, setEditingPersona] = useState<Persona | null>(null);
   const [showLimitDialog, setShowLimitDialog] = useState(false);
+  const [tabValue, setTabValue] = useState<'personas' | 'webhooks'>('personas');
 
   useEffect(() => {
     if (user) {
@@ -394,7 +395,7 @@ const PersonaSetup = () => {
 
         {/* Main Content with Tabs */}
         {!isEditing && (
-          <Tabs defaultValue="personas" className="space-y-4">
+          <Tabs value={tabValue} onValueChange={(v) => setTabValue(v as 'personas' | 'webhooks')} className="space-y-4">
             <TabsList>
               <TabsTrigger value="personas">ペルソナ一覧</TabsTrigger>
               <TabsTrigger value="webhooks">Webhook設定</TabsTrigger>
@@ -416,7 +417,7 @@ const PersonaSetup = () => {
               <p className="text-muted-foreground">
                 各ペルソナ専用のWebhook URLとVerify Tokenを確認できます。Meta for DevelopersでWebhook設定を行う際に使用してください。
               </p>
-              <PersonaWebhookSettings />
+              {tabValue === 'webhooks' && <PersonaWebhookSettings />}
             </TabsContent>
           </Tabs>
         )}
