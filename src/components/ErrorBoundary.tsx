@@ -213,6 +213,12 @@ export class ErrorBoundary extends Component<Props, State> {
                 '本番環境に移動してお試しください。' : 
                 'ページを再読み込みしてください。'
               }
+              {(debug || import.meta.env.DEV) && (
+                <>
+                  <br />
+                  <span className="text-xs text-destructive-foreground font-mono">{this.state.error?.message || (window as any).__lastErrorInfo?.error || '詳細なし'}</span>
+                </>
+              )}
             </p>
                 <div className="space-y-2">
                   <div className="text-left bg-destructive/10 border border-destructive/30 p-3 rounded">
