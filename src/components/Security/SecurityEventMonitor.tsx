@@ -1,5 +1,5 @@
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,6 +26,7 @@ export const SecurityEventMonitor = () => {
   const [events, setEvents] = useState<SecurityEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [realTimeEnabled, setRealTimeEnabled] = useState(false);
+  const pollTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (user) {
@@ -34,8 +35,9 @@ export const SecurityEventMonitor = () => {
     }
 
     return () => {
-      if (realTimeEnabled) {
-        // クリーンアップは自動で行われる
+      if (pollTimerRef.current) {
+        window.clearInterval(pollTimerRef.current);
+        pollTimerRef.current = null;
       }
     };
   }, [user]);
@@ -65,6 +67,15 @@ export const SecurityEventMonitor = () => {
 
   const setupRealTimeMonitoring = () => {
     if (!user || realTimeEnabled) return;
+
+    const isIOSSafari = /iPad|iPhone|iPod/.test(navigator.userAgent) && /WebKit/.test(navigator.userAgent) && !/CriOS|FxiOS|OPiOS|mercury/.test(navigator.userAgent);
+
+    if (isIOSSafari) {
+      console.warn('iOS Safari 環境のため、Realtime を無効化しポーリングにフォールバックします');
+      pollTimerRef.current = window.setInterval(loadSecurityEvents, 10000);
+      setRealTimeEnabled(false);
+      return;
+    }
 
     const channel = supabase
       .channel('security-events-monitor')
