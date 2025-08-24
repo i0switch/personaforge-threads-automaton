@@ -214,12 +214,15 @@ export class ErrorBoundary extends Component<Props, State> {
                 'ページを再読み込みしてください。'
               }
             </p>
-              {(debug || import.meta.env.DEV) && this.state.error && (
-                <div className="text-xs text-left bg-muted p-3 rounded mt-4 overflow-auto max-h-60">
-                  <pre>{this.state.error.message}</pre>
-                  <pre className="mt-2 opacity-80">{(window as any).__lastErrorInfo?.componentStack || 'no component stack'}</pre>
+                <div className="space-y-2">
+                  <div className="text-left bg-destructive/10 border border-destructive/30 p-3 rounded">
+                    <p className="text-sm font-semibold">エラー詳細</p>
+                    <p className="text-sm break-words">{this.state.error?.message || '不明なエラー'}</p>
+                  </div>
+                  <div className="text-xs text-left bg-muted p-3 rounded overflow-auto max-h-60">
+                    <pre className="whitespace-pre-wrap">{(window as any).__lastErrorInfo?.componentStack || this.state.error?.stack || 'no stack'}</pre>
+                  </div>
                 </div>
-              )}
             </div>
           <Button 
             onClick={() => {

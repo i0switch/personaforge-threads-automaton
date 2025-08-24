@@ -19,7 +19,7 @@ import { isIOSWebKit } from './platform';
       public onopen: ((ev: Event) => any) | null = null;
       public onmessage: ((ev: MessageEvent) => any) | null = null;
       public onerror: ((ev: Event) => any) | null = null;
-      public onclose: ((ev: CloseEvent) => any) | null = null;
+      public onclose: ((ev: any) => any) | null = null;
       public readyState: number = 3; // CLOSED
       public url: string;
       public binaryType: 'arraybuffer' | 'blob' | 'nodebuffer' = 'arraybuffer';
@@ -33,7 +33,7 @@ import { isIOSWebKit } from './platform';
         // Async notify error/close so callers don't hang waiting for open
         setTimeout(() => {
           try { this.onerror && this.onerror(new Event('error')); } catch { }
-          try { this.onclose && this.onclose(new CloseEvent('close')); } catch { }
+          try { this.onclose && this.onclose(new Event('close')); } catch { }
         }, 0);
       }
 
