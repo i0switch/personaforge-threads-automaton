@@ -237,20 +237,24 @@ export class ErrorBoundary extends Component<Props, State> {
                     });
                   }
                   
-                  // セッションストレージクリア
+                  // セッション/ローカルストレージクリア
                   sessionStorage.clear();
+                  try { localStorage.clear(); } catch {}
                   
-                  console.log('iOS Safari向けキャッシュクリア実行');
+                  console.log('iOS Safari向けキャッシュクリア実行（SW/Storage cleared）');
                 } catch (clearError) {
                   console.warn('キャッシュクリア失敗:', clearError);
                 }
               }
               
+              // キャッシュバスター付きでリロード
+              const url = new URL(window.location.href);
+              url.searchParams.set('cb', Date.now().toString());
               if (window.location.hostname.includes('preview')) {
-                const targetUrl = window.location.href.replace('preview--threads-genius-ai.lovable.app', 'threads-genius-ai.lovable.app');
+                const targetUrl = url.toString().replace('preview--threads-genius-ai.lovable.app', 'threads-genius-ai.lovable.app');
                 window.location.replace(targetUrl);
               } else {
-                window.location.reload();
+                window.location.replace(url.toString());
               }
             }} 
             className="w-full"
