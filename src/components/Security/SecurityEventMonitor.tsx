@@ -9,6 +9,7 @@ import { Activity, AlertTriangle, RefreshCw, Shield } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import { isIOSWebKit } from "@/utils/platform";
 
 interface SecurityEvent {
   id: string;
@@ -79,14 +80,8 @@ export const SecurityEventMonitor = () => {
   const setupRealTimeMonitoring = () => {
     if (!user || realTimeEnabled) return;
 
-    const ua = navigator.userAgent;
-    const isIpadOS13Plus = navigator.platform === 'MacIntel' && (navigator as any).maxTouchPoints > 1;
-    const isIOS = /iPad|iPhone|iPod/.test(ua) || isIpadOS13Plus;
-    const isSafari = /Safari/.test(ua) && !/Chrome|CriOS|FxiOS|OPiOS|EdgiOS|mercury/.test(ua);
-    const isWebKit = /AppleWebKit/.test(ua) || /WebKit/.test(ua);
-    const isIOSSafari = isIOS && isSafari && isWebKit;
-
-    if (isIOSSafari) {
+    const isIOSRestricted = isIOSWebKit();
+    if (isIOSRestricted) {
       console.warn('iOS Safari 環境のため、Realtime を無効化しポーリングにフォールバックします');
       pollTimerRef.current = window.setInterval(loadSecurityEvents, 10000);
       setRealTimeEnabled(false);

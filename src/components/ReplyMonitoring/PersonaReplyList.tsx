@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
+import { isIOSWebKit } from '@/utils/platform';
 
 interface Reply {
   id: string;
@@ -48,17 +49,11 @@ export const PersonaReplyList = () => {
   useEffect(() => {
     if (!user) return;
 
-    const ua = navigator.userAgent;
-    const isIpadOS13Plus = navigator.platform === 'MacIntel' && (navigator as any).maxTouchPoints > 1;
-    const isIOS = /iPad|iPhone|iPod/.test(ua) || isIpadOS13Plus;
-    const isSafari = /Safari/.test(ua) && !/Chrome|CriOS|FxiOS|OPiOS|EdgiOS|mercury/.test(ua);
-    const isWebKit = /AppleWebKit/.test(ua) || /WebKit/.test(ua);
-    const isIOSSafari = isIOS && isSafari && isWebKit;
-
+    const isIOSRestricted = isIOSWebKit();
     let channel: any = null;
     let pollTimer: number | null = null;
 
-    if (isIOSSafari) {
+    if (isIOSRestricted) {
       console.warn('iOS Safari 環境のため、Realtime を無効化しポーリングにフォールバックします');
       pollTimer = window.setInterval(fetchReplies, 10000);
     } else {
