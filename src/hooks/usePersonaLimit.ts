@@ -107,46 +107,68 @@ export const usePersonaLimit = () => {
 
     checkPersonaLimit();
 
-    // user_account_statusテーブルの変更をリアルタイムで監視
-    const accountChannel = supabase
-      .channel('user_account_status_changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'user_account_status',
-          filter: `user_id=eq.${user.id}`
-        },
-        (payload) => {
-          console.log('Account status updated:', payload);
-          checkPersonaLimit();
-        }
-      )
-      .subscribe();
+    // iOS Safari などでWebSocketが制限される環境では、リアルタイム購読を回避しポーリングにフォールバック
+    const isIOSSafari = /iPad|iPhone|iPod/.test(navigator.userAgent) && /WebKit/.test(navigator.userAgent) && !/CriOS|FxiOS|OPiOS|mercury/.test(navigator.userAgent);
 
-    // personasテーブルの変更も監視
-    const personasChannel = supabase
-      .channel('personas_changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'personas',
-          filter: `user_id=eq.${user.id}`
-        },
-        (payload) => {
-          console.log('Personas updated:', payload);
-          // ペルソナの変更時は少し遅延を入れてからチェック
-          setTimeout(checkPersonaLimit, 500);
-        }
-      )
-      .subscribe();
+    let accountChannel: any = null;
+    let personasChannel: any = null;
+    let pollTimer: number | null = null;
+
+    if (isIOSSafari) {
+      console.warn('iOS Safari 環境のため、Realtime を無効化しポーリングにフォールバックします');
+      pollTimer = window.setInterval(checkPersonaLimit, 10000);
+    } else {
+      try {
+        // user_account_statusテーブルの変更をリアルタイムで監視
+        accountChannel = supabase
+          .channel('user_account_status_changes')
+          .on(
+            'postgres_changes',
+            {
+              event: '*',
+              schema: 'public',
+              table: 'user_account_status',
+              filter: `user_id=eq.${user.id}`
+            },
+            (payload) => {
+              console.log('Account status updated:', payload);
+              checkPersonaLimit();
+            }
+          )
+          .subscribe();
+
+        // personasテーブルの変更も監視
+        personasChannel = supabase
+          .channel('personas_changes')
+          .on(
+            'postgres_changes',
+            {
+              event: '*',
+              schema: 'public',
+              table: 'personas',
+              filter: `user_id=eq.${user.id}`
+            },
+            (payload) => {
+              console.log('Personas updated:', payload);
+              // ペルソナの変更時は少し遅延を入れてからチェック
+              setTimeout(checkPersonaLimit, 500);
+            }
+          )
+          .subscribe();
+      } catch (e) {
+        console.warn('Realtime 購読の初期化に失敗。ポーリングにフォールバックします:', e);
+        pollTimer = window.setInterval(checkPersonaLimit, 10000);
+      }
+    }
 
     return () => {
-      supabase.removeChannel(accountChannel);
-      supabase.removeChannel(personasChannel);
+      try {
+        if (accountChannel) supabase.removeChannel(accountChannel);
+        if (personasChannel) supabase.removeChannel(personasChannel);
+      } catch (e) {
+        console.warn('Realtime チャネルのクリーンアップに失敗:', e);
+      }
+      if (pollTimer) window.clearInterval(pollTimer);
     };
   }, [user]);
 
