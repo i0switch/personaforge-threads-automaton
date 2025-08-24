@@ -226,8 +226,14 @@ export class ErrorBoundary extends Component<Props, State> {
                     <p className="text-sm break-words">{this.state.error?.message || '不明なエラー'}</p>
                   </div>
                   <div className="text-xs text-left bg-muted p-3 rounded overflow-auto max-h-60">
-                    <pre className="whitespace-pre-wrap">{(window as any).__lastErrorInfo?.componentStack || this.state.error?.stack || 'no stack'}</pre>
+                    <pre className="whitespace-pre-wrap">{this.state.error?.stack || 'no stack'}</pre>
                   </div>
+                  {(debug || import.meta.env.DEV) && (
+                    <div className="text-xs text-left bg-muted p-3 rounded overflow-auto max-h-40">
+                      <p className="font-semibold mb-1">__lastErrorInfo (JSON)</p>
+                      <pre className="whitespace-pre-wrap">{JSON.stringify((window as any).__lastErrorInfo ?? {}, null, 2)}</pre>
+                    </div>
+                  )}
                 </div>
             </div>
           <Button 
