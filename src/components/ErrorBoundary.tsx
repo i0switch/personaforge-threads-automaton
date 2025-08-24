@@ -193,6 +193,13 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   public render() {
+    const debug = (() => {
+      try {
+        return new URLSearchParams(window.location.search).get('debug') === '1';
+      } catch {
+        return false;
+      }
+    })();
     if (this.state.hasError) {
       return (
         <div className="min-h-screen flex items-center justify-center p-6 bg-background">
@@ -207,9 +214,10 @@ export class ErrorBoundary extends Component<Props, State> {
                 'ページを再読み込みしてください。'
               }
             </p>
-              {import.meta.env.DEV && this.state.error && (
-                <div className="text-xs text-left bg-muted p-3 rounded mt-4 overflow-auto">
+              {(debug || import.meta.env.DEV) && this.state.error && (
+                <div className="text-xs text-left bg-muted p-3 rounded mt-4 overflow-auto max-h-60">
                   <pre>{this.state.error.message}</pre>
+                  <pre className="mt-2 opacity-80">{(window as any).__lastErrorInfo?.componentStack || 'no component stack'}</pre>
                 </div>
               )}
             </div>
