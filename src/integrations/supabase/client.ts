@@ -103,16 +103,17 @@ export const supabase = createClient<Database>(
   }
   );
 
-  // Disable Supabase Realtime on iOS WebKit within iframes to avoid SecurityError: "The operation is insecure"
+  // Disable Supabase Realtime on Safari/WebKit (iOS and macOS) to avoid CSP/WebSocket issues
   try {
     const ua = navigator.userAgent;
     const isIpadOS13Plus = navigator.platform === 'MacIntel' && (navigator as any).maxTouchPoints > 1;
     const isIOS = /iPad|iPhone|iPod/.test(ua) || isIpadOS13Plus;
-    const isWebKit = /AppleWebKit/.test(ua) || /WebKit/.test(ua);
-    const isIOSWebKit = isIOS && isWebKit;
-    const isInIframe = (() => { try { return window.self !== window.top; } catch { return true; } })();
+    const isWebKitEngine = /AppleWebKit/.test(ua) || /WebKit/.test(ua);
+    const isIOSWebKit = isIOS && isWebKitEngine;
+    const isSafariDesktop = /Safari\//.test(ua) && !/Chrome|Chromium|Edg|OPR|CriOS|FxiOS|OPiOS|mercury/.test(ua);
+    const shouldDisableRealtime = isIOSWebKit || isSafariDesktop;
 
-    if (isIOSWebKit) {
+    if (shouldDisableRealtime) {
       const noop = () => {};
       const stubChannel = () => {
         const stub: any = {
@@ -123,7 +124,7 @@ export const supabase = createClient<Database>(
         return stub;
       };
       // Fully stub realtime interfaces to avoid any WebSocket usage
-      // @ts-ignore - override for iOS WebKit
+      // @ts-ignore - override on Safari/WebKit
       (supabase as any).channel = stubChannel;
       // @ts-ignore
       (supabase as any).removeChannel = noop;
@@ -135,7 +136,7 @@ export const supabase = createClient<Database>(
         remove: noop,
         removeChannel: noop,
       };
-      console.warn('Supabase Realtime fully disabled on iOS WebKit to avoid SecurityError.');
+      console.warn('Supabase Realtime disabled on Safari/WebKit (iOS/macOS) to avoid CSP/WebSocket issues.');
     }
   } catch {}
 
