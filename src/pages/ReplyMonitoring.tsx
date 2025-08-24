@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { ReplySettings } from '@/components/ReplyMonitoring/ReplySettings';
-import { PersonaReplyList } from '@/components/ReplyMonitoring/PersonaReplyList';
+import { ReplyList } from '@/components/ReplyMonitoring/ReplyList';
 import { PersonaWebhookSettings } from '@/components/ReplyMonitoring/PersonaWebhookSettings';
 import { ActivityLogs } from '@/components/ReplyMonitoring/ActivityLogs';
 import { AutoReplyTester } from '@/components/AutoReplyTester';
@@ -38,7 +38,7 @@ const ReplyMonitoring = () => {
         </TabsList>
         
         <TabsContent value="replies" className="mt-6">
-          <PersonaReplyList />
+          <ReplyList />
         </TabsContent>
         
         <TabsContent value="logs" className="mt-6">
