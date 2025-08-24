@@ -17,19 +17,30 @@ const createSafeStorage = () => {
                      !/CriOS|FxiOS|OPiOS|mercury/.test(navigator.userAgent);
   
   try {
+    // より安全なlocalStorageテスト
+    if (typeof window === 'undefined' || !window.localStorage) {
+      throw new Error('localStorage not available');
+    }
+    
     const testKey = '__supabase_test__';
     window.localStorage.setItem(testKey, '1');
+    const testValue = window.localStorage.getItem(testKey);
     window.localStorage.removeItem(testKey);
+    
+    if (testValue !== '1') {
+      throw new Error('localStorage test failed');
+    }
     
     // iOS Safariの場合、追加チェック
     if (isIOSSafari) {
       // プライベートブラウジングモードでは quota exceeded エラーになる
       try {
-        window.localStorage.setItem('__ios_test__', 'test');
-        window.localStorage.removeItem('__ios_test__');
+        const testData = 'x'.repeat(1024); // 1KB テストデータ
+        window.localStorage.setItem('__ios_quota_test__', testData);
+        window.localStorage.removeItem('__ios_quota_test__');
       } catch (quotaError) {
-        console.warn('iOS Safari プライベートモード検出、メモリストレージを使用');
-        throw new Error('iOS Private browsing detected');
+        console.warn('iOS Safari プライベートモード または quota制限検出、メモリストレージを使用');
+        throw new Error('iOS Storage quota exceeded');
       }
     }
     
@@ -37,14 +48,41 @@ const createSafeStorage = () => {
   } catch (error) {
     console.warn('localStorage使用不可、メモリストレージを使用:', error);
     const memoryStore = new Map<string, string>();
+    
+    // メモリストレージ実装を改善
     const memoryStorage = {
-      getItem: (key: string) => memoryStore.get(key) ?? null,
-      setItem: (key: string, value: string) => { memoryStore.set(key, value); },
-      removeItem: (key: string) => { memoryStore.delete(key); },
-      clear: () => memoryStore.clear(),
+      getItem: (key: string) => {
+        try {
+          return memoryStore.get(key) ?? null;
+        } catch {
+          return null;
+        }
+      },
+      setItem: (key: string, value: string) => {
+        try {
+          memoryStore.set(key, value);
+        } catch (e) {
+          console.warn('Memory storage setItem failed:', e);
+        }
+      },
+      removeItem: (key: string) => {
+        try {
+          memoryStore.delete(key);
+        } catch (e) {
+          console.warn('Memory storage removeItem failed:', e);
+        }
+      },
+      clear: () => {
+        try {
+          memoryStore.clear();
+        } catch (e) {
+          console.warn('Memory storage clear failed:', e);
+        }
+      },
       key: (_index: number) => null,
-      length: 0,
+      length: memoryStore.size,
     } as unknown as Storage;
+    
     return memoryStorage;
   }
 };
