@@ -39,7 +39,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     let pollTimer: number | null = null;
     console.log('Setting up auth state listener');
 
-    const isIOSSafari = /iPad|iPhone|iPod/.test(navigator.userAgent) && /WebKit/.test(navigator.userAgent) && !/CriOS|FxiOS|OPiOS|mercury/.test(navigator.userAgent);
+    const ua = navigator.userAgent;
+    const isIpadOS13Plus = navigator.platform === 'MacIntel' && (navigator as any).maxTouchPoints > 1;
+    const isIOS = /iPad|iPhone|iPod/.test(ua) || isIpadOS13Plus;
+    const isSafari = /Safari/.test(ua) && !/Chrome|CriOS|FxiOS|OPiOS|EdgiOS|mercury/.test(ua);
+    const isWebKit = /AppleWebKit/.test(ua) || /WebKit/.test(ua);
+    const isIOSSafari = isIOS && isSafari && isWebKit;
 
     let subscription: any = null;
 
