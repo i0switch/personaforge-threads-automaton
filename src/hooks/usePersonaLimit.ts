@@ -49,22 +49,22 @@ export const usePersonaLimit = () => {
       const actualPersonaCount = personasData?.length || 0;
       console.log(`Direct persona count: ${actualPersonaCount}`);
 
-      // 最新のアカウント状態を取得（重複を避けるため DISTINCT ON を使用）
+      // 最新のアカウント状態を取得
       const { data: accountData, error: accountError } = await supabase
         .from('user_account_status')
         .select('persona_limit')
         .eq('user_id', user.id)
         .order('updated_at', { ascending: false })
-        .limit(1);
+        .maybeSingle();
 
       let personaLimit = 1; // デフォルト値
 
       if (accountError) {
         console.error('Error fetching account status:', accountError);
         // エラーの場合はデフォルト値を使用
-      } else if (accountData && accountData.length > 0) {
-        personaLimit = accountData[0].persona_limit || 1;
-        console.log('Account data:', accountData[0]);
+      } else if (accountData) {
+        personaLimit = accountData.persona_limit || 1;
+        console.log('Account data:', accountData);
       } else {
         console.log('No account status found, using default limit');
       }
