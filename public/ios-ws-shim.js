@@ -16,6 +16,9 @@
     function NoopWebSocket(url){
       this.url = url || '';
       this.readyState = 3; // CLOSED
+      this.binaryType = 'arraybuffer';
+      this.protocol = '';
+      this.extensions = '';
       this.onopen = null; this.onmessage = null; this.onerror = null; this.onclose = null;
       try { console.warn('[iOS WebKit] WebSocket disabled via early shim for URL:', this.url); } catch(e){}
       setTimeout(() => {
@@ -28,6 +31,12 @@
     NoopWebSocket.prototype.dispatchEvent = function(){ return true; };
     NoopWebSocket.prototype.send = function(){};
     NoopWebSocket.prototype.close = function(){};
+
+    // Static readyState constants for compatibility
+    NoopWebSocket.CONNECTING = 0;
+    NoopWebSocket.OPEN = 1;
+    NoopWebSocket.CLOSING = 2;
+    NoopWebSocket.CLOSED = 3;
 
     window.WebSocket = NoopWebSocket;
     try { self.WebSocket = NoopWebSocket; } catch(e){}

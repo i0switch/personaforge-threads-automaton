@@ -22,6 +22,9 @@ import { isIOSWebKit } from './platform';
       public onclose: ((ev: CloseEvent) => any) | null = null;
       public readyState: number = 3; // CLOSED
       public url: string;
+      public binaryType: 'arraybuffer' | 'blob' | 'nodebuffer' = 'arraybuffer';
+      public protocol: string = '';
+      public extensions: string = '';
 
       constructor(url?: string) {
         this.url = url || '';
@@ -40,6 +43,12 @@ import { isIOSWebKit } from './platform';
       send(_data?: any) { }
       close() { }
     }
+
+    // Static readyState constants for compatibility
+    ;(NoopWebSocket as any).CONNECTING = 0;
+    ;(NoopWebSocket as any).OPEN = 1;
+    ;(NoopWebSocket as any).CLOSING = 2;
+    ;(NoopWebSocket as any).CLOSED = 3;
 
     // Apply the shim broadly
     (window as any).WebSocket = NoopWebSocket as any;
