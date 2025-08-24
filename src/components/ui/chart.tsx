@@ -74,27 +74,31 @@ const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
     return null
   }
 
+  // CSP-safe implementation using React's style object
+  const styleElements = Object.entries(THEMES).map(([theme, prefix]) => {
+    const selector = prefix ? `${prefix} [data-chart="${id}"]` : `[data-chart="${id}"]`
+    const cssVariables = colorConfig
+      .map(([key, itemConfig]) => {
+        const color =
+          itemConfig.theme?.[theme as keyof typeof itemConfig.theme] ||
+          itemConfig.color
+        return color ? `--color-${key}: ${color};` : null
+      })
+      .filter(Boolean)
+      .join(' ')
+
+    return cssVariables ? { selector, cssVariables, theme } : null
+  }).filter(Boolean)
+
+  // Create a style element for each theme safely
   return (
-    <style
-      dangerouslySetInnerHTML={{
-        __html: Object.entries(THEMES)
-          .map(
-            ([theme, prefix]) => `
-${prefix} [data-chart=${id}] {
-${colorConfig
-  .map(([key, itemConfig]) => {
-    const color =
-      itemConfig.theme?.[theme as keyof typeof itemConfig.theme] ||
-      itemConfig.color
-    return color ? `  --color-${key}: ${color};` : null
-  })
-  .join("\n")}
-}
-`
-          )
-          .join("\n"),
-      }}
-    />
+    <>
+      {styleElements.map(({ selector, cssVariables, theme }, index) => (
+        <style key={`${theme}-${index}`} data-chart-style={id}>
+          {`${selector} { ${cssVariables} }`}
+        </style>
+      ))}
+    </>
   )
 }
 
