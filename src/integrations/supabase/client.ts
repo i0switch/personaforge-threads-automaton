@@ -103,41 +103,31 @@ export const supabase = createClient<Database>(
   }
   );
 
-  // Disable Supabase Realtime on Safari/WebKit (iOS and macOS) to avoid CSP/WebSocket issues
+  // Fully disable Supabase Realtime globally to comply with strict CSP (no WebSockets allowed)
   try {
-    const ua = navigator.userAgent;
-    const isIpadOS13Plus = navigator.platform === 'MacIntel' && (navigator as any).maxTouchPoints > 1;
-    const isIOS = /iPad|iPhone|iPod/.test(ua) || isIpadOS13Plus;
-    const isWebKitEngine = /AppleWebKit/.test(ua) || /WebKit/.test(ua);
-    const isIOSWebKit = isIOS && isWebKitEngine;
-    const isSafariDesktop = /Safari\//.test(ua) && !/Chrome|Chromium|Edg|OPR|CriOS|FxiOS|OPiOS|mercury/.test(ua);
-    const shouldDisableRealtime = isIOSWebKit || isSafariDesktop;
-
-    if (shouldDisableRealtime) {
-      const noop = () => {};
-      const stubChannel = () => {
-        const stub: any = {
-          on: () => stub,
-          subscribe: () => stub,
-          unsubscribe: () => {},
-        };
-        return stub;
+    const noop = () => {};
+    const stubChannel = () => {
+      const stub: any = {
+        on: () => stub,
+        subscribe: () => stub,
+        unsubscribe: () => {},
       };
-      // Fully stub realtime interfaces to avoid any WebSocket usage
-      // @ts-ignore - override on Safari/WebKit
-      (supabase as any).channel = stubChannel;
-      // @ts-ignore
-      (supabase as any).removeChannel = noop;
-      // @ts-ignore
-      (supabase as any).realtime = {
-        channel: stubChannel,
-        setAuth: noop,
-        connect: noop,
-        remove: noop,
-        removeChannel: noop,
-      };
-      console.warn('Supabase Realtime disabled on Safari/WebKit (iOS/macOS) to avoid CSP/WebSocket issues.');
-    }
+      return stub;
+    };
+    // Override realtime interfaces to avoid any WebSocket usage
+    // @ts-ignore
+    (supabase as any).channel = stubChannel;
+    // @ts-ignore
+    (supabase as any).removeChannel = noop;
+    // @ts-ignore
+    (supabase as any).realtime = {
+      channel: stubChannel,
+      setAuth: noop,
+      connect: noop,
+      remove: noop,
+      removeChannel: noop,
+    };
+    console.warn('Supabase Realtime globally disabled to avoid CSP/WebSocket issues.');
   } catch {}
 
   // Log configuration status (development only)
