@@ -1,65 +1,55 @@
-// iOS WebKit WebSocket shim to prevent SecurityError crashes
-// Runs as early as possible to neutralize WebSocket usage on iOS Safari
-
-import { isIOSWebKit } from './platform';
+// iOS/macOS Safari WebSocket shim to prevent SecurityError crashes
+// Runs as early as possible to neutralize WebSocket usage on Safari/WebKit
 
 (() => {
-  if (typeof window === 'undefined') return;
-
   try {
-    if (!isIOSWebKit()) return;
-
+    if (typeof window === 'undefined') return;
     // If WebSocket already stubbed, skip
     if ((window as any).__iosWebSocketShimApplied) return;
+
+    const ua = navigator.userAgent || '';
+    const isIpadOS13Plus = navigator.platform === 'MacIntel' && (navigator as any).maxTouchPoints > 1;
+    const isIOS = /iPad|iPhone|iPod/.test(ua) || isIpadOS13Plus;
+    const isWebKit = /AppleWebKit/.test(ua) && !/(CriOS|FxiOS|OPiOS|EdgiOS|mercury)/.test(ua);
+    const isSafariDesktop = /Safari\//.test(ua) && !/(Chrome|Chromium|Edg|OPR|CriOS|FxiOS|OPiOS|mercury)/.test(ua) && /Macintosh|Mac OS X/.test(ua);
+
+    if (!((isIOS && isWebKit) || isSafariDesktop)) return;
 
     const OriginalWebSocket = (window as any).WebSocket;
 
     // Create a safe no-op WebSocket stub
     class NoopWebSocket {
-      public onopen: ((ev: Event) => any) | null = null;
-      public onmessage: ((ev: MessageEvent) => any) | null = null;
-      public onerror: ((ev: Event) => any) | null = null;
-      public onclose: ((ev: any) => any) | null = null;
-      public readyState: number = 3; // CLOSED
-      public url: string;
-      public binaryType: 'arraybuffer' | 'blob' | 'nodebuffer' = 'arraybuffer';
-      public protocol: string = '';
-      public extensions: string = '';
-
-      constructor(url?: string) {
+      url: string = '';
+      readyState: number = 3; // CLOSED
+      binaryType: string = 'arraybuffer';
+      protocol: string = '';
+      extensions: string = '';
+      onopen: any = null; onmessage: any = null; onerror: any = null; onclose: any = null;
+      constructor(url?: string){
         this.url = url || '';
-        // Informational log to help diagnostics
-        try { console.warn('[iOS WebKit] WebSocket is disabled via shim for URL:', this.url); } catch { }
-        // Async notify error/close so callers don't hang waiting for open
+        try { console.warn('[Safari/WebKit] WebSocket disabled via shim for URL:', this.url); } catch {}
         setTimeout(() => {
-          try { this.onerror && this.onerror(new Event('error')); } catch { }
-          try { this.onclose && this.onclose(new Event('close')); } catch { }
+          try { this.onerror && this.onerror(new Event('error')); } catch {}
+          try { this.onclose && this.onclose(new Event('close')); } catch {}
         }, 0);
       }
-
-      addEventListener(_type: string, _listener: any) { }
-      removeEventListener(_type: string, _listener: any) { }
-      dispatchEvent(_event: Event) { return true; }
-      send(_data?: any) { }
-      close() { }
+      addEventListener(){}
+      removeEventListener(){}
+      dispatchEvent(){ return true; }
+      send(){}
+      close(){}
+      static CONNECTING = 0;
+      static OPEN = 1;
+      static CLOSING = 2;
+      static CLOSED = 3;
     }
 
-    // Static readyState constants for compatibility
-    ;(NoopWebSocket as any).CONNECTING = 0;
-    ;(NoopWebSocket as any).OPEN = 1;
-    ;(NoopWebSocket as any).CLOSING = 2;
-    ;(NoopWebSocket as any).CLOSED = 3;
-
-    // Apply the shim broadly
     (window as any).WebSocket = NoopWebSocket as any;
     (self as any).WebSocket = NoopWebSocket as any;
     (globalThis as any).WebSocket = NoopWebSocket as any;
     (window as any).__iosWebSocketShimApplied = true;
-
-    // Keep a reference in case we need to restore for debugging
     (window as any).__OriginalWebSocket = OriginalWebSocket;
-  } catch (e) {
-    // Never throw from shim
-    try { console.warn('Failed to apply iOS WebSocket shim:', e); } catch { }
+  } catch {
+    try { console.warn('Failed to apply Safari/WebKit WebSocket shim'); } catch {}
   }
 })();

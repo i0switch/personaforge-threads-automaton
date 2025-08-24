@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
-import { isIOSWebKit } from '@/utils/platform';
+import { isWebSocketRestricted } from '@/utils/platform';
 
 interface PersonaLimitInfo {
   currentCount: number;
@@ -114,15 +114,15 @@ export const usePersonaLimit = () => {
 
     checkPersonaLimit();
 
-    // iOS系(WebKit)環境ではRealtimeを無効化しポーリングにフォールバック
-    const isIOSRestricted = isIOSWebKit();
+    // Safari/WebKit環境ではRealtimeを無効化しポーリングにフォールバック
+    const isRestricted = isWebSocketRestricted();
 
     let accountChannel: any = null;
     let personasChannel: any = null;
     let pollTimer: number | null = null;
 
-    if (isIOSRestricted) {
-      console.warn('iOS Safari 環境のため、Realtime を無効化しポーリングにフォールバックします');
+    if (isRestricted) {
+      console.warn('Safari/WebKit 環境のため、Realtime を無効化しポーリングにフォールバックします');
       pollTimer = window.setInterval(checkPersonaLimit, 10000);
     } else {
       try {

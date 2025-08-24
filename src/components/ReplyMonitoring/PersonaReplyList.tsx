@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { isIOSWebKit } from '@/utils/platform';
+import { isWebSocketRestricted } from '@/utils/platform';
 
 interface Reply {
   id: string;
@@ -49,12 +49,12 @@ export const PersonaReplyList = () => {
   useEffect(() => {
     if (!user) return;
 
-    const isIOSRestricted = isIOSWebKit();
+    const isRestricted = isWebSocketRestricted();
     let channel: any = null;
     let pollTimer: number | null = null;
 
-    if (isIOSRestricted) {
-      console.warn('iOS Safari 環境のため、Realtime を無効化しポーリングにフォールバックします');
+    if (isRestricted) {
+      console.warn('Safari/WebKit 環境のため、Realtime を無効化しポーリングにフォールバックします');
       pollTimer = window.setInterval(fetchReplies, 10000);
     } else {
       console.log('Setting up realtime subscription for thread_replies');

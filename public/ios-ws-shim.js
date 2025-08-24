@@ -8,8 +8,9 @@
     var isIpadOS13Plus = navigator.platform === 'MacIntel' && (navigator.maxTouchPoints || 0) > 1;
     var isIOS = /iPad|iPhone|iPod/.test(ua) || isIpadOS13Plus;
     var isWebKit = /AppleWebKit/.test(ua) && !/CriOS|FxiOS|OPiOS|EdgiOS|mercury/.test(ua);
+    var isSafariDesktop = /Safari\//.test(ua) && !/(Chrome|Chromium|Edg|OPR|CriOS|FxiOS|OPiOS|mercury)/.test(ua) && /Macintosh|Mac OS X/.test(ua);
 
-    if (!(isIOS && isWebKit)) return;
+    if (!( (isIOS && isWebKit) || isSafariDesktop )) return;
 
     var OriginalWebSocket = window.WebSocket;
 

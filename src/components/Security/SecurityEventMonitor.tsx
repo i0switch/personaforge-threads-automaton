@@ -9,7 +9,7 @@ import { Activity, AlertTriangle, RefreshCw, Shield } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import { isIOSWebKit } from "@/utils/platform";
+import { isWebSocketRestricted } from "@/utils/platform";
 
 interface SecurityEvent {
   id: string;
@@ -80,9 +80,9 @@ export const SecurityEventMonitor = () => {
   const setupRealTimeMonitoring = () => {
     if (!user || realTimeEnabled) return;
 
-    const isIOSRestricted = isIOSWebKit();
-    if (isIOSRestricted) {
-      console.warn('iOS Safari 環境のため、Realtime を無効化しポーリングにフォールバックします');
+    const isRestricted = isWebSocketRestricted();
+    if (isRestricted) {
+      console.warn('Safari/WebKit 環境のため、Realtime を無効化しポーリングにフォールバックします');
       pollTimerRef.current = window.setInterval(loadSecurityEvents, 10000);
       setRealTimeEnabled(false);
       return;
