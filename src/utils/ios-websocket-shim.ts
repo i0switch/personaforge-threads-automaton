@@ -41,8 +41,10 @@ import { isIOSWebKit } from './platform';
       close() { }
     }
 
-    // Apply the shim
+    // Apply the shim broadly
     (window as any).WebSocket = NoopWebSocket as any;
+    (self as any).WebSocket = NoopWebSocket as any;
+    (globalThis as any).WebSocket = NoopWebSocket as any;
     (window as any).__iosWebSocketShimApplied = true;
 
     // Keep a reference in case we need to restore for debugging

@@ -113,7 +113,8 @@ export const supabase = createClient<Database>(
     const isInIframe = (() => { try { return window.self !== window.top; } catch { return true; } })();
 
     if (isIOSWebKit) {
-      const noopChannel = () => {
+      const noop = () => {};
+      const stubChannel = () => {
         const stub: any = {
           on: () => stub,
           subscribe: () => stub,
@@ -121,11 +122,20 @@ export const supabase = createClient<Database>(
         };
         return stub;
       };
-      // @ts-ignore - override for iOS iframe
-      (supabase as any).channel = noopChannel;
+      // Fully stub realtime interfaces to avoid any WebSocket usage
+      // @ts-ignore - override for iOS WebKit
+      (supabase as any).channel = stubChannel;
       // @ts-ignore
-      (supabase as any).removeChannel = () => {};
-      console.warn('Supabase Realtime is disabled on iOS WebKit within iframes to avoid SecurityError.');
+      (supabase as any).removeChannel = noop;
+      // @ts-ignore
+      (supabase as any).realtime = {
+        channel: stubChannel,
+        setAuth: noop,
+        connect: noop,
+        remove: noop,
+        removeChannel: noop,
+      };
+      console.warn('Supabase Realtime fully disabled on iOS WebKit to avoid SecurityError.');
     }
   } catch {}
 
