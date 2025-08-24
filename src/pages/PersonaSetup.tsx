@@ -364,7 +364,7 @@ const PersonaSetup = () => {
                     <span className="text-destructive ml-2">(上限に達しています)</span>
                   )}
                 </p>
-                {process.env.NODE_ENV === 'development' && (
+                {import.meta.env.DEV && (
                   <p className="text-xs text-gray-400 mt-1">
                     Debug: canCreate={limitInfo.canCreate ? 'true' : 'false'}
                   </p>

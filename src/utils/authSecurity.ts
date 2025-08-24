@@ -110,9 +110,21 @@ export const authSecurity = {
       // セッションクリア
       await supabase.auth.signOut();
       
-      // ローカルストレージクリア（機密データ）
-      localStorage.removeItem('supabase.auth.token');
-      sessionStorage.clear();
+      // ローカルストレージ/セッションストレージのクリア（iOS Safari保護）
+      try {
+        if (typeof window !== 'undefined' && 'localStorage' in window) {
+          localStorage.removeItem('supabase.auth.token');
+        }
+      } catch (e) {
+        console.warn('localStorage remove failed (ignored):', e);
+      }
+      try {
+        if (typeof window !== 'undefined' && 'sessionStorage' in window) {
+          sessionStorage.clear();
+        }
+      } catch (e) {
+        console.warn('sessionStorage clear failed (ignored):', e);
+      }
       
     } catch (error) {
       console.error('Secure logout error:', error);
