@@ -36,44 +36,86 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => {
     let mounted = true;
     let initialLoadComplete = false;
+    let pollTimer: number | null = null;
     console.log('Setting up auth state listener');
 
-    // Set up auth state listener
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
+    const isIOSSafari = /iPad|iPhone|iPod/.test(navigator.userAgent) && /WebKit/.test(navigator.userAgent) && !/CriOS|FxiOS|OPiOS|mercury/.test(navigator.userAgent);
+
+    let subscription: any = null;
+
+    if (isIOSSafari) {
+      console.warn('iOS Safari 環境のため、auth監視をポーリングに切り替えます');
+      
+      // iOS Safariではポーリングで認証状態をチェック
+      const checkAuthState = async () => {
         if (!mounted) return;
         
-        if (import.meta.env.DEV) {
-          console.log('Auth state change:', event, session?.user?.id);
+        try {
+          const { data: { session }, error } = await supabase.auth.getSession();
+          if (error) {
+            console.error('Error getting session during polling:', error);
+            return;
+          }
+          
+          if (session) {
+            setSession(session);
+            setUser(session.user);
+          } else {
+            setSession(null);
+            setUser(null);
+          }
+          
+          if (!initialLoadComplete) {
+            setLoading(false);
+            initialLoadComplete = true;
+          }
+        } catch (error) {
+          console.error('Auth polling error:', error);
         }
-        
-        // Handle token revoked or signed out events
-        if (event === 'TOKEN_REFRESHED' && !session) {
-          console.log('Token refresh failed, clearing session');
-          setSession(null);
-          setUser(null);
-          setLoading(false);
-          return;
+      };
+      
+      // 初回チェック
+      checkAuthState();
+      // 定期的なポーリング
+      pollTimer = window.setInterval(checkAuthState, 10000);
+    } else {
+      // 通常のブラウザではRealtime監視
+      subscription = supabase.auth.onAuthStateChange(
+        async (event, session) => {
+          if (!mounted) return;
+          
+          if (import.meta.env.DEV) {
+            console.log('Auth state change:', event, session?.user?.id);
+          }
+          
+          // Handle token revoked or signed out events
+          if (event === 'TOKEN_REFRESHED' && !session) {
+            console.log('Token refresh failed, clearing session');
+            setSession(null);
+            setUser(null);
+            setLoading(false);
+            return;
+          }
+          
+          if (event === 'SIGNED_OUT' || !session) {
+            console.log('User signed out or session invalid, clearing state');
+            setSession(null);
+            setUser(null);
+            setLoading(false);
+            return;
+          }
+          
+          setSession(session);
+          setUser(session?.user ?? null);
+          
+          // Always update loading state on auth changes
+          if (mounted) {
+            setLoading(false);
+            initialLoadComplete = true;
+          }
         }
-        
-        if (event === 'SIGNED_OUT' || !session) {
-          console.log('User signed out or session invalid, clearing state');
-          setSession(null);
-          setUser(null);
-          setLoading(false);
-          return;
-        }
-        
-        setSession(session);
-        setUser(session?.user ?? null);
-        
-        // Always update loading state on auth changes
-        if (mounted) {
-          setLoading(false);
-          initialLoadComplete = true;
-        }
-      }
-    );
+      ).data.subscription;
+    }
 
     // プレビュー→本番リダイレクトガード
     const checkAndRedirectFromPreview = () => {
@@ -166,7 +208,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     return () => {
       console.log('Cleaning up auth listener');
       mounted = false;
-      subscription.unsubscribe();
+      if (subscription) {
+        subscription.unsubscribe();
+      }
+      if (pollTimer) {
+        window.clearInterval(pollTimer);
+      }
     };
   }, []);
 
