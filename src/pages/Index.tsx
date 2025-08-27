@@ -175,6 +175,37 @@ const Index = () => {
         <AccountStatusBanner />
 
         {/* Enhanced Admin Section */}
+        {/* Error Check Section */}
+        <Card className="border-0 bg-gradient-to-r from-red-500 via-rose-500 to-red-600 shadow-2xl">
+          <div className="bg-white/95 backdrop-blur-sm m-1 rounded-lg">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-3 text-gray-800">
+                <div className="p-2 bg-gradient-to-r from-red-600 to-rose-600 rounded-lg">
+                  <CheckCircle className="h-6 w-6 text-white" />
+                </div>
+                エラー状況確認
+                <Badge className="bg-gradient-to-r from-red-600 to-rose-600 text-white">
+                  NEW
+                </Badge>
+              </CardTitle>
+              <CardDescription className="text-gray-600 text-lg">
+                現在発生しているエラーの確認と対応方法を表示
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button 
+                onClick={() => navigate("/error-dashboard")}
+                className="bg-gradient-to-r from-red-700 to-rose-700 hover:from-red-800 hover:to-rose-800 text-white shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
+                size="lg"
+              >
+                <CheckCircle className="h-5 w-5 mr-2" />
+                エラー確認
+                <Rocket className="h-4 w-4 ml-2" />
+              </Button>
+            </CardContent>
+          </div>
+        </Card>
+
         {isAdmin && (
           <Card className="border-0 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 shadow-2xl">
             <div className="bg-white/95 backdrop-blur-sm m-1 rounded-lg">

@@ -24,6 +24,7 @@ import AutoPostWizard from "@/pages/AutoPostWizard";
 import AutoPostSchedules from "@/pages/AutoPostSchedules";
 import RandomPostConfig from "@/pages/RandomPostConfig";
 import SelfReplySettings from "@/pages/SelfReplySettings";
+import ErrorDashboard from "@/pages/ErrorDashboard";
 
 const queryClient = new QueryClient();
 
@@ -163,6 +164,14 @@ function App() {
                       element={
                         <ProtectedRoute>
                           <SelfReplySettings />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/error-dashboard"
+                      element={
+                        <ProtectedRoute>
+                          <ErrorDashboard />
                         </ProtectedRoute>
                       }
                     />
