@@ -13,6 +13,7 @@ export class AuthHandler {
   }
 
   private constructor() {
+    console.log('🔧 Initializing AuthHandler with interceptor setup');
     // Supabaseクライアントのエラーハンドリングを設定
     this.setupSupabaseInterceptor();
   }
@@ -20,28 +21,36 @@ export class AuthHandler {
   private setupSupabaseInterceptor() {
     // Supabaseのグローバルエラーハンドリング
     const originalFetch = window.fetch;
+    console.log('🔧 Setting up fetch interceptor for 403 error handling');
+    
     window.fetch = async (...args) => {
       const response = await originalFetch(...args);
       
       // Supabase APIリクエストの場合のみ処理
       if (args[0] && typeof args[0] === 'string' && args[0].includes('supabase.co')) {
         if (response.status === 403) {
+          console.log('🚫 403 error detected in Supabase API call:', args[0]);
           const clonedResponse = response.clone();
           try {
             const errorData = await clonedResponse.json();
+            console.log('📋 403 error details:', errorData);
+            
             if (errorData.message?.includes('invalid claim') || 
                 errorData.message?.includes('bad_jwt') ||
                 errorData.message?.includes('missing sub claim')) {
+              console.log('🔐 Authentication error detected, triggering auth handler');
               this.handle403Error();
             }
-          } catch {
-            // JSON解析に失敗した場合はそのまま進む
+          } catch (parseError) {
+            console.log('⚠️ Failed to parse error response, continuing without auth handling');
           }
         }
       }
       
       return response;
     };
+    
+    console.log('✅ Fetch interceptor setup completed');
   }
 
   async handle403Error() {

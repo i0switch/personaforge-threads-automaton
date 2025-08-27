@@ -17,6 +17,8 @@ export const useTokenHealth = () => {
 
   const checkTokenHealth = async (personaId: string, accessToken: string): Promise<boolean> => {
     try {
+      console.log(`🔍 Checking token health for persona ${personaId}`);
+      
       // Threads APIで簡単なリクエストを送信してトークンの有効性を確認
       const response = await fetch('https://graph.threads.net/v1.0/me?fields=id', {
         headers: {
@@ -24,16 +26,27 @@ export const useTokenHealth = () => {
         }
       });
 
+      console.log(`📊 Token health check result for ${personaId}: ${response.status} ${response.ok ? 'OK' : 'Failed'}`);
+      
+      // 403エラーの場合は認証ハンドラーに通知（ただし、fetchインターセプターで自動処理される）
+      if (response.status === 403) {
+        console.log(`🚫 403 error detected for persona ${personaId} - auth handler will process this`);
+      }
+
       return response.ok;
     } catch (error) {
-      console.error(`Token health check failed for persona ${personaId}:`, error);
+      console.error(`❌ Token health check failed for persona ${personaId}:`, error);
       return false;
     }
   };
 
   const checkAllTokens = async () => {
-    if (!user?.id) return;
+    if (!user?.id) {
+      console.log('👤 No user available for token health check');
+      return;
+    }
 
+    console.log('🔄 Starting token health check for all personas');
     setLoading(true);
     try {
       // アクティブなペルソナでThreadsアクセストークンを持つものを取得
@@ -45,9 +58,17 @@ export const useTokenHealth = () => {
         .not('threads_access_token', 'is', null);
 
       if (error) {
-        console.error('Error fetching personas for token health check:', error);
+        console.error('❌ Error fetching personas for token health check:', error);
+        // 403エラーの場合は認証ハンドラーが処理するので、ここでは静かに失敗
+        if (error.message?.includes('invalid claim') || error.message?.includes('bad_jwt')) {
+          console.log('🔐 Authentication error detected in token health check');
+          setTokenStatuses([]);
+          return;
+        }
         return;
       }
+
+      console.log(`📋 Found ${personas?.length || 0} active personas with tokens`);
 
       const statuses: TokenHealthStatus[] = [];
 
@@ -110,8 +131,11 @@ export const useTokenHealth = () => {
       }
 
       setTokenStatuses(statuses);
+      console.log(`✅ Token health check completed. Results:`, statuses.map(s => ({ name: s.personaName, healthy: s.isHealthy })));
     } catch (error) {
-      console.error('Error checking token health:', error);
+      console.error('❌ Error checking token health:', error);
+      // 認証エラーの場合は空の配列を設定
+      setTokenStatuses([]);
     } finally {
       setLoading(false);
     }
