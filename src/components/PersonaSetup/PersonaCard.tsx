@@ -2,9 +2,10 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Trash2 } from "lucide-react";
+import { Trash2, CheckCircle, AlertCircle, Clock } from "lucide-react";
 import type { Persona } from "@/types/persona";
 import { getPersonaReplyMode, getReplyModeLabel } from "@/types/persona";
+import { useTokenHealth } from "@/hooks/useTokenHealth";
 
 interface PersonaCardProps {
   persona: Persona;
@@ -12,6 +13,42 @@ interface PersonaCardProps {
   onDelete: (id: string) => void;
   onToggleActive: (id: string, currentStatus: boolean) => void;
 }
+
+const TokenHealthIndicator = ({ persona }: { persona: Persona }) => {
+  const { tokenStatuses } = useTokenHealth();
+  const tokenStatus = tokenStatuses.find(status => status.personaId === persona.id);
+
+  if (!persona.threads_access_token) {
+    return (
+      <div className="flex items-center gap-1 text-xs text-muted-foreground">
+        <AlertCircle className="h-3 w-3" />
+        <span>トークン未設定</span>
+      </div>
+    );
+  }
+
+  if (!tokenStatus) {
+    return (
+      <div className="flex items-center gap-1 text-xs text-muted-foreground">
+        <Clock className="h-3 w-3" />
+        <span>チェック中...</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`flex items-center gap-1 text-xs ${
+      tokenStatus.isHealthy ? 'text-green-600' : 'text-red-600'
+    }`}>
+      {tokenStatus.isHealthy ? (
+        <CheckCircle className="h-3 w-3" />
+      ) : (
+        <AlertCircle className="h-3 w-3" />
+      )}
+      <span>{tokenStatus.isHealthy ? 'トークン有効' : 'トークン無効'}</span>
+    </div>
+  );
+};
 
 export const PersonaCard = ({ persona, onEdit, onDelete, onToggleActive }: PersonaCardProps) => {
   const replyMode = getPersonaReplyMode(persona);
@@ -87,6 +124,14 @@ export const PersonaCard = ({ persona, onEdit, onDelete, onToggleActive }: Perso
             </p>
           </div>
         )}
+
+        {/* Token Health Status */}
+        <div className="pt-2 border-t">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-medium">トークン状態:</p>
+            <TokenHealthIndicator persona={persona} />
+          </div>
+        </div>
 
         {/* Action Buttons */}
         <div className="flex gap-2 pt-2">

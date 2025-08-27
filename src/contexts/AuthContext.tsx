@@ -3,6 +3,7 @@ import { createContext, useContext, useEffect, useState } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { authSecurity } from "@/utils/authSecurity";
+import { authHandler } from "@/utils/authHandler";
 
 interface AuthContextType {
   user: User | null;
@@ -11,6 +12,7 @@ interface AuthContextType {
   signIn: (email: string, password: string) => Promise<{ error: any }>;
   signOut: () => Promise<void>;
   loading: boolean;
+  retryAuth: () => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -308,6 +310,22 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       throw error;
     }
   };
+  const retryAuth = async (): Promise<boolean> => {
+    try {
+      const success = await authHandler.retrySession();
+      if (success) {
+        // セッション状態を更新
+        const { data: { session } } = await supabase.auth.getSession();
+        setSession(session);
+        setUser(session?.user ?? null);
+      }
+      return success;
+    } catch (error) {
+      console.error('Auth retry failed:', error);
+      return false;
+    }
+  };
+
   const value = {
     user,
     session,
@@ -315,6 +333,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     signIn,
     signOut,
     loading,
+    retryAuth,
   };
 
   console.log('AuthProvider rendering with user:', !!user, 'loading:', loading); // デバッグ用ログ追加

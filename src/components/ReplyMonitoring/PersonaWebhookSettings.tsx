@@ -6,8 +6,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { Copy, RefreshCw } from 'lucide-react';
+import { Copy, RefreshCw, CheckCircle, AlertCircle, Clock } from 'lucide-react';
+import { useTokenHealth } from '@/hooks/useTokenHealth';
 
 interface Persona {
   id: string;
@@ -22,6 +24,7 @@ export const PersonaWebhookSettings = () => {
   const { toast } = useToast();
   const [personas, setPersonas] = useState<Persona[]>([]);
   const [loading, setLoading] = useState(false);
+  const { tokenStatuses, loading: tokenLoading, checkAllTokens } = useTokenHealth();
 
   useEffect(() => {
     if (user) {
@@ -96,24 +99,70 @@ export const PersonaWebhookSettings = () => {
     return `${supabaseUrl}/functions/v1/threads-webhook?persona_id=${personaId}`;
   };
 
+  const getTokenHealthBadge = (personaId: string) => {
+    const tokenStatus = tokenStatuses.find(status => status.personaId === personaId);
+    
+    if (!tokenStatus) {
+      return (
+        <Badge variant="secondary" className="flex items-center gap-1">
+          <Clock className="h-3 w-3" />
+          チェック中
+        </Badge>
+      );
+    }
+
+    if (tokenStatus.isHealthy) {
+      return (
+        <Badge variant="default" className="flex items-center gap-1 bg-green-100 text-green-800 border-green-200">
+          <CheckCircle className="h-3 w-3" />
+          正常
+        </Badge>
+      );
+    }
+
+    return (
+      <Badge variant="destructive" className="flex items-center gap-1">
+        <AlertCircle className="h-3 w-3" />
+        異常
+      </Badge>
+    );
+  };
+
   if (loading) {
     return <div>読み込み中...</div>;
   }
 
   return (
     <div className="space-y-4">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-medium">ペルソナ別Webhook設定</h3>
+        <div className="flex gap-2">
+          <Button 
+            size="sm" 
+            onClick={checkAllTokens}
+            disabled={tokenLoading}
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${tokenLoading ? 'animate-spin' : ''}`} />
+            トークン状態確認
+          </Button>
+        </div>
+      </div>
+      
       {personas.map((persona) => (
         <Card key={persona.id}>
           <CardHeader>
             <CardTitle className="flex items-center justify-between">
-              <span>{persona.name}</span>
+              <div className="flex items-center gap-3">
+                <span>{persona.name}</span>
+                {getTokenHealthBadge(persona.id)}
+              </div>
               <Button
                 size="sm"
                 variant="outline"
                 onClick={() => generateWebhookToken(persona.id)}
               >
                 <RefreshCw className="h-4 w-4 mr-2" />
-                トークン再生成
+                Webhook再生成
               </Button>
             </CardTitle>
           </CardHeader>
@@ -174,6 +223,19 @@ export const PersonaWebhookSettings = () => {
                 />
               </div>
             </div>
+
+            {/* Token Status Details */}
+            {tokenStatuses.find(s => s.personaId === persona.id)?.error && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-md">
+                <p className="text-sm text-red-800 font-medium">トークンエラー:</p>
+                <p className="text-sm text-red-700">
+                  {tokenStatuses.find(s => s.personaId === persona.id)?.error}
+                </p>
+                <p className="text-xs text-red-600 mt-1">
+                  ペルソナ設定画面でThreadsアクセストークンを再設定してください。
+                </p>
+              </div>
+            )}
 
             <p className="text-sm text-gray-600">
               Meta for DevelopersのWebhook設定で、このペルソナ専用のWebhook URLとVerify Tokenを使用してください。

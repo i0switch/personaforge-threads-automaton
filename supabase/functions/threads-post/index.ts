@@ -97,6 +97,22 @@ serve(async (req) => {
         hasToken: !!post.personas?.threads_access_token,
         tokenPrefix: post.personas?.threads_access_token?.substring(0, 8) + '...'
       });
+      
+      // Log security event for missing token
+      try {
+        await supabase.from('security_events').insert({
+          event_type: 'token_missing',
+          user_id: userId,
+          details: {
+            persona_id: post.persona_id,
+            post_id: postId,
+            error: 'Missing or invalid threads access token'
+          }
+        });
+      } catch (logError) {
+        console.error('Failed to log security event:', logError);
+      }
+      
       throw new Error(error);
     }
     console.log(`Publishing post: ${post.content.substring(0, 100)}...`);
@@ -213,6 +229,21 @@ serve(async (req) => {
 
         if (!createContainerResponse.ok) {
           console.error('Threads create image container error:', responseText);
+          
+          // Handle specific 403 authentication error
+          if (createContainerResponse.status === 403) {
+            await supabase.from('security_events').insert({
+              event_type: 'threads_auth_failed',
+              user_id: userId,
+              details: {
+                persona_id: post.persona_id,
+                post_id: postId,
+                error: 'Threads API authentication failed (403)',
+                response: responseText
+              }
+            });
+          }
+          
           throw new Error(`Failed to create Threads image container: ${createContainerResponse.status} ${responseText}`);
         }
 
@@ -287,6 +318,32 @@ serve(async (req) => {
 
     if (!publishResponse.ok) {
       console.error('Threads publish error:', publishResponseText);
+      
+      // Handle specific error cases
+      if (publishResponse.status === 403) {
+        await supabase.from('security_events').insert({
+          event_type: 'threads_auth_failed',
+          user_id: userId,
+          details: {
+            persona_id: post.persona_id,
+            post_id: postId,
+            error: 'Threads API authentication failed during publish (403)',
+            response: publishResponseText
+          }
+        });
+      } else if (publishResponse.status === 400 && publishResponseText.includes('text is too long')) {
+        await supabase.from('security_events').insert({
+          event_type: 'threads_content_error',
+          user_id: userId,
+          details: {
+            persona_id: post.persona_id,
+            post_id: postId,
+            error: 'Threads content length exceeded (500 characters)',
+            content_length: post.content.length
+          }
+        });
+      }
+      
       throw new Error(`Failed to publish to Threads: ${publishResponse.status} ${publishResponseText}`);
     }
 
