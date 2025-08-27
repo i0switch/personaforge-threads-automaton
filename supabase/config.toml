@@ -46,3 +46,9 @@ verify_jwt = false
 
 [functions.test-modified-features]
 verify_jwt = false
+
+[functions.process-unhandled-replies]
+verify_jwt = false
+
+[functions.comprehensive-auto-reply-test]
+verify_jwt = false
