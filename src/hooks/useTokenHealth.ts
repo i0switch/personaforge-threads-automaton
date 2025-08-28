@@ -17,16 +17,23 @@ export const useTokenHealth = () => {
 
   const checkTokenHealth = async (personaId: string, accessToken: string): Promise<boolean> => {
     try {
-      console.log(`🔍 Checking token health for persona ${personaId}`);
+      console.log(`🔍 Checking token health for persona ${personaId}, token starts with:`, accessToken.substring(0, 10));
+      
+      if (!accessToken || accessToken.length < 10) {
+        console.log(`❌ Invalid token format for persona ${personaId}`);
+        return false;
+      }
       
       // Threads APIで簡単なリクエストを送信してトークンの有効性を確認
+      console.log(`🌐 Making API request to Threads for persona ${personaId}`);
       const response = await fetch('https://graph.threads.net/v1.0/me?fields=id', {
         headers: {
           'Authorization': `Bearer ${accessToken}`
         }
       });
 
-      console.log(`📊 Token health check result for ${personaId}: ${response.status} ${response.ok ? 'OK' : 'Failed'}`);
+      const responseText = response.ok ? 'success' : await response.text();
+      console.log(`📊 Token health check result for ${personaId}: ${response.status} ${response.ok ? 'OK' : 'Failed'}`, responseText);
       
       // 403エラーの場合は認証ハンドラーに通知（ただし、fetchインターセプターで自動処理される）
       if (response.status === 403) {
@@ -85,6 +92,8 @@ export const useTokenHealth = () => {
         }
 
         try {
+          console.log(`🔄 Retrieving token for persona ${persona.id}: ${persona.name}`);
+          
           // retrieve-secret Edge Functionを使用してトークンを取得
           const { data: tokenData, error: tokenError } = await supabase.functions.invoke('retrieve-secret', {
             body: { 
@@ -93,12 +102,17 @@ export const useTokenHealth = () => {
             }
           });
 
+          console.log(`🔑 Token retrieval result for ${persona.id}:`, tokenError ? 'Error' : 'Success', tokenData?.source);
+
           let accessToken = '';
           if (tokenData?.secret && !tokenError) {
             accessToken = tokenData.secret;
+            console.log(`✅ Token retrieved for ${persona.id} from ${tokenData.source}`);
           } else if (persona.threads_access_token?.startsWith('THAA')) {
             accessToken = persona.threads_access_token;
+            console.log(`✅ Using fallback token for ${persona.id}`);
           } else {
+            console.log(`❌ Token retrieval failed for ${persona.id}:`, tokenError);
             statuses.push({
               personaId: persona.id,
               personaName: persona.name,
