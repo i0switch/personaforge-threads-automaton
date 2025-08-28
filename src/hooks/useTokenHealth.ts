@@ -15,137 +15,43 @@ export const useTokenHealth = () => {
   const [tokenStatuses, setTokenStatuses] = useState<TokenHealthStatus[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const checkTokenHealth = async (personaId: string, accessToken: string): Promise<boolean> => {
-    try {
-      console.log(`🔍 Checking token health for persona ${personaId}, token starts with:`, accessToken.substring(0, 10));
-      
-      if (!accessToken || accessToken.length < 10) {
-        console.log(`❌ Invalid token format for persona ${personaId}`);
-        return false;
-      }
-      
-      // Threads APIで簡単なリクエストを送信してトークンの有効性を確認
-      console.log(`🌐 Making API request to Threads for persona ${personaId}`);
-      const response = await fetch('https://graph.threads.net/v1.0/me?fields=id', {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        }
-      });
-
-      const responseText = response.ok ? 'success' : await response.text();
-      console.log(`📊 Token health check result for ${personaId}: ${response.status} ${response.ok ? 'OK' : 'Failed'}`, responseText);
-      
-      // 403エラーの場合は認証ハンドラーに通知（ただし、fetchインターセプターで自動処理される）
-      if (response.status === 403) {
-        console.log(`🚫 403 error detected for persona ${personaId} - auth handler will process this`);
-      }
-
-      return response.ok;
-    } catch (error) {
-      console.error(`❌ Token health check failed for persona ${personaId}:`, error);
-      return false;
-    }
-  };
-
   const checkAllTokens = async () => {
     if (!user?.id) {
       console.log('👤 No user available for token health check');
       return;
     }
 
-    console.log('🔄 Starting token health check for all personas, user:', user.id);
+    console.log('🔄 Starting server-side token health check for all personas, user:', user.id);
     setLoading(true);
     try {
-      // アクティブなペルソナでThreadsアクセストークンを持つものを取得
-      const { data: personas, error } = await supabase
-        .from('personas')
-        .select('id, name, threads_access_token')
-        .eq('user_id', user.id)
-        .eq('is_active', true)
-        .not('threads_access_token', 'is', null);
+      // check-token-health Edge Functionを呼び出し
+      const { data: response, error } = await supabase.functions.invoke('check-token-health', {
+        body: {}
+      });
 
       if (error) {
-        console.error('❌ Error fetching personas for token health check:', error);
-        // 403エラーの場合は認証ハンドラーが処理するので、ここでは静かに失敗
-        if (error.message?.includes('invalid claim') || error.message?.includes('bad_jwt')) {
-          console.log('🔐 Authentication error detected in token health check');
-          setTokenStatuses([]);
-          return;
-        }
+        console.error('❌ Edge Function呼び出しエラー:', error);
+        // 認証エラーの場合は空の配列を設定
+        setTokenStatuses([]);
         return;
       }
 
-      console.log(`📋 Found ${personas?.length || 0} active personas with tokens`);
-
-      const statuses: TokenHealthStatus[] = [];
-
-      for (const persona of personas || []) {
-        if (!persona.threads_access_token) {
-          statuses.push({
-            personaId: persona.id,
-            personaName: persona.name,
-            isHealthy: false,
-            lastChecked: new Date(),
-            error: 'アクセストークンが設定されていません'
-          });
-          continue;
-        }
-
-        try {
-          console.log(`🔄 Retrieving token for persona ${persona.id}: ${persona.name}`);
-          
-          // retrieve-secret Edge Functionを使用してトークンを取得
-          const { data: tokenData, error: tokenError } = await supabase.functions.invoke('retrieve-secret', {
-            body: { 
-              key: `threads_access_token_${persona.id}`,
-              fallback: persona.threads_access_token
-            }
-          });
-
-          console.log(`🔑 Token retrieval result for ${persona.id}:`, tokenError ? 'Error' : 'Success', tokenData?.source);
-
-          let accessToken = '';
-          if (tokenData?.secret && !tokenError) {
-            accessToken = tokenData.secret;
-            console.log(`✅ Token retrieved for ${persona.id} from ${tokenData.source}`);
-          } else if (persona.threads_access_token?.startsWith('THAA')) {
-            accessToken = persona.threads_access_token;
-            console.log(`✅ Using fallback token for ${persona.id}`);
-          } else {
-            console.log(`❌ Token retrieval failed for ${persona.id}:`, tokenError);
-            statuses.push({
-              personaId: persona.id,
-              personaName: persona.name,
-              isHealthy: false,
-              lastChecked: new Date(),
-              error: 'トークンの復号化に失敗しました'
-            });
-            continue;
-          }
-
-          const isHealthy = await checkTokenHealth(persona.id, accessToken);
-          
-          statuses.push({
-            personaId: persona.id,
-            personaName: persona.name,
-            isHealthy,
-            lastChecked: new Date(),
-            error: isHealthy ? undefined : 'APIアクセスに失敗しました（無効なトークンまたは期限切れ）'
-          });
-
-        } catch (error) {
-          statuses.push({
-            personaId: persona.id,
-            personaName: persona.name,
-            isHealthy: false,
-            lastChecked: new Date(),
-            error: `チェック中にエラーが発生しました: ${error instanceof Error ? error.message : 'Unknown error'}`
-          });
-        }
+      if (!response?.success) {
+        console.error('❌ トークンヘルスチェックエラー:', response?.error);
+        setTokenStatuses([]);
+        return;
       }
 
+      const statuses: TokenHealthStatus[] = response.data.map((item: any) => ({
+        personaId: item.personaId,
+        personaName: item.personaName,
+        isHealthy: item.isHealthy,
+        lastChecked: new Date(item.lastChecked),
+        error: item.error
+      }));
+
       setTokenStatuses(statuses);
-      console.log(`✅ Token health check completed. Results:`, statuses.map(s => ({ name: s.personaName, healthy: s.isHealthy })));
+      console.log(`✅ Server-side token health check completed. Results:`, statuses.map(s => ({ name: s.personaName, healthy: s.isHealthy })));
     } catch (error) {
       console.error('❌ Error checking token health:', error);
       // 認証エラーの場合は空の配列を設定
