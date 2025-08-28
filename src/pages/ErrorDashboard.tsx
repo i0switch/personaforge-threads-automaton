@@ -46,7 +46,7 @@ const ErrorDashboard = () => {
     if (user) {
       checkForErrors();
     }
-  }, [user]);
+  }, [user, tokenStatuses]); // tokenStatusesも依存配列に追加
 
   const checkForErrors = async () => {
     if (!user) return;
@@ -147,12 +147,18 @@ const ErrorDashboard = () => {
           const tokenStatus = tokenStatuses.find(status => status.personaId === persona.id);
           
           if (!persona.threads_access_token || !persona.threads_user_id) {
+            // トークンまたはユーザーIDが未設定
             errorItems.push({
               id: `persona_${persona.id}`,
               type: 'persona_config',
               category: 'ペルソナ設定不備',
               message: `${persona.name}のThreads連携が未完了です`,
-              details: { persona_name: persona.name, persona_id: persona.id },
+              details: { 
+                persona_name: persona.name, 
+                persona_id: persona.id,
+                missing_token: !persona.threads_access_token,
+                missing_user_id: !persona.threads_user_id
+              },
               created_at: persona.updated_at,
               severity: 'medium',
               solution: "ペルソナ設定でThreadsアカウントとの連携を完了してください。",
@@ -164,7 +170,7 @@ const ErrorDashboard = () => {
             errorItems.push({
               id: `token_${persona.id}`,
               type: 'token_invalid',
-              category: 'トークンエラー',
+              category: 'トークン無効',
               message: `${persona.name}のThreadsトークンが無効です`,
               details: { 
                 persona_name: persona.name, 
@@ -176,6 +182,23 @@ const ErrorDashboard = () => {
               severity: 'high',
               solution: "Threadsトークンの有効期限が切れているか、権限が取り消されています。ペルソナ設定で再認証を行ってください。",
               actionText: "再認証",
+              actionPath: "/persona-setup"
+            });
+          } else if (persona.threads_access_token && !tokenStatus) {
+            // トークンが設定されているがヘルスチェック結果がまだない場合
+            errorItems.push({
+              id: `token_checking_${persona.id}`,
+              type: 'token_checking',
+              category: 'トークン確認中',
+              message: `${persona.name}のトークン状態を確認中です`,
+              details: { 
+                persona_name: persona.name, 
+                persona_id: persona.id
+              },
+              created_at: new Date().toISOString(),
+              severity: 'low',
+              solution: "トークンの有効性を確認中です。しばらくお待ちください。",
+              actionText: "再チェック",
               actionPath: "/persona-setup"
             });
           }
@@ -237,7 +260,11 @@ const ErrorDashboard = () => {
             </div>
           </div>
           <Button
-            onClick={checkForErrors}
+            onClick={async () => {
+              setChecking(true);
+              await checkAllTokens(); // トークンヘルスチェックを実行
+              await checkForErrors(); // その後エラーチェックを実行
+            }}
             disabled={checking}
             className="flex items-center gap-2"
           >
