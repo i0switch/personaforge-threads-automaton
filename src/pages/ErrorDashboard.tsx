@@ -53,10 +53,14 @@ const ErrorDashboard = () => {
     
     setChecking(true);
     
-    // トークンヘルスチェックを最新に更新
-    await checkAllTokens();
-    
     try {
+      // まずトークンヘルスチェックを完了させる
+      console.log('🔄 Starting token health check before error analysis');
+      await checkAllTokens();
+      
+      // トークンヘルスチェックの完了を少し待つ
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
       const errorItems: ErrorItem[] = [];
       
       // セキュリティイベントからエラーを取得（過去24時間）
@@ -142,12 +146,21 @@ const ErrorDashboard = () => {
         .eq('is_active', true);
 
       if (!personaError && personas) {
+        console.log('🔍 Analyzing personas for errors. Total:', personas.length);
+        console.log('🔍 Current token statuses:', tokenStatuses.map(s => ({ id: s.personaId, name: s.personaName, healthy: s.isHealthy })));
+        
         personas.forEach(persona => {
           // トークンヘルスチェック結果を確認
           const tokenStatus = tokenStatuses.find(status => status.personaId === persona.id);
+          console.log(`🔍 Checking persona ${persona.name} (${persona.id}):`, {
+            hasToken: !!persona.threads_access_token,
+            hasUserId: !!persona.threads_user_id,
+            tokenStatus: tokenStatus ? { healthy: tokenStatus.isHealthy, error: tokenStatus.error } : 'not found'
+          });
           
           if (!persona.threads_access_token || !persona.threads_user_id) {
             // トークンまたはユーザーIDが未設定
+            console.log(`❌ ${persona.name}: Missing configuration`);
             errorItems.push({
               id: `persona_${persona.id}`,
               type: 'persona_config',
@@ -167,6 +180,7 @@ const ErrorDashboard = () => {
             });
           } else if (tokenStatus && !tokenStatus.isHealthy) {
             // トークンが設定されているが無効な場合
+            console.log(`❌ ${persona.name}: Token invalid`);
             errorItems.push({
               id: `token_${persona.id}`,
               type: 'token_invalid',
@@ -184,25 +198,16 @@ const ErrorDashboard = () => {
               actionText: "再認証",
               actionPath: "/persona-setup"
             });
-          } else if (persona.threads_access_token && !tokenStatus) {
-            // トークンが設定されているがヘルスチェック結果がまだない場合
-            errorItems.push({
-              id: `token_checking_${persona.id}`,
-              type: 'token_checking',
-              category: 'トークン確認中',
-              message: `${persona.name}のトークン状態を確認中です`,
-              details: { 
-                persona_name: persona.name, 
-                persona_id: persona.id
-              },
-              created_at: new Date().toISOString(),
-              severity: 'low',
-              solution: "トークンの有効性を確認中です。しばらくお待ちください。",
-              actionText: "再チェック",
-              actionPath: "/persona-setup"
-            });
+          } else if (persona.threads_access_token && persona.threads_user_id && tokenStatus && tokenStatus.isHealthy) {
+            // すべて正常
+            console.log(`✅ ${persona.name}: All good`);
+          } else if (persona.threads_access_token && persona.threads_user_id && !tokenStatus) {
+            // トークンが設定されているがヘルスチェック結果がまだない場合は無視
+            console.log(`⏳ ${persona.name}: Health check pending, skipping error`);
           }
         });
+        
+        console.log(`🔍 Error analysis complete. Found ${errorItems.length} errors`);
       }
 
       setErrors(errorItems);
