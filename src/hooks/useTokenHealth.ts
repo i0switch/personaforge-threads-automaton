@@ -46,7 +46,7 @@ export const useTokenHealth = () => {
       return;
     }
 
-    console.log('🔄 Starting token health check for all personas');
+    console.log('🔄 Starting token health check for all personas, user:', user.id);
     setLoading(true);
     try {
       // アクティブなペルソナでThreadsアクセストークンを持つものを取得
@@ -148,6 +148,7 @@ export const useTokenHealth = () => {
   };
 
   useEffect(() => {
+    console.log('🔄 useTokenHealth useEffect triggered, user:', user?.id);
     if (user?.id) {
       checkAllTokens();
     }

@@ -15,8 +15,10 @@ interface PersonaCardProps {
 }
 
 const TokenHealthIndicator = ({ persona }: { persona: Persona }) => {
-  const { tokenStatuses } = useTokenHealth();
+  const { tokenStatuses, loading } = useTokenHealth();
   const tokenStatus = tokenStatuses.find(status => status.personaId === persona.id);
+  
+  console.log('🔍 TokenHealthIndicator for persona:', persona.id, 'statuses:', tokenStatuses.length, 'loading:', loading);
 
   if (!persona.threads_access_token) {
     return (
