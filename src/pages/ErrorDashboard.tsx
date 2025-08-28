@@ -19,6 +19,7 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { useTokenHealth } from "@/hooks/useTokenHealth";
 
 interface ErrorItem {
   id: string;
@@ -36,6 +37,7 @@ interface ErrorItem {
 const ErrorDashboard = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { tokenStatuses, checkAllTokens } = useTokenHealth();
   const [errors, setErrors] = useState<ErrorItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [checking, setChecking] = useState(false);
@@ -50,6 +52,9 @@ const ErrorDashboard = () => {
     if (!user) return;
     
     setChecking(true);
+    
+    // トークンヘルスチェックを最新に更新
+    await checkAllTokens();
     
     try {
       const errorItems: ErrorItem[] = [];
@@ -138,6 +143,9 @@ const ErrorDashboard = () => {
 
       if (!personaError && personas) {
         personas.forEach(persona => {
+          // トークンヘルスチェック結果を確認
+          const tokenStatus = tokenStatuses.find(status => status.personaId === persona.id);
+          
           if (!persona.threads_access_token || !persona.threads_user_id) {
             errorItems.push({
               id: `persona_${persona.id}`,
@@ -149,6 +157,25 @@ const ErrorDashboard = () => {
               severity: 'medium',
               solution: "ペルソナ設定でThreadsアカウントとの連携を完了してください。",
               actionText: "設定完了",
+              actionPath: "/persona-setup"
+            });
+          } else if (tokenStatus && !tokenStatus.isHealthy) {
+            // トークンが設定されているが無効な場合
+            errorItems.push({
+              id: `token_${persona.id}`,
+              type: 'token_invalid',
+              category: 'トークンエラー',
+              message: `${persona.name}のThreadsトークンが無効です`,
+              details: { 
+                persona_name: persona.name, 
+                persona_id: persona.id,
+                error: tokenStatus.error,
+                last_checked: tokenStatus.lastChecked
+              },
+              created_at: new Date().toISOString(),
+              severity: 'high',
+              solution: "Threadsトークンの有効期限が切れているか、権限が取り消されています。ペルソナ設定で再認証を行ってください。",
+              actionText: "再認証",
               actionPath: "/persona-setup"
             });
           }
