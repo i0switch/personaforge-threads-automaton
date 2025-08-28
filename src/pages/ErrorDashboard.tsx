@@ -46,7 +46,7 @@ const ErrorDashboard = () => {
     if (user) {
       checkForErrors();
     }
-  }, [user, tokenStatuses]); // tokenStatusesも依存配列に追加
+  }, [user]);
 
   const checkForErrors = async () => {
     if (!user) return;
@@ -54,12 +54,10 @@ const ErrorDashboard = () => {
     setChecking(true);
     
     try {
-      // まずトークンヘルスチェックを完了させる
+      // まずトークンヘルスチェックを完了させ、結果を受け取る
       console.log('🔄 Starting token health check before error analysis');
-      await checkAllTokens();
-      
-      // トークンヘルスチェックの完了を少し待つ
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const latestStatuses = await checkAllTokens();
+      const statusesMap = new Map((latestStatuses || []).map(s => [s.personaId, s]));
       
       const errorItems: ErrorItem[] = [];
       
@@ -147,35 +145,34 @@ const ErrorDashboard = () => {
 
       if (!personaError && personas) {
         console.log('🔍 Analyzing personas for errors. Total:', personas.length);
-        console.log('🔍 Current token statuses:', tokenStatuses.map(s => ({ id: s.personaId, name: s.personaName, healthy: s.isHealthy })));
+        console.log('🔍 Current token statuses:', Array.from(statusesMap.values()).map(s => ({ id: s.personaId, name: s.personaName, healthy: s.isHealthy })));
         
         personas.forEach(persona => {
           // トークンヘルスチェック結果を確認
-          const tokenStatus = tokenStatuses.find(status => status.personaId === persona.id);
+          const tokenStatus = statusesMap.get(persona.id);
           console.log(`🔍 Checking persona ${persona.name} (${persona.id}):`, {
             hasToken: !!persona.threads_access_token,
             hasUserId: !!persona.threads_user_id,
             tokenStatus: tokenStatus ? { healthy: tokenStatus.isHealthy, error: tokenStatus.error } : 'not found'
           });
           
-          if (!persona.threads_access_token || !persona.threads_user_id) {
-            // トークンまたはユーザーIDが未設定
-            console.log(`❌ ${persona.name}: Missing configuration`);
+          if (!persona.threads_access_token) {
+            // トークン未設定のみを設定不備とする（ユーザーIDの有無は判定に含めない）
+            console.log(`❌ ${persona.name}: Missing access token`);
             errorItems.push({
               id: `persona_${persona.id}`,
               type: 'persona_config',
               category: 'ペルソナ設定不備',
-              message: `${persona.name}のThreads連携が未完了です`,
+              message: `${persona.name}のThreadsトークンが未設定です`,
               details: { 
                 persona_name: persona.name, 
                 persona_id: persona.id,
-                missing_token: !persona.threads_access_token,
-                missing_user_id: !persona.threads_user_id
+                missing_token: true
               },
               created_at: persona.updated_at,
               severity: 'medium',
-              solution: "ペルソナ設定でThreadsアカウントとの連携を完了してください。",
-              actionText: "設定完了",
+              solution: "ペルソナ設定でThreadsトークンを設定してください。",
+              actionText: "設定する",
               actionPath: "/persona-setup"
             });
           } else if (tokenStatus && !tokenStatus.isHealthy) {

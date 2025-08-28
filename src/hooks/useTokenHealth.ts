@@ -15,10 +15,10 @@ export const useTokenHealth = () => {
   const [tokenStatuses, setTokenStatuses] = useState<TokenHealthStatus[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const checkAllTokens = async () => {
+  const checkAllTokens = async (): Promise<TokenHealthStatus[] | undefined> => {
     if (!user?.id) {
       console.log('👤 No user available for token health check');
-      return;
+      return [];
     }
 
     console.log('🔄 Starting server-side token health check for all personas, user:', user.id);
@@ -33,13 +33,13 @@ export const useTokenHealth = () => {
         console.error('❌ Edge Function呼び出しエラー:', error);
         // 認証エラーの場合は空の配列を設定
         setTokenStatuses([]);
-        return;
+        return [];
       }
 
       if (!response?.success) {
         console.error('❌ トークンヘルスチェックエラー:', response?.error);
         setTokenStatuses([]);
-        return;
+        return [];
       }
 
       const statuses: TokenHealthStatus[] = response.data.map((item: any) => ({
@@ -52,10 +52,12 @@ export const useTokenHealth = () => {
 
       setTokenStatuses(statuses);
       console.log(`✅ Server-side token health check completed. Results:`, statuses.map(s => ({ name: s.personaName, healthy: s.isHealthy })));
+      return statuses;
     } catch (error) {
       console.error('❌ Error checking token health:', error);
       // 認証エラーの場合は空の配列を設定
       setTokenStatuses([]);
+      return [];
     } finally {
       setLoading(false);
     }
