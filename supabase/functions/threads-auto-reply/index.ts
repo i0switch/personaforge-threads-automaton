@@ -86,13 +86,17 @@ serve(async (req) => {
       const scheduledTime = new Date(Date.now() + delayMinutes * 60 * 1000);
       
       // thread_repliesのscheduled_reply_atを更新
-      await supabase
+      const { error: updateError } = await supabase
         .from('thread_replies')
         .update({ 
           scheduled_reply_at: scheduledTime.toISOString(),
           reply_status: 'scheduled'
         })
         .eq('reply_id', replyId);
+      
+      if (updateError) {
+        console.error('❌ スケジュール更新エラー:', updateError);
+      }
       
       // AI返信内容をメタデータとして保存（後で送信するため）
       await supabase

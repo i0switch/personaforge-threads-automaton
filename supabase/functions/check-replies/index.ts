@@ -47,6 +47,9 @@ serve(async (req) => {
 
     let totalRepliesFound = 0;
 
+    // まずスケジュールされた返信を処理
+    await processScheduledReplies();
+
     for (const setting of checkSettings) {
       const persona = setting.personas;
       if (!persona?.id) {
@@ -374,7 +377,12 @@ async function processTemplateAutoReply(persona: any, reply: any): Promise<{ sen
           } else {
             // 遅延時間が0分の場合は即座に送信
             console.log(`📤 定型文返信を即座に送信 - reply: ${reply.id}`);
-            const success = await sendThreadsReply(persona, reply.id, setting.response_template);
+            const accessToken = await getAccessToken(persona);
+            if (!accessToken) {
+              console.error('❌ アクセストークン取得失敗');
+              return { sent: false };
+            }
+            const success = await sendThreadsReply(persona, accessToken, reply.id, setting.response_template);
             
             if (success) {
               console.log(`✅ 定型文返信送信成功`);
@@ -402,68 +410,6 @@ async function processTemplateAutoReply(persona: any, reply: any): Promise<{ sen
   return { sent: false };
 }
 
-// Threads返信を送信
-async function sendThreadsReply(persona: any, replyToId: string, responseText: string): Promise<boolean> {
-  try {
-    console.log(`📤 Threads返信送信開始: "${responseText}" (Reply to: ${replyToId})`);
-
-    // アクセストークンを取得
-    const accessToken = await getAccessToken(persona);
-    if (!accessToken) {
-      console.error('❌ アクセストークン取得失敗');
-      return false;
-    }
-
-    // Step 1: コンテナを作成
-    const containerResponse = await fetch('https://graph.threads.net/v1.0/me/threads', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        media_type: 'TEXT',
-        text: responseText,
-        reply_to_id: replyToId,
-        access_token: accessToken
-      })
-    });
-
-    if (!containerResponse.ok) {
-      const errorText = await containerResponse.text();
-      console.error('❌ Threads コンテナ作成失敗:', errorText);
-      return false;
-    }
-
-    const containerData = await containerResponse.json();
-    console.log(`✅ コンテナ作成成功: ${containerData.id}`);
-
-    // Step 2: コンテナを公開
-    const publishResponse = await fetch('https://graph.threads.net/v1.0/me/threads_publish', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        creation_id: containerData.id,
-        access_token: accessToken
-      })
-    });
-
-    if (!publishResponse.ok) {
-      const errorText = await publishResponse.text();
-      console.error('❌ Threads 投稿公開失敗:', errorText);
-      return false;
-    }
-
-    const publishData = await publishResponse.json();
-    console.log(`🎉 返信送信成功: ${publishData.id}`);
-    return true;
-
-  } catch (error) {
-    console.error('❌ Threads返信送信エラー:', error);
-    return false;
-  }
-}
 
 // アクセストークンを取得
 async function getAccessToken(persona: any): Promise<string | null> {
@@ -579,6 +525,194 @@ async function logActivity(userId: string, personaId: string, actionType: string
     console.log(`📝 アクティビティログ記録: ${actionType}`);
   } catch (error) {
     console.error('❌ アクティビティログ記録エラー:', error);
+  }
+}
+
+// スケジュールされた返信を処理
+async function processScheduledReplies(): Promise<void> {
+  try {
+    console.log('🕒 スケジュールされた返信をチェック中...');
+    
+    // 送信時刻が来ているスケジュール返信を取得
+    const { data: scheduledReplies, error } = await supabase
+      .from('thread_replies')
+      .select(`
+        *,
+        personas!inner(
+          id,
+          name,
+          user_id,
+          threads_access_token,
+          ai_auto_reply_enabled,
+          auto_reply_enabled,
+          auto_reply_delay_minutes
+        )
+      `)
+      .eq('reply_status', 'scheduled')
+      .lte('scheduled_reply_at', new Date().toISOString());
+
+    if (error) {
+      console.error('❌ スケジュール返信取得エラー:', error);
+      return;
+    }
+
+    if (!scheduledReplies || scheduledReplies.length === 0) {
+      console.log('📝 送信予定の返信はありません');
+      return;
+    }
+
+    console.log(`📤 ${scheduledReplies.length}件のスケジュール返信を処理中...`);
+
+    for (const reply of scheduledReplies) {
+      const persona = reply.personas;
+      
+      try {
+        // アクセストークンを取得
+        const accessToken = await getAccessToken(persona);
+        if (!accessToken) {
+          console.error(`❌ アクセストークン取得失敗 - persona: ${persona.name}`);
+          continue;
+        }
+
+        // activity_logsから返信内容を取得（AI返信または定型文返信）
+        const { data: activityLogs } = await supabase
+          .from('activity_logs')
+          .select('metadata, action_type')
+          .in('action_type', ['ai_auto_reply_scheduled', 'template_auto_reply_scheduled'])
+          .eq('metadata->reply_id', reply.reply_id)
+          .order('created_at', { ascending: false })
+          .limit(1);
+
+        let responseContent = null;
+        if (activityLogs && activityLogs.length > 0) {
+          const log = activityLogs[0];
+          if (log.action_type === 'ai_auto_reply_scheduled') {
+            responseContent = log.metadata?.ai_response;
+          } else if (log.action_type === 'template_auto_reply_scheduled') {
+            responseContent = log.metadata?.response_template;
+          }
+        }
+
+        if (!responseContent) {
+          console.error(`❌ 返信内容が見つかりません - reply: ${reply.reply_id}`);
+          continue;
+        }
+
+        // Threads APIで返信送信
+        console.log(`📤 スケジュール返信送信中: ${reply.reply_id}`);
+        const success = await sendThreadsReply(persona, accessToken, reply.reply_id, responseContent);
+
+        if (success) {
+          // 成功時：reply_statusを更新し、auto_reply_sentをtrueに
+          await supabase
+            .from('thread_replies')
+            .update({ 
+              reply_status: 'sent',
+              auto_reply_sent: true,
+              scheduled_reply_at: null
+            })
+            .eq('reply_id', reply.reply_id);
+
+          // アクティビティログを記録
+          await logActivity(persona.user_id, persona.id, 'scheduled_reply_sent',
+            `スケジュール返信送信完了: "${responseContent.substring(0, 50)}..."`, {
+              reply_id: reply.reply_id,
+              scheduled_time: reply.scheduled_reply_at,
+              sent_time: new Date().toISOString()
+            });
+
+          console.log(`✅ スケジュール返信送信成功: ${reply.reply_id}`);
+        } else {
+          // 失敗時：retry_countを増やす（3回まで）
+          const retryCount = (reply.metadata?.retry_count || 0) + 1;
+          if (retryCount >= 3) {
+            await supabase
+              .from('thread_replies')
+              .update({ 
+                reply_status: 'failed'
+              })
+              .eq('reply_id', reply.reply_id);
+            console.error(`❌ スケジュール返信送信失敗（最大リトライ到達）: ${reply.reply_id}`);
+          } else {
+            // 5分後に再試行
+            const nextRetry = new Date(Date.now() + 5 * 60 * 1000);
+            await supabase
+              .from('thread_replies')
+              .update({ 
+                scheduled_reply_at: nextRetry.toISOString(),
+                metadata: { ...reply.metadata, retry_count: retryCount }
+              })
+              .eq('reply_id', reply.reply_id);
+            console.log(`🔄 スケジュール返信リトライ設定: ${reply.reply_id} (${retryCount}/3)`);
+          }
+        }
+
+      } catch (error) {
+        console.error(`❌ スケジュール返信処理エラー - reply: ${reply.reply_id}:`, error);
+      }
+    }
+
+  } catch (error) {
+    console.error('❌ スケジュール返信処理エラー:', error);
+  }
+}
+
+// Threads APIで返信送信
+async function sendThreadsReply(persona: any, accessToken: string, replyToId: string, responseText: string): Promise<boolean> {
+  try {
+    console.log(`📤 Threads返信送信開始: "${responseText}" (Reply to: ${replyToId})`);
+
+    // コンテナを作成
+    const createResponse = await fetch(`https://graph.threads.net/v1.0/me/threads`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        media_type: 'TEXT',
+        text: responseText,
+        reply_to_id: replyToId,
+        access_token: accessToken
+      })
+    });
+
+    if (!createResponse.ok) {
+      const errorText = await createResponse.text();
+      console.error('❌ Threads コンテナ作成失敗:', errorText);
+      return false;
+    }
+
+    const containerData = await createResponse.json();
+    console.log(`✅ コンテナ作成成功: ${containerData.id}`);
+
+    // 少し待機してから投稿
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // 投稿を公開
+    const publishResponse = await fetch('https://graph.threads.net/v1.0/me/threads_publish', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        creation_id: containerData.id,
+        access_token: accessToken
+      })
+    });
+
+    if (!publishResponse.ok) {
+      const errorText = await publishResponse.text();
+      console.error('❌ Threads 投稿公開失敗:', errorText);
+      return false;
+    }
+
+    const publishData = await publishResponse.json();
+    console.log(`🎉 返信送信成功: ${publishData.id}`);
+    return true;
+
+  } catch (error) {
+    console.error('❌ Threads返信送信エラー:', error);
+    return false;
   }
 }
 
