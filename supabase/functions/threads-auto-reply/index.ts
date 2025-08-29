@@ -76,45 +76,98 @@ serve(async (req) => {
       });
     }
 
-    // Threads APIを使用して返信を送信
-    const success = await sendThreadsReply(persona, accessToken, replyId, aiReplyText);
+    // 遅延時間を取得
+    const delayMinutes = persona.auto_reply_delay_minutes || 0;
     
-    if (success) {
-      console.log(`🎉 AI自動返信送信成功: "${aiReplyText}"`);
+    if (delayMinutes > 0) {
+      console.log(`⏰ AI自動返信を${delayMinutes}分後にスケジュール - reply: ${replyId}`);
       
-      // auto_reply_sentフラグを更新
+      // スケジュール時刻を計算
+      const scheduledTime = new Date(Date.now() + delayMinutes * 60 * 1000);
+      
+      // thread_repliesのscheduled_reply_atを更新
       await supabase
         .from('thread_replies')
-        .update({ auto_reply_sent: true })
+        .update({ 
+          scheduled_reply_at: scheduledTime.toISOString(),
+          reply_status: 'scheduled'
+        })
         .eq('reply_id', replyId);
-
-      // アクティビティログを記録
+      
+      // AI返信内容をメタデータとして保存（後で送信するため）
       await supabase
         .from('activity_logs')
         .insert({
           user_id: userId,
           persona_id: personaId,
-          action_type: 'ai_auto_reply_sent',
-          description: `AI自動返信を送信: "${aiReplyText.substring(0, 50)}..."`,
+          action_type: 'ai_auto_reply_scheduled',
+          description: `AI自動返信をスケジュール: "${aiReplyText.substring(0, 50)}..." (${delayMinutes}分後)`,
           metadata: {
             reply_id: replyId,
-            ai_response: aiReplyText
+            ai_response: aiReplyText,
+            scheduled_for: scheduledTime.toISOString(),
+            delay_minutes: delayMinutes,
+            persona_data: {
+              id: persona.id,
+              name: persona.name,
+              user_id: persona.user_id
+            }
           }
         });
 
+      console.log(`✅ AI自動返信スケジュール成功 - ${delayMinutes}分後: ${scheduledTime.toISOString()}`);
       return new Response(JSON.stringify({ 
         success: true, 
+        scheduled: true,
         aiResponse: aiReplyText,
+        scheduledFor: scheduledTime.toISOString(),
+        delayMinutes: delayMinutes,
         replyId: replyId
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     } else {
-      console.error('❌ AI自動返信送信失敗');
-      return new Response(JSON.stringify({ error: 'Failed to send AI reply' }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
+      // 遅延時間が0分の場合は即座に送信
+      console.log(`📤 AI自動返信を即座に送信 - reply: ${replyId}`);
+      const success = await sendThreadsReply(persona, accessToken, replyId, aiReplyText);
+      
+      if (success) {
+        console.log(`🎉 AI自動返信送信成功: "${aiReplyText}"`);
+        
+        // auto_reply_sentフラグを更新
+        await supabase
+          .from('thread_replies')
+          .update({ auto_reply_sent: true })
+          .eq('reply_id', replyId);
+
+        // アクティビティログを記録
+        await supabase
+          .from('activity_logs')
+          .insert({
+            user_id: userId,
+            persona_id: personaId,
+            action_type: 'ai_auto_reply_sent',
+            description: `AI自動返信を送信: "${aiReplyText.substring(0, 50)}..."`,
+            metadata: {
+              reply_id: replyId,
+              ai_response: aiReplyText
+            }
+          });
+
+        return new Response(JSON.stringify({ 
+          success: true, 
+          aiResponse: aiReplyText,
+          replyId: replyId
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      } else {
+        console.error('❌ AI自動返信送信失敗');
+        return new Response(JSON.stringify({ error: 'Failed to send AI reply' }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
     }
 
   } catch (error) {

@@ -341,22 +341,55 @@ async function processTemplateAutoReply(persona: any, reply: any): Promise<{ sen
         console.log(`🎉 キーワードマッチ: "${keyword}" → 返信: "${setting.response_template}"`);
         
         try {
-          // 定型文返信を送信
-          const success = await sendThreadsReply(persona, reply.id, setting.response_template);
+          // 遅延時間を取得（定型文設定の遅延時間またはペルソナのデフォルト遅延時間）
+          const delayMinutes = setting.delay_minutes || persona.auto_reply_delay_minutes || 0;
           
-          if (success) {
-            console.log(`✅ 定型文返信送信成功`);
+          if (delayMinutes > 0) {
+            console.log(`⏰ 定型文返信を${delayMinutes}分後にスケジュール - reply: ${reply.id}`);
+            
+            // スケジュール時刻を計算
+            const scheduledTime = new Date(Date.now() + delayMinutes * 60 * 1000);
+            
+            // thread_repliesのscheduled_reply_atを更新
+            await supabase
+              .from('thread_replies')
+              .update({ 
+                scheduled_reply_at: scheduledTime.toISOString(),
+                reply_status: 'scheduled'
+              })
+              .eq('reply_id', reply.id);
+            
             // アクティビティログを記録
-            await logActivity(persona.user_id, persona.id, 'template_auto_reply_sent',
-              `定型文自動返信を送信: "${setting.response_template.substring(0, 50)}..."`, {
+            await logActivity(persona.user_id, persona.id, 'template_auto_reply_scheduled',
+              `定型文自動返信をスケジュール: "${setting.response_template.substring(0, 50)}..." (${delayMinutes}分後)`, {
                 reply_id: reply.id,
                 keyword_matched: keyword,
-                response_sent: setting.response_template
+                response_template: setting.response_template,
+                scheduled_for: scheduledTime.toISOString(),
+                delay_minutes: delayMinutes
               });
 
-            return { sent: true, method: 'template' };
+            console.log(`✅ 定型文返信スケジュール成功 - ${delayMinutes}分後: ${scheduledTime.toISOString()}`);
+            return { sent: true, method: 'template_scheduled' };
           } else {
-            console.error(`❌ 定型文返信送信失敗`);
+            // 遅延時間が0分の場合は即座に送信
+            console.log(`📤 定型文返信を即座に送信 - reply: ${reply.id}`);
+            const success = await sendThreadsReply(persona, reply.id, setting.response_template);
+            
+            if (success) {
+              console.log(`✅ 定型文返信送信成功`);
+              // アクティビティログを記録
+              await logActivity(persona.user_id, persona.id, 'template_auto_reply_sent',
+                `定型文自動返信を送信: "${setting.response_template.substring(0, 50)}..."`, {
+                  reply_id: reply.id,
+                  keyword_matched: keyword,
+                  response_sent: setting.response_template
+                });
+
+              return { sent: true, method: 'template' };
+            } else {
+              console.error(`❌ 定型文返信送信失敗`);
+            }
           }
         } catch (error) {
           console.error(`❌ 定型文返信送信エラー:`, error);
