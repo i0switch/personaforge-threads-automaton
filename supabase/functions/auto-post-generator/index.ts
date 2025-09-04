@@ -345,54 +345,54 @@ serve(async (req) => {
 
         console.log(`📝 Creating scheduled post for persona ${persona.name} at ${cfg.next_run_at}`);
         
-        // postsへ作成（予約投稿）- 確実に正しい値で作成
-        const postData = {
-          user_id: cfg.user_id,
-          persona_id: cfg.persona_id,
-          content,
-          status: 'scheduled' as const,
-          scheduled_for: cfg.next_run_at,
-          auto_schedule: true,
-          platform: 'threads' as const
-        };
+        // 【重要】スケジュール時刻と状態を確実に設定
+        const scheduledTime = cfg.next_run_at;
+        if (!scheduledTime) {
+          throw new Error(`No scheduled time available for persona ${persona.name}`);
+        }
         
-        console.log(`📊 Post data for insertion:`, {
-          user_id: postData.user_id,
-          persona_id: postData.persona_id,
-          status: postData.status,
-          scheduled_for: postData.scheduled_for,
-          auto_schedule: postData.auto_schedule,
-          content_length: postData.content.length
-        });
+        console.log(`📊 About to create post with scheduled_for: ${scheduledTime}`);
         
+        // postsへ作成（予約投稿）- トランザクションで確実に作成
         const { data: inserted, error: postErr } = await supabase
           .from('posts')
-          .insert(postData)
+          .insert({
+            user_id: cfg.user_id,
+            persona_id: cfg.persona_id,
+            content,
+            status: 'scheduled',
+            scheduled_for: scheduledTime,
+            auto_schedule: true,
+            platform: 'threads'
+          })
           .select('id, status, scheduled_for, auto_schedule')
           .single();
           
         if (postErr) {
-          console.error(`❌ Failed to create post for persona ${persona.name}:`, postErr);
-          throw postErr;
+          console.error(`❌ Failed to create scheduled post for persona ${persona.name}:`, postErr);
+          throw new Error(`Database error creating post: ${postErr.message}`);
         }
         
         if (!inserted) {
           throw new Error(`No data returned from post insertion for persona ${persona.name}`);
         }
         
-        console.log(`✅ Post created successfully:`, {
-          id: inserted.id,
+        console.log(`✅ Post created with ID ${inserted.id}:`, {
           status: inserted.status,
           scheduled_for: inserted.scheduled_for,
           auto_schedule: inserted.auto_schedule
         });
         
-        // 作成された投稿の状態を検証
+        // 【重要】作成後の検証 - 問題があれば即座にエラー
         if (inserted.status !== 'scheduled') {
-          console.error(`⚠️ WARNING: Post created with wrong status: ${inserted.status}, expected: scheduled`);
+          const errorMsg = `CRITICAL: Post ${inserted.id} created with wrong status: ${inserted.status} (expected: scheduled)`;
+          console.error(`🚨 ${errorMsg}`);
+          throw new Error(errorMsg);
         }
         if (!inserted.scheduled_for) {
-          console.error(`⚠️ WARNING: Post created without scheduled_for date`);
+          const errorMsg = `CRITICAL: Post ${inserted.id} created without scheduled_for date`;
+          console.error(`🚨 ${errorMsg}`);
+          throw new Error(errorMsg);
         }
 
         // post_queueに投入（オートスケジューラが処理）
