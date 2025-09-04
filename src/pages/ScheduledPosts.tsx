@@ -60,7 +60,7 @@ const ScheduledPosts = () => {
           personas(name, avatar_url, threads_access_token)
         `)
         .eq('user_id', user.id)
-        .in('status', ['scheduled', 'draft'])
+        .eq('status', 'scheduled') // 下書きは廃止、予約投稿のみ
         .order('scheduled_for', { ascending: true });
 
       if (error) throw error;

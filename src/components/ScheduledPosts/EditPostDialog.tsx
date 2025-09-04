@@ -118,18 +118,24 @@ export const EditPostDialog = ({ post, onSave, saving }: EditPostDialogProps) =>
   };
 
   const handleSave = async () => {
-    let scheduledFor: string | undefined;
-    
-    if (scheduledDate) {
-      const combinedDateTime = new Date(scheduledDate);
-      combinedDateTime.setHours(parseInt(scheduledHour), parseInt(scheduledMinute), 0, 0);
-      scheduledFor = combinedDateTime.toISOString();
+    // 日付と時刻は必須
+    if (!scheduledDate) {
+      toast({
+        title: "エラー",
+        description: "予約日時を設定してください。",
+        variant: "destructive",
+      });
+      return;
     }
+
+    const combinedDateTime = new Date(scheduledDate);
+    combinedDateTime.setHours(parseInt(scheduledHour), parseInt(scheduledMinute), 0, 0);
+    const scheduledFor = combinedDateTime.toISOString();
 
     const updates: Partial<Post> = {
       content,
       scheduled_for: scheduledFor,
-      status: scheduledFor ? 'scheduled' : 'draft',
+      status: 'scheduled', // 常に scheduled ステータス
       hashtags: hashtags ? hashtags.split(',').map(tag => tag.trim()).filter(Boolean) : null,
       images: images.length > 0 ? images : null
     };
@@ -243,8 +249,8 @@ export const EditPostDialog = ({ post, onSave, saving }: EditPostDialogProps) =>
             </div>
           </div>
           
-          <div className="space-y-3">
-            <Label>予約日時</Label>
+            <div className="space-y-3">
+            <Label className="text-destructive">予約日時（必須）</Label>
             
             {/* Date Selection */}
             <div>
@@ -255,7 +261,7 @@ export const EditPostDialog = ({ post, onSave, saving }: EditPostDialogProps) =>
                     variant="outline"
                     className={cn(
                       "w-full justify-start text-left font-normal",
-                      !scheduledDate && "text-muted-foreground"
+                      !scheduledDate && "text-muted-foreground border-destructive"
                     )}
                   >
                     <CalendarIcon className="mr-2 h-4 w-4" />
