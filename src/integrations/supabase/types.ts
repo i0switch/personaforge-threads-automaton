@@ -1135,6 +1135,15 @@ export type Database = {
         Args: { password: string }
         Returns: Json
       }
+      verify_manual_reservations_protected: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          auto_scheduled_count: number
+          manual_scheduled_count: number
+          persona_id: string
+          protection_status: string
+        }[]
+      }
     }
     Enums: {
       app_role: "admin" | "user"
