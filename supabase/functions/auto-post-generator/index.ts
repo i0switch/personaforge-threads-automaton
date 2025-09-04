@@ -343,21 +343,57 @@ serve(async (req) => {
         const prompt = buildPrompt(persona, cfg.prompt_template, cfg.content_prefs);
         const content = await generateWithGeminiRotation(prompt, cfg.user_id);
 
-        // postsへ作成（予約投稿）
+        console.log(`📝 Creating scheduled post for persona ${persona.name} at ${cfg.next_run_at}`);
+        
+        // postsへ作成（予約投稿）- 確実に正しい値で作成
+        const postData = {
+          user_id: cfg.user_id,
+          persona_id: cfg.persona_id,
+          content,
+          status: 'scheduled' as const,
+          scheduled_for: cfg.next_run_at,
+          auto_schedule: true,
+          platform: 'threads' as const
+        };
+        
+        console.log(`📊 Post data for insertion:`, {
+          user_id: postData.user_id,
+          persona_id: postData.persona_id,
+          status: postData.status,
+          scheduled_for: postData.scheduled_for,
+          auto_schedule: postData.auto_schedule,
+          content_length: postData.content.length
+        });
+        
         const { data: inserted, error: postErr } = await supabase
           .from('posts')
-          .insert({
-            user_id: cfg.user_id,
-            persona_id: cfg.persona_id,
-            content,
-            status: 'scheduled',
-            scheduled_for: cfg.next_run_at,
-            auto_schedule: true,
-            platform: 'threads'
-          })
-          .select('id')
+          .insert(postData)
+          .select('id, status, scheduled_for, auto_schedule')
           .single();
-        if (postErr) throw postErr;
+          
+        if (postErr) {
+          console.error(`❌ Failed to create post for persona ${persona.name}:`, postErr);
+          throw postErr;
+        }
+        
+        if (!inserted) {
+          throw new Error(`No data returned from post insertion for persona ${persona.name}`);
+        }
+        
+        console.log(`✅ Post created successfully:`, {
+          id: inserted.id,
+          status: inserted.status,
+          scheduled_for: inserted.scheduled_for,
+          auto_schedule: inserted.auto_schedule
+        });
+        
+        // 作成された投稿の状態を検証
+        if (inserted.status !== 'scheduled') {
+          console.error(`⚠️ WARNING: Post created with wrong status: ${inserted.status}, expected: scheduled`);
+        }
+        if (!inserted.scheduled_for) {
+          console.error(`⚠️ WARNING: Post created without scheduled_for date`);
+        }
 
         // post_queueに投入（オートスケジューラが処理）
         const { error: queueErr } = await supabase
