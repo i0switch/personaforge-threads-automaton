@@ -350,54 +350,76 @@ serve(async (req) => {
     const publishData = JSON.parse(publishResponseText);
     console.log('Post published successfully:', publishData);
 
-    // Update post status in database
-    console.log('Updating post status in database...');
-    const { error: updateError } = await supabase
+    // Update post status and queue status atomically
+    console.log('Updating post and queue status in database...');
+    const publishedAt = new Date().toISOString();
+    
+    // Update posts table
+    const { error: updatePostError } = await supabase
       .from('posts')
       .update({
         status: 'published',
-        published_at: new Date().toISOString()
+        published_at: publishedAt
       })
       .eq('id', postId)
       .eq('user_id', userId);
 
-    if (updateError) {
-      console.error('Error updating post status:', updateError);
-      // Don't throw here as the post was successfully published
-    } else {
-      console.log('Post status updated successfully');
+    if (updatePostError) {
+      console.error('Critical: Failed to update post status after successful Threads publication:', updatePostError);
+      throw new Error(`Post published to Threads but failed to update database: ${updatePostError.message}`);
+    }
 
-      // Save Threads post ID to self-reply job for this post (if exists)
-      try {
-        const threadsId: string | undefined = publishData?.id;
-        if (threadsId) {
-          const { error: jobErr } = await supabase
-            .from('self_reply_jobs')
-            .update({ threads_post_id: threadsId })
-            .eq('post_id', postId)
-            .eq('status', 'pending');
-          if (jobErr) {
-            console.error('Failed to update self_reply_jobs with Threads ID:', jobErr);
-          } else {
-            console.log('self_reply_jobs updated with Threads ID:', threadsId);
-          }
+    // Update corresponding queue entries to completed
+    const { error: updateQueueError } = await supabase
+      .from('post_queue')
+      .update({ 
+        status: 'completed',
+        updated_at: publishedAt
+      })
+      .eq('post_id', postId);
+
+    if (updateQueueError) {
+      console.error('Critical: Failed to update queue status after successful publication:', updateQueueError);
+      // Try to revert post status to prevent inconsistency
+      await supabase
+        .from('posts')
+        .update({ status: 'scheduled', published_at: null })
+        .eq('id', postId);
+      throw new Error(`Post published but failed to update queue status: ${updateQueueError.message}`);
+    }
+
+    console.log('Post and queue status updated successfully');
+
+    // Save Threads post ID to self-reply job for this post (if exists)
+    try {
+      const threadsId: string | undefined = publishData?.id;
+      if (threadsId) {
+        const { error: jobErr } = await supabase
+          .from('self_reply_jobs')
+          .update({ threads_post_id: threadsId })
+          .eq('post_id', postId)
+          .eq('status', 'pending');
+        if (jobErr) {
+          console.error('Failed to update self_reply_jobs with Threads ID:', jobErr);
         } else {
-          console.warn('No Threads ID in publishData; skipping job update');
+          console.log('self_reply_jobs updated with Threads ID:', threadsId);
         }
-      } catch (e) {
-        console.error('Error updating self-reply job with Threads ID', e);
+      } else {
+        console.warn('No Threads ID in publishData; skipping job update');
       }
+    } catch (e) {
+      console.error('Error updating self-reply job with Threads ID', e);
+    }
 
-      // Kick off self-reply processor in background (do not await)
-      try {
-        // Safe fire-and-forget
-        // eslint-disable-next-line @typescript-eslint/no-floating-promises
-        supabase.functions.invoke('self-reply-processor', { body: { limit: 10 } })
-          .then((res) => console.log('Triggered self-reply-processor:', res.status))
-          .catch((e) => console.error('Failed to trigger self-reply-processor', e));
-      } catch (e) {
-        console.error('Self-reply trigger error', e);
-      }
+    // Kick off self-reply processor in background (do not await)
+    try {
+      // Safe fire-and-forget
+      // eslint-disable-next-line @typescript-eslint/no-floating-promises
+      supabase.functions.invoke('self-reply-processor', { body: { limit: 10 } })
+        .then((res) => console.log('Triggered self-reply-processor:', res.status))
+        .catch((e) => console.error('Failed to trigger self-reply-processor', e));
+    } catch (e) {
+      console.error('Self-reply trigger error', e);
     }
 
     console.log(`Post ${postId} successfully published to Threads`);

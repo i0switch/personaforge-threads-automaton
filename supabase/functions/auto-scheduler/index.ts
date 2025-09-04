@@ -118,12 +118,10 @@ serve(async (req) => {
           throw postError;
         }
 
-        // 成功時はキューアイテムを完了状態に更新
-        await supabase
-          .from('post_queue')
-          .update({ status: 'completed' })
-          .eq('id', queueItem.id);
-
+        // threads-post関数内で既にキューステータスは'completed'に更新済み
+        // ここでは追加の更新は不要（重複更新を防止）
+        console.log(`Queue item ${queueItem.id} already updated to completed by threads-post`);
+        
         successCount++;
 
       } catch (error) {
