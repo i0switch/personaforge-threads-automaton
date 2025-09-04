@@ -129,6 +129,7 @@ export const EditPostDialog = ({ post, onSave, saving }: EditPostDialogProps) =>
     const updates: Partial<Post> = {
       content,
       scheduled_for: scheduledFor,
+      status: scheduledFor ? 'scheduled' : 'draft',
       hashtags: hashtags ? hashtags.split(',').map(tag => tag.trim()).filter(Boolean) : null,
       images: images.length > 0 ? images : null
     };
