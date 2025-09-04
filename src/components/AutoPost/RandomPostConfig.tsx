@@ -131,8 +131,8 @@ export function RandomPostConfig() {
         }
       }
 
-      // ペルソナのpost_queueをクリーンアップ
-      const { error: cleanupError } = await supabase.rpc('cleanup_post_queue_for_persona', {
+      // ペルソナのpost_queueをクリーンアップ（自動生成のみ）
+      const { error: cleanupError } = await supabase.rpc('cleanup_auto_generated_schedules_only', {
         p_persona_id: persona.id
       });
       
@@ -220,8 +220,8 @@ export function RandomPostConfig() {
     if (!config) return;
 
     try {
-      // ペルソナのpost_queueをクリーンアップ
-      const { error: cleanupError } = await supabase.rpc('cleanup_post_queue_for_persona', {
+      // ペルソナのpost_queueをクリーンアップ（自動生成のみ）
+      const { error: cleanupError } = await supabase.rpc('cleanup_auto_generated_schedules_only', {
         p_persona_id: personaId
       });
       

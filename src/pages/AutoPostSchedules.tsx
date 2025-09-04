@@ -91,8 +91,8 @@ export default function AutoPostSchedules() {
     const config = configs.find(c => c.id === id);
     if (!config) return;
 
-    // ペルソナのpost_queueをクリーンアップ
-    const { error: cleanupError } = await supabase.rpc('cleanup_post_queue_for_persona', {
+    // ペルソナのpost_queueをクリーンアップ（自動生成のみ）
+    const { error: cleanupError } = await supabase.rpc('cleanup_auto_generated_schedules_only', {
       p_persona_id: config.persona_id
     });
     
@@ -124,9 +124,9 @@ export default function AutoPostSchedules() {
     const config = configs.find(c => c.id === id);
     if (!config) return;
 
-    // ペルソナのpost_queueをクリーンアップ（時間関連の変更の場合）
+    // ペルソナのpost_queueをクリーンアップ（時間関連の変更の場合・自動生成のみ）
     if (fields.post_time || fields.post_times || fields.next_run_at) {
-      const { error: cleanupError } = await supabase.rpc('cleanup_post_queue_for_persona', {
+      const { error: cleanupError } = await supabase.rpc('cleanup_auto_generated_schedules_only', {
         p_persona_id: config.persona_id
       });
       
