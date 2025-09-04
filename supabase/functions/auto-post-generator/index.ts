@@ -290,7 +290,7 @@ serve(async (req) => {
     let configsQuery = supabase
       .from('auto_post_configs')
       .select('*')
-      .eq('is_active', true)
+      .eq('is_active', true)  // 🔒 アクティブな設定のみ対象
       .lte('next_run_at', now.toISOString())
       .limit(25);
 
@@ -532,7 +532,7 @@ serve(async (req) => {
 
           console.log(`Processing random post for ${persona.name} at ${timeStr}`);
 
-          // 該当ペルソナの完全オートポスト設定を取得
+          // 該当ペルソナの完全オートポスト設定を取得（アクティブなもののみ）
           const { data: autoConfigs, error: autoConfigError } = await supabase
             .from('auto_post_configs')
             .select('prompt_template, content_prefs')
@@ -545,7 +545,7 @@ serve(async (req) => {
           }
 
           if (!autoConfigs || autoConfigs.length === 0) {
-            console.log(`No active auto post configs found for persona ${persona.name}, skipping random post at ${timeStr}`);
+            console.log(`❌ No active auto post configs found for persona ${persona.name}, skipping random post at ${timeStr}`);
             continue;
           }
 
