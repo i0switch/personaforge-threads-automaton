@@ -60,7 +60,8 @@ const ScheduledPosts = () => {
           personas(name, avatar_url, threads_access_token)
         `)
         .eq('user_id', user.id)
-        .eq('status', 'scheduled') // 下書きは廃止、予約投稿のみ
+        .eq('status', 'scheduled')
+        .or('auto_schedule.is.null,auto_schedule.eq.false') // 手動予約投稿のみ表示
         .order('scheduled_for', { ascending: true });
 
       if (error) throw error;
