@@ -48,10 +48,10 @@ serve(async (req) => {
       );
     }
 
-    // 現在時刻より前にスケジュールされた投稿を取得（バッファ時間を1分に縮小）
-    const timeBuffer = new Date(now.getTime() + 1 * 60 * 1000); // 1分後まで
+    // 現在時刻より前（厳守）にスケジュールされた投稿のみを対象
+    const cutoffTime = now; // 早発禁止のためバッファなし
     
-    console.log(`Searching for posts scheduled before: ${timeBuffer.toISOString()}`);
+    console.log(`Searching for posts scheduled before or at: ${cutoffTime.toISOString()}`);
     
     // キューにある投稿を優先的に処理（重複を避けるため）
     const { data: queueItems, error: queueError } = await supabase
@@ -64,7 +64,7 @@ serve(async (req) => {
         )
       `)
       .eq('status', 'queued')
-      .lte('scheduled_for', timeBuffer.toISOString())
+      .lte('scheduled_for', cutoffTime.toISOString())
       .order('queue_position', { ascending: true })
       .limit(10);
 
@@ -86,7 +86,7 @@ serve(async (req) => {
       `)
       .eq('status', 'scheduled')
       .not('scheduled_for', 'is', null)
-      .lte('scheduled_for', timeBuffer.toISOString())
+      .lte('scheduled_for', cutoffTime.toISOString())
       .order('scheduled_for', { ascending: true })
       .limit(20);
 
@@ -141,6 +141,15 @@ serve(async (req) => {
       try {
         console.log(`Processing queue item ${queueItem.id} for post ${queueItem.post_id}`);
         processedCount++;
+
+        // 厳守: scheduled_for より前は処理しない
+        if (queueItem.scheduled_for) {
+          const itemScheduledFor = new Date(queueItem.scheduled_for);
+          if (itemScheduledFor.getTime() > now.getTime()) {
+            console.warn(`Skip early queue item ${queueItem.id}; scheduled for ${itemScheduledFor.toISOString()} (now ${now.toISOString()})`);
+            continue;
+          }
+        }
 
         // Per-persona throttling and hourly cap
         const personaId = queueItem.posts?.persona_id as string;
@@ -269,6 +278,10 @@ serve(async (req) => {
         const timeDiff = now.getTime() - scheduledTime.getTime();
         
         console.log(`Time difference: ${timeDiff}ms (${Math.round(timeDiff / 1000 / 60)} minutes)`);
+        if (timeDiff < 0) {
+          console.warn(`Skip early scheduled post ${post.id}; scheduled for ${scheduledTime.toISOString()} (now ${now.toISOString()})`);
+          continue;
+        }
 
         // 投稿を処理中に更新
         console.log('Updating post to processing status...');
