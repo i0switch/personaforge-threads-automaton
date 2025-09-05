@@ -106,7 +106,6 @@ serve(async (req) => {
         const scheduledAtMs = new Date(post.scheduled_for).getTime();
         if (!Number.isNaN(scheduledAtMs) && scheduledAtMs <= Date.now() + dueToleranceMs) {
           bypassTimeCheck = true;
-          console.log('⏩ Scheduled time reached — bypassing persona time-slot checks');
         }
       } catch (e) {
         console.warn('Failed to parse scheduled_for, continuing with normal checks');
@@ -232,9 +231,9 @@ serve(async (req) => {
         );
       }
     } else {
-      console.log(bypassTimeCheck
-        ? '⏩ Bypass active due to scheduled_for being due — skipping time window checks'
-        : '📝 Manual post (auto_schedule=false) - skipping time check');
+      if (!bypassTimeCheck) {
+        console.log('📝 Manual post (auto_schedule=false) - skipping time check');
+      }
     }
 
     // Safety guard: Persona must be active
