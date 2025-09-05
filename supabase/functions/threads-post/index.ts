@@ -266,7 +266,7 @@ serve(async (req) => {
     try {
       const now = new Date();
       const since = new Date(now.getTime() - 60 * 60 * 1000).toISOString();
-      const MAX_PER_HOUR = 2;
+      const MAX_PER_HOUR = 10;
       const { count, error: cntErr } = await supabase
         .from('posts')
         .select('id', { count: 'exact', head: true })

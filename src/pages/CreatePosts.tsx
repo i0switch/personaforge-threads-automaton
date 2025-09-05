@@ -156,6 +156,30 @@ const CreatePosts = () => {
       return;
     }
 
+    // 1時間あたりの制限チェック
+    try {
+      const now = new Date();
+      const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+      const { count, error: countError } = await supabase
+        .from('posts')
+        .select('id', { count: 'exact', head: true })
+        .eq('persona_id', selectedPersona)
+        .gte('created_at', oneHourAgo.toISOString());
+      
+      if (countError) {
+        console.error('Error checking post count:', countError);
+      } else if (count && count >= 10) {
+        toast({
+          title: "制限に達しました",
+          description: "1時間あたりの手動投稿生成上限（10件）に達しています。しばらくお待ちください。",
+          variant: "destructive",
+        });
+        return;
+      }
+    } catch (error) {
+      console.error('Error during rate limit check:', error);
+    }
+
     setIsGenerating(true);
     try {
       console.log('Starting post generation with:', {

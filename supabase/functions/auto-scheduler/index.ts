@@ -110,7 +110,7 @@ serve(async (req) => {
     }
 
     // Posting safeguards
-    const MAX_PER_HOUR = 5;                      // 1人あたり1時間に最大5件
+    const MAX_PER_HOUR = 10;                     // 1人あたり1時間に最大10件
     const MAX_PER_PERSONA_PER_RUN = 1;           // 1回の実行で各ペルソナ最大1件
     const publishedCountCache = new Map<string, number>();
     const processedRunCount = new Map<string, number>();

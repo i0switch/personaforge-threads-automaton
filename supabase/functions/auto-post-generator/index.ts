@@ -35,7 +35,7 @@ async function checkSystemPause(): Promise<{ paused: boolean; reason?: string }>
 
 // Rate limiting to prevent API quota exhaustion
 const RATE_LIMITS = {
-  MAX_POSTS_PER_PERSONA_PER_HOUR: 2,
+  MAX_POSTS_PER_PERSONA_PER_HOUR: 10,
   MAX_TOTAL_POSTS_PER_RUN: 5,
   GEMINI_RETRY_LIMIT: 3, // Reduced from 10
   COOLDOWN_AFTER_FAILURE: 60 * 60 * 1000 // 1 hour in ms
