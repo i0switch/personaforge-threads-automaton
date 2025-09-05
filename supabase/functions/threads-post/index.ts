@@ -96,6 +96,130 @@ serve(async (req) => {
       );
     }
 
+    // Safety guard: Check persona scheduled time (except manual "publish now")
+    if (post.auto_schedule && post.persona_id) {
+      console.log('🕐 Checking if current time matches persona scheduled settings...');
+      
+      const now = new Date();
+      const nowTime = now.toTimeString().slice(0, 8); // HH:MM:SS
+      const nowHour = now.getHours();
+      const nowMinute = now.getMinutes();
+      
+      // Check auto post configs (fixed time)
+      const { data: autoConfig } = await supabase
+        .from('auto_post_configs')
+        .select('post_time, post_times, multi_time_enabled, timezone, is_active')
+        .eq('persona_id', post.persona_id)
+        .eq('is_active', true)
+        .single();
+      
+      // Check random post configs (random times)
+      const { data: randomConfig } = await supabase
+        .from('random_post_configs')
+        .select('random_times, timezone, is_active')
+        .eq('persona_id', post.persona_id)
+        .eq('is_active', true)
+        .single();
+      
+      let timeMatches = false;
+      
+      if (autoConfig) {
+        console.log('📋 Auto config found, checking time slots...');
+        if (autoConfig.multi_time_enabled && autoConfig.post_times?.length > 0) {
+          // Multiple times check
+          for (const timeSlot of autoConfig.post_times) {
+            const [hours, minutes] = timeSlot.split(':').map(Number);
+            if (nowHour === hours && nowMinute === minutes) {
+              timeMatches = true;
+              console.log(`✅ Time matches auto config slot: ${timeSlot}`);
+              break;
+            }
+          }
+        } else if (autoConfig.post_time) {
+          // Single time check
+          const [hours, minutes] = autoConfig.post_time.toString().split(':').map(Number);
+          if (nowHour === hours && nowMinute === minutes) {
+            timeMatches = true;
+            console.log(`✅ Time matches auto config: ${autoConfig.post_time}`);
+          }
+        }
+      } else if (randomConfig) {
+        console.log('🎲 Random config found, checking random time slots...');
+        if (randomConfig.random_times?.length > 0) {
+          for (const timeSlot of randomConfig.random_times) {
+            const [hours, minutes] = timeSlot.split(':').map(Number);
+            if (nowHour === hours && nowMinute === minutes) {
+              timeMatches = true;
+              console.log(`✅ Time matches random config slot: ${timeSlot}`);
+              break;
+            }
+          }
+        }
+      } else {
+        console.log('⚠️ No active posting config found for persona, allowing manual post');
+        timeMatches = true; // Allow manual posts if no config exists
+      }
+      
+      if (!timeMatches) {
+        console.warn(`🚫 Time mismatch: Current ${nowHour}:${nowMinute < 10 ? '0' : ''}${nowMinute} does not match any configured time slots`);
+        
+        // Reschedule to next valid time slot
+        let nextScheduledTime = null;
+        if (autoConfig) {
+          if (autoConfig.multi_time_enabled && autoConfig.post_times?.length > 0) {
+            // Find next time slot
+            const currentMinutes = nowHour * 60 + nowMinute;
+            for (const timeSlot of autoConfig.post_times) {
+              const [hours, minutes] = timeSlot.split(':').map(Number);
+              const slotMinutes = hours * 60 + minutes;
+              if (slotMinutes > currentMinutes) {
+                const nextRun = new Date(now);
+                nextRun.setHours(hours, minutes, 0, 0);
+                nextScheduledTime = nextRun;
+                break;
+              }
+            }
+            // If no slot today, use first slot tomorrow
+            if (!nextScheduledTime) {
+              const [hours, minutes] = autoConfig.post_times[0].split(':').map(Number);
+              const nextRun = new Date(now);
+              nextRun.setDate(nextRun.getDate() + 1);
+              nextRun.setHours(hours, minutes, 0, 0);
+              nextScheduledTime = nextRun;
+            }
+          } else if (autoConfig.post_time) {
+            const [hours, minutes] = autoConfig.post_time.toString().split(':').map(Number);
+            nextScheduledTime = new Date(now);
+            nextScheduledTime.setHours(hours, minutes, 0, 0);
+            if (nextScheduledTime <= now) {
+              nextScheduledTime.setDate(nextScheduledTime.getDate() + 1);
+            }
+          }
+        }
+        
+        if (nextScheduledTime) {
+          await supabase
+            .from('posts')
+            .update({ status: 'scheduled', scheduled_for: nextScheduledTime.toISOString() })
+            .eq('id', postId);
+          
+          console.log(`📅 Post rescheduled to: ${nextScheduledTime.toISOString()}`);
+        }
+        
+        return new Response(
+          JSON.stringify({ 
+            success: false, 
+            time_mismatch: true, 
+            message: `Current time ${nowHour}:${nowMinute < 10 ? '0' : ''}${nowMinute} does not match configured posting times`,
+            rescheduled_to: nextScheduledTime?.toISOString() || null
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+        );
+      }
+    } else {
+      console.log('📝 Manual post (auto_schedule=false) - skipping time check');
+    }
+
     // Safety guard: Persona must be active
     try {
       const { data: persona, error: personaErr } = await supabase
