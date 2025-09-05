@@ -67,6 +67,61 @@ serve(async (req) => {
       hasToken: !!post.personas?.threads_access_token
     });
 
+    // Safety guard: Global posting pause
+    const { data: settings, error: settingsError } = await supabase
+      .from('system_settings')
+      .select('posting_paused, pause_reason, updated_at')
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (settingsError) {
+      console.error('System settings fetch error:', settingsError);
+    }
+    if (settings?.posting_paused) {
+      console.warn('🛑 Posting paused by admin. Skipping publish.');
+      // Revert post status to scheduled if this was marked processing upstream
+      try {
+        await supabase
+          .from('posts')
+          .update({ status: 'scheduled' })
+          .eq('id', postId)
+          .eq('status', 'processing');
+      } catch (revertErr) {
+        console.error('Failed to revert post status after pause:', revertErr);
+      }
+      return new Response(
+        JSON.stringify({ success: false, paused: true, reason: settings.pause_reason || null }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+      );
+    }
+
+    // Safety guard: Persona must be active
+    try {
+      const { data: persona, error: personaErr } = await supabase
+        .from('personas')
+        .select('is_active, name')
+        .eq('id', post.persona_id)
+        .maybeSingle();
+      if (personaErr) {
+        console.error('Persona fetch error:', personaErr);
+      }
+      if (!persona?.is_active) {
+        console.warn('⏸️ Persona is inactive. Skipping publish.', { personaId: post.persona_id, name: persona?.name });
+        await supabase
+          .from('posts')
+          .update({ status: 'scheduled' })
+          .eq('id', postId)
+          .eq('status', 'processing');
+        return new Response(
+          JSON.stringify({ success: false, persona_inactive: true }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+        );
+      }
+    } catch (personaCheckErr) {
+      console.error('Persona active check failed:', personaCheckErr);
+    }
+
     // Threads APIトークンの取得と復号化
     let threadsAccessToken: string | null = null;
     

@@ -24,6 +24,30 @@ serve(async (req) => {
     const now = new Date();
     console.log(`Current time: ${now.toISOString()}`);
 
+    // Global posting pause check (safety guard)
+    const { data: settings, error: settingsError } = await supabase
+      .from('system_settings')
+      .select('posting_paused, pause_reason, updated_at')
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (settingsError) {
+      console.error('System settings fetch error:', settingsError);
+    }
+    if (settings?.posting_paused) {
+      console.warn('🛑 System posting paused. Aborting auto-scheduler run.', settings);
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          postingPaused: true, 
+          reason: settings.pause_reason || null,
+          timestamp: now.toISOString()
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+      );
+    }
+
     // 現在時刻より前にスケジュールされた投稿を取得（バッファ時間を1分に縮小）
     const timeBuffer = new Date(now.getTime() + 1 * 60 * 1000); // 1分後まで
     
