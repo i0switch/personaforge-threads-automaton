@@ -1040,6 +1040,44 @@ export type Database = {
         }
         Relationships: []
       }
+      filtered_activity_logs: {
+        Row: {
+          action_type: string | null
+          created_at: string | null
+          description: string | null
+          id: string | null
+          metadata: Json | null
+          persona_id: string | null
+          user_id: string | null
+        }
+        Insert: {
+          action_type?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: string | null
+          metadata?: Json | null
+          persona_id?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          action_type?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: string | null
+          metadata?: Json | null
+          persona_id?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "activity_logs_persona_id_fkey"
+            columns: ["persona_id"]
+            isOneToOne: false
+            referencedRelation: "personas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       authenticate_service_request: {
