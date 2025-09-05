@@ -629,9 +629,26 @@ serve(async (req) => {
 
         if (hasPosted) processed++;
       } catch (e) {
-        console.error('Random post generation failed:', e);
+        console.error('❌ Random post generation failed for config', randomCfg.id, ':', e);
         failed++;
         processed++;
+        
+         // 【重要バグ修正】エラー時もnext_run_atを更新しないと無限ループになる
+         console.log(`⚠️ Updating next_run_at for failed random config ${randomCfg.id} to prevent infinite retries`);
+         try {
+           // ランダムポスト設定の場合、明日の次のランダム時間を計算
+           const nextRun = calculateRandomNextRun(randomCfg.random_times || ['09:00:00', '12:00:00', '18:00:00'], randomCfg.timezone || 'UTC');
+           await supabase
+             .from('random_post_configs')
+             .update({ 
+               next_run_at: nextRun,
+               updated_at: new Date().toISOString()
+             })
+             .eq('id', randomCfg.id);
+           console.log(`✅ Updated next_run_at for failed random config ${randomCfg.id} to ${nextRun}`);
+         } catch (updateError) {
+           console.error(`Failed to update next_run_at for config ${randomCfg.id}:`, updateError);
+         }
       }
     }
 
