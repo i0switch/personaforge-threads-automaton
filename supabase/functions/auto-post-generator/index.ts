@@ -500,8 +500,11 @@ serve(async (req) => {
 
         posted++;
       } catch (e) {
-        console.error('Auto post generation failed:', e);
+        console.error('❌ Auto post generation failed for config', cfg.id, ':', e);
         failed++;
+        
+        // 【重要】エラー時は次回実行時刻を更新しない（無限ループ防止）
+        console.log(`⚠️ Skipping next_run_at update for failed config ${cfg.id} to prevent infinite retries`);
       }
     }
 
@@ -569,31 +572,12 @@ serve(async (req) => {
           console.log(`Processing random post for ${persona.name} at ${timeStr}`);
 
           // 該当ペルソナの完全オートポスト設定を取得（アクティブなもののみ）
-          const { data: autoConfigs, error: autoConfigError } = await supabase
-            .from('auto_post_configs')
-            .select('prompt_template, content_prefs')
-            .eq('persona_id', persona.id)
-            .eq('is_active', true);
+          // 【緊急バグ修正】ランダムポスト処理で間違ったauto_post_configsを参照していた
+          // ランダムポスト自身の設定を使用すべき - autoConfigsは不要
+          console.log(`⚠️ Random post processing should use its own config, not auto_post_configs`);
 
-          if (autoConfigError) {
-            console.error('Failed to get auto post configs for random post:', autoConfigError);
-            continue;
-          }
-
-          if (!autoConfigs || autoConfigs.length === 0) {
-            console.log(`❌ No active auto post configs found for persona ${persona.name}, skipping random post at ${timeStr}`);
-            continue;
-          }
-
-          // 完全オートポスト設定からランダムに1つ選択
-          const selectedConfig = autoConfigs[Math.floor(Math.random() * autoConfigs.length)];
-          console.log(`Selected random config for ${persona.name} at ${timeStr}:`, {
-            prompt_template: selectedConfig.prompt_template?.substring(0, 50) + '...',
-            content_prefs: selectedConfig.content_prefs?.substring(0, 50) + '...'
-          });
-
-          // APIキー解決とコンテンツ生成（エラー時は自動ローテーション）
-          const prompt = buildPrompt(persona, selectedConfig.prompt_template, selectedConfig.content_prefs);
+          // ランダムポスト用のプロンプト生成（独自ロジック）
+          const prompt = buildRandomPrompt(persona);
           const content = await generateWithGeminiRotation(prompt, persona.user_id);
 
           // postsへ作成（予約投稿）
