@@ -503,8 +503,61 @@ serve(async (req) => {
         console.error('❌ Auto post generation failed for config', cfg.id, ':', e);
         failed++;
         
-        // 【重要】エラー時は次回実行時刻を更新しない（無限ループ防止）
-        console.log(`⚠️ Skipping next_run_at update for failed config ${cfg.id} to prevent infinite retries`);
+        // エラー時も次回実行時刻を必ず未来に更新（無限リトライ防止）
+        try {
+          let nextRunAt: string;
+          if (cfg.multi_time_enabled && cfg.post_times && cfg.post_times.length > 0) {
+            const { data: nextTime, error: calcErr } = await supabase
+              .rpc('calculate_next_multi_time_run', {
+                p_current_time: new Date().toISOString(),
+                time_slots: cfg.post_times,
+                timezone_name: cfg.timezone || 'UTC'
+              });
+            if (calcErr) {
+              console.error('Failed to calculate next multi-time run on failure:', calcErr);
+              const firstTime = cfg.post_times[0];
+              const [h, m] = firstTime.split(':').map(Number);
+              const nextDay = new Date();
+              nextDay.setDate(nextDay.getDate() + 1);
+              if (cfg.timezone && cfg.timezone !== 'UTC') {
+                const local = new Date(nextDay.toLocaleString('en-US', { timeZone: cfg.timezone }));
+                local.setHours(h, m, 0, 0);
+                nextRunAt = local.toISOString();
+              } else {
+                nextDay.setHours(h, m, 0, 0);
+                nextRunAt = nextDay.toISOString();
+              }
+            } else {
+              nextRunAt = nextTime as unknown as string;
+            }
+          } else {
+            const { data: nextTimeCalculated, error: calcErr } = await supabase
+              .rpc('calculate_timezone_aware_next_run', {
+                current_schedule_time: cfg.next_run_at,
+                timezone_name: cfg.timezone || 'UTC'
+              });
+            if (calcErr) {
+              console.error('Failed to calculate timezone-aware next run on failure:', calcErr);
+              const next = new Date(cfg.next_run_at || new Date().toISOString());
+              next.setDate(next.getDate() + 1);
+              nextRunAt = next.toISOString();
+            } else {
+              nextRunAt = nextTimeCalculated as unknown as string;
+            }
+          }
+
+          const { error: updateErr } = await supabase
+            .from('auto_post_configs')
+            .update({ next_run_at: nextRunAt, updated_at: new Date().toISOString() })
+            .eq('id', cfg.id);
+          if (updateErr) {
+            console.error('Failed to update next_run_at after failure for config', cfg.id, updateErr);
+          } else {
+            console.log(`⏭️ Config ${cfg.id} failure backoff: next_run_at -> ${nextRunAt}`);
+          }
+        } catch (updateCatchErr) {
+          console.error('Unexpected error updating next_run_at after failure:', updateCatchErr);
+        }
       }
     }
 
