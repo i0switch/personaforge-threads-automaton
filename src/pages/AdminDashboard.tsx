@@ -2,11 +2,12 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Shield, Users, Settings } from "lucide-react";
+import { ArrowLeft, Shield, Users, Settings, Monitor } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { UserManagementTable } from "@/components/Admin/UserManagementTable";
 import { AdminStats } from "@/components/Admin/AdminStats";
 import { PersonaLimitManager } from "@/components/Admin/PersonaLimitManager";
+import { MonitoringDashboard } from "@/components/Admin/MonitoringDashboard";
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
@@ -42,6 +43,10 @@ const AdminDashboard = () => {
               <Settings className="h-4 w-4" />
               ペルソナ上限管理
             </TabsTrigger>
+            <TabsTrigger value="monitoring" className="flex items-center gap-2">
+              <Monitor className="h-4 w-4" />
+              システム監視
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="users">
@@ -63,6 +68,23 @@ const AdminDashboard = () => {
 
           <TabsContent value="persona-limits">
             <PersonaLimitManager />
+          </TabsContent>
+
+          <TabsContent value="monitoring">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Monitor className="h-5 w-5" />
+                  システム監視
+                </CardTitle>
+                <CardDescription>
+                  ペルソナ設定とスケジューリングシステムの状況監視
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <MonitoringDashboard />
+              </CardContent>
+            </Card>
           </TabsContent>
         </Tabs>
       </div>
