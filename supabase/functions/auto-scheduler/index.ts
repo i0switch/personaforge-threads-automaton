@@ -109,6 +109,29 @@ serve(async (req) => {
       })));
     }
 
+    // Posting safeguards
+    const MAX_PER_HOUR = 2;                      // 1人あたり1時間に最大2件
+    const MAX_PER_PERSONA_PER_RUN = 1;           // 1回の実行で各ペルソナ最大1件
+    const publishedCountCache = new Map<string, number>();
+    const processedRunCount = new Map<string, number>();
+
+    const getPublishedLastHour = async (personaId: string): Promise<number> => {
+      if (publishedCountCache.has(personaId)) return publishedCountCache.get(personaId)!;
+      const since = new Date(now.getTime() - 60 * 60 * 1000).toISOString();
+      const { count, error } = await supabase
+        .from('posts')
+        .select('id', { count: 'exact', head: true })
+        .eq('persona_id', personaId)
+        .eq('status', 'published')
+        .gt('published_at', since);
+      if (error) {
+        console.error('Failed to count posts last hour:', { personaId, error });
+      }
+      const c = count || 0;
+      publishedCountCache.set(personaId, c);
+      return c;
+    };
+
     let processedCount = 0;
     let successCount = 0;
     let failedCount = 0;
@@ -118,6 +141,25 @@ serve(async (req) => {
       try {
         console.log(`Processing queue item ${queueItem.id} for post ${queueItem.post_id}`);
         processedCount++;
+
+        // Per-persona throttling and hourly cap
+        const personaId = queueItem.posts?.persona_id as string;
+        const runCount = processedRunCount.get(personaId) || 0;
+        if (runCount >= MAX_PER_PERSONA_PER_RUN) {
+          console.warn('Skip due to per-run cap for persona (queue):', personaId);
+          continue;
+        }
+        const publishedLastHour = await getPublishedLastHour(personaId);
+        if (publishedLastHour >= MAX_PER_HOUR) {
+          const deferTo = new Date(now.getTime() + 60 * 60 * 1000);
+          await supabase
+            .from('post_queue')
+            .update({ scheduled_for: deferTo.toISOString() })
+            .eq('id', queueItem.id);
+          console.warn(`Skip due to hourly cap (${publishedLastHour}/${MAX_PER_HOUR}) for persona ${personaId} (queue). Deferred to ${deferTo.toISOString()}`);
+          continue;
+        }
+        processedRunCount.set(personaId, runCount + 1);
 
         // キューアイテムを処理中に更新
         const { error: updateQueueError } = await supabase
@@ -202,6 +244,25 @@ serve(async (req) => {
       try {
         console.log(`Processing scheduled post ${post.id}, scheduled for: ${post.scheduled_for}`);
         processedCount++;
+
+        // Per-persona throttling and hourly cap
+        const personaId = post.persona_id as string;
+        const runCount = processedRunCount.get(personaId) || 0;
+        if (runCount >= MAX_PER_PERSONA_PER_RUN) {
+          console.warn('Skip due to per-run cap for persona (scheduled):', personaId);
+          continue;
+        }
+        const publishedLastHour = await getPublishedLastHour(personaId);
+        if (publishedLastHour >= MAX_PER_HOUR) {
+          const deferTo = new Date(now.getTime() + 60 * 60 * 1000);
+          await supabase
+            .from('posts')
+            .update({ scheduled_for: deferTo.toISOString() })
+            .eq('id', post.id);
+          console.warn(`Skip due to hourly cap (${publishedLastHour}/${MAX_PER_HOUR}) for persona ${personaId} (scheduled). Deferred to ${deferTo.toISOString()}`);
+          continue;
+        }
+        processedRunCount.set(personaId, runCount + 1);
 
         // 投稿時刻をチェック
         const scheduledTime = new Date(post.scheduled_for);

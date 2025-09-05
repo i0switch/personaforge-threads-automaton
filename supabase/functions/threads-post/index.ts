@@ -122,6 +122,38 @@ serve(async (req) => {
       console.error('Persona active check failed:', personaCheckErr);
     }
 
+    // Safety guard: hourly per-persona cap
+    try {
+      const now = new Date();
+      const since = new Date(now.getTime() - 60 * 60 * 1000).toISOString();
+      const MAX_PER_HOUR = 2;
+      const { count, error: cntErr } = await supabase
+        .from('posts')
+        .select('id', { count: 'exact', head: true })
+        .eq('persona_id', post.persona_id)
+        .eq('status', 'published')
+        .gt('published_at', since);
+      if (cntErr) {
+        console.error('Hourly cap count error:', cntErr);
+      }
+      const publishedLastHour = count || 0;
+      if (publishedLastHour >= MAX_PER_HOUR) {
+        const deferTo = new Date(now.getTime() + 60 * 60 * 1000).toISOString();
+        await supabase
+          .from('posts')
+          .update({ status: 'scheduled', scheduled_for: deferTo })
+          .eq('id', postId)
+          .eq('status', 'processing');
+        console.warn(`⏳ Hourly cap reached (${publishedLastHour}/${MAX_PER_HOUR}) for persona ${post.persona_id}. Deferred to ${deferTo}`);
+        return new Response(
+          JSON.stringify({ success: false, rate_limited: true }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+        );
+      }
+    } catch (rlErr) {
+      console.error('Hourly cap check failed:', rlErr);
+    }
+
     // Threads APIトークンの取得と復号化
     let threadsAccessToken: string | null = null;
     
