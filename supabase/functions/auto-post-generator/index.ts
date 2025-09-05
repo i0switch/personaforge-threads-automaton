@@ -617,8 +617,16 @@ serve(async (req) => {
             targetTime.setTime(localDateTime.getTime() - utcOffset * 60 * 1000);
           }
 
-          // 現在時刻が設定時刻を過ぎているかチェック
-          if (new Date() < targetTime) {
+          // 現在時刻が設定時刻を過ぎているかチェック + 許容ウィンドウ（3分）
+          const nowUtc = new Date();
+          if (nowUtc < targetTime) {
+            continue; // まだ時刻前
+          }
+          const diffMs = nowUtc.getTime() - targetTime.getTime();
+          const windowMs = 3 * 60 * 1000; // 3分
+          if (diffMs > windowMs) {
+            // 設定時間から大きく外れたスロットはスキップ（大量キャッチアップ防止）
+            console.log(`⏭️ Skipping outdated random slot ${timeStr} (diff ${Math.round(diffMs/1000)}s)`);
             continue;
           }
 
@@ -667,6 +675,7 @@ serve(async (req) => {
           posted++;
 
           console.log(`Successfully processed random post for ${persona.name} at ${timeStr}`);
+          break; // 1回の実行で1ポストのみ（大量生成防止）
         }
 
         // 投稿があった場合、posted_times_todayを更新
