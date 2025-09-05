@@ -97,11 +97,26 @@ serve(async (req) => {
     }
 
     // Safety guard: Check persona scheduled time (except manual "publish now")
-    if (post.auto_schedule && post.persona_id) {
+    // If the post has a scheduled_for timestamp and it's due (allowing small tolerance),
+    // bypass persona time-window checks to honor the scheduled time precisely.
+    let bypassTimeCheck = false;
+    if (post.scheduled_for) {
+      try {
+        const dueToleranceMs = 60_000; // 60s tolerance around minute boundaries
+        const scheduledAtMs = new Date(post.scheduled_for).getTime();
+        if (!Number.isNaN(scheduledAtMs) && scheduledAtMs <= Date.now() + dueToleranceMs) {
+          bypassTimeCheck = true;
+          console.log('⏩ Scheduled time reached — bypassing persona time-slot checks');
+        }
+      } catch (e) {
+        console.warn('Failed to parse scheduled_for, continuing with normal checks');
+      }
+    }
+
+    if (!bypassTimeCheck && post.auto_schedule && post.persona_id) {
       console.log('🕐 Checking if current time matches persona scheduled settings...');
       
       const now = new Date();
-      const nowTime = now.toTimeString().slice(0, 8); // HH:MM:SS
       const nowHour = now.getHours();
       const nowMinute = now.getMinutes();
       
@@ -157,14 +172,14 @@ serve(async (req) => {
         }
       } else {
         console.log('⚠️ No active posting config found for persona, allowing manual post');
-        timeMatches = true; // Allow manual posts if no config exists
+        timeMatches = true; // Allow posts if no config exists
       }
       
       if (!timeMatches) {
         console.warn(`🚫 Time mismatch: Current ${nowHour}:${nowMinute < 10 ? '0' : ''}${nowMinute} does not match any configured time slots`);
         
         // Reschedule to next valid time slot
-        let nextScheduledTime = null;
+        let nextScheduledTime: Date | null = null;
         if (autoConfig) {
           if (autoConfig.multi_time_enabled && autoConfig.post_times?.length > 0) {
             // Find next time slot
@@ -217,7 +232,9 @@ serve(async (req) => {
         );
       }
     } else {
-      console.log('📝 Manual post (auto_schedule=false) - skipping time check');
+      console.log(bypassTimeCheck
+        ? '⏩ Bypass active due to scheduled_for being due — skipping time window checks'
+        : '📝 Manual post (auto_schedule=false) - skipping time check');
     }
 
     // Safety guard: Persona must be active
