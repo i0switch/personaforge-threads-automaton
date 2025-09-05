@@ -39,6 +39,7 @@ export const MonitoringDashboard = () => {
   const { toast } = useToast();
 
   const loadMonitoringData = async () => {
+    console.log('監視ダッシュボード: データ取得開始');
     try {
       // アクティブなペルソナとその設定を取得
       const { data: personasData, error: personasError } = await supabase
@@ -49,6 +50,8 @@ export const MonitoringDashboard = () => {
           random_post_configs(id, is_active, next_run_at, created_at)
         `)
         .eq('is_active', true);
+
+      console.log('ペルソナデータ取得結果:', { personasData, personasError });
 
       if (personasError) throw personasError;
 
@@ -103,10 +106,11 @@ export const MonitoringDashboard = () => {
       
       setIssues(detectedIssues);
     } catch (error) {
-      console.error('Monitoring data load error:', error);
+      console.error('監視データ取得エラー:', error);
+      console.error('エラーの詳細:', JSON.stringify(error, null, 2));
       toast({
         title: "監視データの取得に失敗しました",
-        description: "データを再読み込みしてください。",
+        description: `エラー: ${error instanceof Error ? error.message : '不明なエラー'}`,
         variant: "destructive",
       });
     } finally {
