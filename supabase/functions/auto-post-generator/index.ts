@@ -12,6 +12,56 @@ const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+// 🚨 CRITICAL: Check system-wide posting pause before ANY posting operations
+async function checkSystemPause(): Promise<{ paused: boolean; reason?: string }> {
+  try {
+    const { data: settings, error } = await supabase
+      .from('system_settings')
+      .select('posting_paused, pause_reason')
+      .limit(1)
+      .single();
+    
+    if (error || !settings) {
+      console.log('No system settings found, defaulting to allowed');
+      return { paused: false };
+    }
+    
+    return { paused: settings.posting_paused, reason: settings.pause_reason };
+  } catch (error) {
+    console.error('Failed to check system pause status:', error);
+    return { paused: false }; // Fail safe
+  }
+}
+
+// Rate limiting to prevent API quota exhaustion
+const RATE_LIMITS = {
+  MAX_POSTS_PER_PERSONA_PER_HOUR: 2,
+  MAX_TOTAL_POSTS_PER_RUN: 5,
+  GEMINI_RETRY_LIMIT: 3, // Reduced from 10
+  COOLDOWN_AFTER_FAILURE: 60 * 60 * 1000 // 1 hour in ms
+};
+
+async function checkPersonaRateLimit(personaId: string): Promise<boolean> {
+  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+  
+  const { data: recentPosts, error } = await supabase
+    .from('posts')
+    .select('id')
+    .eq('persona_id', personaId)
+    .eq('auto_schedule', true)
+    .gte('created_at', oneHourAgo.toISOString());
+    
+  if (error) {
+    console.error('Rate limit check failed:', error);
+    return false; // Fail safe - deny
+  }
+  
+  const count = recentPosts?.length || 0;
+  console.log(`Rate limit check for persona ${personaId}: ${count}/${RATE_LIMITS.MAX_POSTS_PER_PERSONA_PER_HOUR} posts in last hour`);
+  
+  return count < RATE_LIMITS.MAX_POSTS_PER_PERSONA_PER_HOUR;
+}
+
 async function getUserApiKey(userId: string, keyName: string): Promise<string | null> {
   try {
     const { data, error } = await supabase
@@ -113,9 +163,12 @@ async function generateWithGeminiRotation(prompt: string, userId: string): Promi
   
   let lastError: Error | null = null;
   
-  for (let i = 0; i < apiKeys.length; i++) {
+  // 🚨 CRITICAL: Limit retries to prevent quota exhaustion
+  const maxTries = Math.min(apiKeys.length, RATE_LIMITS.GEMINI_RETRY_LIMIT);
+  
+  for (let i = 0; i < maxTries; i++) {
     const apiKey = apiKeys[i];
-    console.log(`Trying Gemini API key ${i + 1}/${apiKeys.length}`);
+    console.log(`Trying Gemini API key ${i + 1}/${maxTries} (limited from ${apiKeys.length} available)`);
     
     try {
       const result = await generateWithGemini(prompt, apiKey);
@@ -125,7 +178,7 @@ async function generateWithGeminiRotation(prompt: string, userId: string): Promi
       console.log(`API key ${i + 1} failed:`, error.message);
       lastError = error;
       
-      // Check if it's a quota/rate limit error that should trigger rotation
+      // Check if it's a quota/rate limit error
       if (error.message.includes('429') || 
           error.message.includes('quota') || 
           error.message.includes('RESOURCE_EXHAUSTED') ||
@@ -139,9 +192,10 @@ async function generateWithGeminiRotation(prompt: string, userId: string): Promi
     }
   }
   
-  // If all keys failed, throw the last error
-  throw lastError || new Error('All Gemini API keys failed');
+  // If all limited keys failed, throw the last error
+  throw lastError || new Error(`All ${maxTries} Gemini API keys failed (quota exhausted)`);
 }
+
 async function generateWithGemini(prompt: string, apiKey: string): Promise<string> {
   if (!apiKey) throw new Error('Gemini API key is not configured');
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
@@ -273,6 +327,29 @@ serve(async (req) => {
   }
 
   try {
+    console.log('🛡️ SAFETY CHECK: Checking system posting pause status...');
+    
+    // 🚨 CRITICAL: Check system pause first
+    const pauseStatus = await checkSystemPause();
+    if (pauseStatus.paused) {
+      console.log('🛑 SYSTEM PAUSED: Auto-posting is currently disabled');
+      console.log('Pause reason:', pauseStatus.reason);
+      
+      return new Response(
+        JSON.stringify({ 
+          message: 'System paused - auto-posting disabled',
+          reason: pauseStatus.reason,
+          processed: 0, 
+          posted: 0, 
+          failed: 0,
+          paused: true
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    console.log('✅ System posting allowed, proceeding with auto-post generation');
+
     const now = new Date();
 
     // 1. ランダムポスト設定がアクティブなペルソナIDを取得
@@ -292,7 +369,7 @@ serve(async (req) => {
       .select('*')
       .eq('is_active', true)  // 🔒 アクティブな設定のみ対象
       .lte('next_run_at', now.toISOString())
-      .limit(25);
+      .limit(RATE_LIMITS.MAX_TOTAL_POSTS_PER_RUN); // 🚨 CRITICAL: Global limit
 
     // ランダムポスト設定がアクティブなペルソナは除外
     if (excludePersonaIds.length > 0) {
@@ -304,7 +381,7 @@ serve(async (req) => {
 
     if (cfgError) throw cfgError;
 
-    console.log(`📋 Found ${configs?.length || 0} auto-post configs to process (after random post exclusion)`);
+    console.log(`📋 Found ${configs?.length || 0} auto-post configs to process (after random post exclusion, global limit: ${RATE_LIMITS.MAX_TOTAL_POSTS_PER_RUN})`);
     
     // ランダムポスト有効ペルソナの除外確認ログ
     if (configs && excludePersonaIds.length > 0) {
@@ -315,20 +392,38 @@ serve(async (req) => {
       }
     }
 
-    // 3. ランダムポスト設定を取得（すべてのアクティブな設定）
+    // 3. ランダムポスト設定を取得（制限付き）
     const { data: randomConfigs, error: randomCfgError } = await supabase
       .from('random_post_configs')
       .select('*, personas!random_post_configs_persona_id_fkey(id, user_id, name, tone_of_voice, expertise, personality)')
       .eq('is_active', true)
-      .limit(25);
+      .limit(RATE_LIMITS.MAX_TOTAL_POSTS_PER_RUN); // 🚨 CRITICAL: Limit random posts too
 
     if (randomCfgError) throw randomCfgError;
 
     let processed = 0, posted = 0, failed = 0;
 
-    // 4. 通常のオートポスト処理
+    // 4. 通常のオートポスト処理（厳格な制限付き）
     for (const cfg of configs || []) {
       try {
+        // 🚨 CRITICAL: Rate limiting check
+        const rateLimitOk = await checkPersonaRateLimit(cfg.persona_id);
+        if (!rateLimitOk) {
+          console.log(`🛑 Rate limit exceeded for persona ${cfg.persona_id}, skipping`);
+          
+          // Skip but still update next_run_at to prevent infinite retries
+          await supabase
+            .from('auto_post_configs')
+            .update({ 
+              next_run_at: new Date(Date.now() + RATE_LIMITS.COOLDOWN_AFTER_FAILURE).toISOString(),
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', cfg.id);
+          
+          processed++;
+          continue;
+        }
+
         processed++;
 
         // ペルソナ情報取得
@@ -336,10 +431,16 @@ serve(async (req) => {
           .from('personas')
           .select('id, user_id, name, tone_of_voice, expertise, personality')
           .eq('id', cfg.persona_id)
+          .eq('is_active', true) // 🚨 CRITICAL: Only process active personas
           .single();
-        if (personaError) throw personaError;
+          
+        if (personaError || !persona) {
+          console.log(`❌ Persona ${cfg.persona_id} not found or inactive, skipping config ${cfg.id}`);
+          processed++;
+          continue;
+        }
 
-        // APIキー解決とコンテンツ生成（エラー時は自動ローテーション）
+        // APIキー解決とコンテンツ生成（制限付きローテーション）
         const prompt = buildPrompt(persona, cfg.prompt_template, cfg.content_prefs);
         const content = await generateWithGeminiRotation(prompt, cfg.user_id);
 
@@ -460,40 +561,41 @@ serve(async (req) => {
           }
         }
 
-        // 排他制御：設定更新前に現在の状態を確認
+        // 🚨 CRITICAL: 排他制御と二重チェック
         const { data: currentConfig, error: checkError } = await supabase
           .from('auto_post_configs')
-          .select('next_run_at, updated_at')
+          .select('next_run_at, updated_at, is_active')
           .eq('id', cfg.id)
-          .eq('is_active', true)
           .single();
           
-        if (checkError || !currentConfig) {
-          console.error(`設定 ${cfg.id} の確認に失敗またはすでに非アクティブ:`, checkError);
+        if (checkError || !currentConfig || !currentConfig.is_active) {
+          console.error(`🛑 Config ${cfg.id} is no longer active or accessible, aborting update`);
           failed++;
-          processed++;
           continue;
         }
         
         // 次回実行時刻が変更されていないかチェック（並行実行防止）
         if (currentConfig.next_run_at !== cfg.next_run_at) {
-          console.log(`⚠️ 設定 ${cfg.id} の次回実行時刻が既に更新済み。スキップします。`);
-          processed++;
+          console.log(`⚠️ Config ${cfg.id} next_run_at was already updated by another process. Safe abort.`);
           continue;
         }
 
-        // 設定を更新（楽観的排他制御）
-        const { error: updateErr } = await supabase
+        // 設定を更新（楽観的排他制御 + is_active再確認）
+        const { data: updatedRows, error: updateErr } = await supabase
           .from('auto_post_configs')
           .update({ 
             next_run_at: nextRunAt,
             updated_at: new Date().toISOString()
           })
           .eq('id', cfg.id)
-          .eq('next_run_at', cfg.next_run_at); // 元の値と一致する場合のみ更新
+          .eq('next_run_at', cfg.next_run_at) // 元の値と一致する場合のみ更新
+          .eq('is_active', true) // 🚨 CRITICAL: アクティブな場合のみ更新
+          .select('id');
         
         if (updateErr) {
           console.error('Failed to update next_run_at for config', cfg.id, updateErr);
+        } else if (!updatedRows || updatedRows.length === 0) {
+          console.log(`⚠️ Config ${cfg.id} was not updated (likely deactivated by user)`);
         } else {
           console.log(`✅ Config ${cfg.id} updated with next_run_at: ${nextRunAt}`);
         }
@@ -503,57 +605,39 @@ serve(async (req) => {
         console.error('❌ Auto post generation failed for config', cfg.id, ':', e);
         failed++;
         
-        // エラー時も次回実行時刻を必ず未来に更新（無限リトライ防止）
+        // 🚨 CRITICAL: エラー時の安全な時刻更新（アクティブ状態をチェック）
         try {
-          let nextRunAt: string;
-          if (cfg.multi_time_enabled && cfg.post_times && cfg.post_times.length > 0) {
-            const { data: nextTime, error: calcErr } = await supabase
-              .rpc('calculate_next_multi_time_run', {
-                p_current_time: new Date().toISOString(),
-                time_slots: cfg.post_times,
-                timezone_name: cfg.timezone || 'UTC'
-              });
-            if (calcErr) {
-              console.error('Failed to calculate next multi-time run on failure:', calcErr);
-              const firstTime = cfg.post_times[0];
-              const [h, m] = firstTime.split(':').map(Number);
-              const nextDay = new Date();
-              nextDay.setDate(nextDay.getDate() + 1);
-              if (cfg.timezone && cfg.timezone !== 'UTC') {
-                const local = new Date(nextDay.toLocaleString('en-US', { timeZone: cfg.timezone }));
-                local.setHours(h, m, 0, 0);
-                nextRunAt = local.toISOString();
-              } else {
-                nextDay.setHours(h, m, 0, 0);
-                nextRunAt = nextDay.toISOString();
-              }
-            } else {
-              nextRunAt = nextTime as unknown as string;
-            }
-          } else {
-            const { data: nextTimeCalculated, error: calcErr } = await supabase
-              .rpc('calculate_timezone_aware_next_run', {
-                current_schedule_time: cfg.next_run_at,
-                timezone_name: cfg.timezone || 'UTC'
-              });
-            if (calcErr) {
-              console.error('Failed to calculate timezone-aware next run on failure:', calcErr);
-              const next = new Date(cfg.next_run_at || new Date().toISOString());
-              next.setDate(next.getDate() + 1);
-              nextRunAt = next.toISOString();
-            } else {
-              nextRunAt = nextTimeCalculated as unknown as string;
-            }
-          }
-
-          const { error: updateErr } = await supabase
+          // First check if config is still active
+          const { data: activeCheck, error: activeCheckErr } = await supabase
             .from('auto_post_configs')
-            .update({ next_run_at: nextRunAt, updated_at: new Date().toISOString() })
-            .eq('id', cfg.id);
+            .select('is_active')
+            .eq('id', cfg.id)
+            .single();
+            
+          if (activeCheckErr || !activeCheck || !activeCheck.is_active) {
+            console.log(`🛑 Config ${cfg.id} is no longer active, skipping failure backoff update`);
+            continue;
+          }
+          
+          // 長めのクールダウン時間を設定（API制限対策）
+          const cooldownNextRun = new Date(Date.now() + RATE_LIMITS.COOLDOWN_AFTER_FAILURE);
+          
+          const { data: backoffUpdate, error: updateErr } = await supabase
+            .from('auto_post_configs')
+            .update({ 
+              next_run_at: cooldownNextRun.toISOString(),
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', cfg.id)
+            .eq('is_active', true) // 🚨 CRITICAL: Only update if still active
+            .select('id');
+            
           if (updateErr) {
             console.error('Failed to update next_run_at after failure for config', cfg.id, updateErr);
+          } else if (backoffUpdate && backoffUpdate.length > 0) {
+            console.log(`⏭️ Config ${cfg.id} failure cooldown: next_run_at -> ${cooldownNextRun.toISOString()}`);
           } else {
-            console.log(`⏭️ Config ${cfg.id} failure backoff: next_run_at -> ${nextRunAt}`);
+            console.log(`ℹ️ Config ${cfg.id} was deactivated during failure handling`);
           }
         } catch (updateCatchErr) {
           console.error('Unexpected error updating next_run_at after failure:', updateCatchErr);
@@ -561,11 +645,19 @@ serve(async (req) => {
       }
     }
 
-    // 5. ランダムポスト処理（設定したすべての時間で投稿）
+    // 5. ランダムポスト処理（厳格な制限付き）
     for (const randomCfg of randomConfigs || []) {
       try {
         const persona = randomCfg.personas;
         if (!persona) continue;
+
+        // 🚨 CRITICAL: Rate limiting check for random posts too
+        const rateLimitOk = await checkPersonaRateLimit(persona.id);
+        if (!rateLimitOk) {
+          console.log(`🛑 Rate limit exceeded for random post persona ${persona.id}, skipping`);
+          processed++;
+          continue;
+        }
 
         // 今日の日付を取得（設定のタイムゾーンで）
         const today = new Date().toLocaleDateString('en-CA', { 
@@ -586,11 +678,18 @@ serve(async (req) => {
             .eq('id', randomCfg.id);
         }
 
-        // 設定された各時間をチェック
+        // 設定された各時間をチェック（制限付き）
         const randomTimes = randomCfg.random_times || ['09:00:00', '12:00:00', '18:00:00'];
         let hasPosted = false;
+        let slotsProcessed = 0;
 
         for (const timeStr of randomTimes) {
+          // 🚨 CRITICAL: Limit slots processed per run
+          if (slotsProcessed >= 1) {
+            console.log(`⚠️ Limiting random post processing to 1 slot per run for safety`);
+            break;
+          }
+          
           // 既に投稿済みの時間はスキップ
           if (postedTimesToday.includes(timeStr)) {
             continue;
@@ -631,11 +730,7 @@ serve(async (req) => {
           }
 
           console.log(`Processing random post for ${persona.name} at ${timeStr}`);
-
-          // 該当ペルソナの完全オートポスト設定を取得（アクティブなもののみ）
-          // 【緊急バグ修正】ランダムポスト処理で間違ったauto_post_configsを参照していた
-          // ランダムポスト自身の設定を使用すべき - autoConfigsは不要
-          console.log(`⚠️ Random post processing should use its own config, not auto_post_configs`);
+          slotsProcessed++;
 
           // ランダムポスト用のプロンプト生成（独自ロジック）
           const prompt = buildRandomPrompt(persona);
@@ -680,13 +775,25 @@ serve(async (req) => {
 
         // 投稿があった場合、posted_times_todayを更新
         if (hasPosted) {
-          await supabase
+          // 🚨 CRITICAL: Double-check config is still active before updating
+          const { data: stillActive, error: activeErr } = await supabase
             .from('random_post_configs')
-            .update({ 
-              posted_times_today: postedTimesToday,
-              last_posted_date: today
-            })
-            .eq('id', randomCfg.id);
+            .select('is_active')
+            .eq('id', randomCfg.id)
+            .single();
+            
+          if (!activeErr && stillActive?.is_active) {
+            await supabase
+              .from('random_post_configs')
+              .update({ 
+                posted_times_today: postedTimesToday,
+                last_posted_date: today
+              })
+              .eq('id', randomCfg.id)
+              .eq('is_active', true); // 🚨 Only update if still active
+          } else {
+            console.log(`⚠️ Random config ${randomCfg.id} was deactivated, skipping state update`);
+          }
         }
 
         if (hasPosted) processed++;
@@ -695,33 +802,46 @@ serve(async (req) => {
         failed++;
         processed++;
         
-         // 【重要バグ修正】エラー時もnext_run_atを更新しないと無限ループになる
-         console.log(`⚠️ Updating next_run_at for failed random config ${randomCfg.id} to prevent infinite retries`);
-         try {
-           // ランダムポスト設定の場合、明日の次のランダム時間を計算
-           const nextRun = calculateRandomNextRun(randomCfg.random_times || ['09:00:00', '12:00:00', '18:00:00'], randomCfg.timezone || 'UTC');
-           await supabase
-             .from('random_post_configs')
-             .update({ 
-               next_run_at: nextRun,
-               updated_at: new Date().toISOString()
-             })
-             .eq('id', randomCfg.id);
-           console.log(`✅ Updated next_run_at for failed random config ${randomCfg.id} to ${nextRun}`);
-         } catch (updateError) {
-           console.error(`Failed to update next_run_at for config ${randomCfg.id}:`, updateError);
-         }
+        // 🚨 CRITICAL: Safe cooldown only if still active
+        console.log(`⚠️ Applying cooldown for failed random config ${randomCfg.id}`);
+        try {
+          const { data: stillActive, error: activeErr } = await supabase
+            .from('random_post_configs')
+            .select('is_active')
+            .eq('id', randomCfg.id)
+            .single();
+            
+          if (!activeErr && stillActive?.is_active) {
+            // Long cooldown to prevent rapid failures
+            const nextRun = new Date(Date.now() + RATE_LIMITS.COOLDOWN_AFTER_FAILURE);
+            await supabase
+              .from('random_post_configs')
+              .update({ 
+                next_run_at: nextRun.toISOString(),
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', randomCfg.id)
+              .eq('is_active', true);
+            console.log(`✅ Applied ${RATE_LIMITS.COOLDOWN_AFTER_FAILURE/1000/60}min cooldown to random config ${randomCfg.id}`);
+          } else {
+            console.log(`ℹ️ Random config ${randomCfg.id} was deactivated, no cooldown needed`);
+          }
+        } catch (updateError) {
+          console.error(`Failed to apply cooldown to random config ${randomCfg.id}:`, updateError);
+        }
       }
     }
 
     return new Response(
       JSON.stringify({ 
-        message: 'auto-post-generator completed', 
+        message: 'auto-post-generator completed with enhanced safety controls', 
         processed, 
         posted, 
         failed,
         regular_configs: configs?.length || 0,
-        random_configs: randomConfigs?.length || 0
+        random_configs: randomConfigs?.length || 0,
+        rate_limits_applied: true,
+        max_posts_per_run: RATE_LIMITS.MAX_TOTAL_POSTS_PER_RUN
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

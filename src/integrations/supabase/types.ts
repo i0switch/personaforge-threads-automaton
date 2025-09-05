@@ -797,6 +797,30 @@ export type Database = {
           },
         ]
       }
+      system_settings: {
+        Row: {
+          id: string
+          pause_reason: string | null
+          posting_paused: boolean
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          id?: string
+          pause_reason?: string | null
+          posting_paused?: boolean
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          id?: string
+          pause_reason?: string | null
+          posting_paused?: boolean
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       thread_replies: {
         Row: {
           auto_reply_sent: boolean | null
