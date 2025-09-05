@@ -151,18 +151,33 @@ const Index = () => {
         <div className="text-center space-y-6 relative">
           <div className="absolute inset-0 bg-gradient-to-r from-slate-600/5 via-indigo-600/5 to-gray-600/5 rounded-3xl blur-3xl"></div>
           <div className="relative bg-white/90 backdrop-blur-sm rounded-3xl p-8 shadow-xl border border-slate-200/50">
-            <div className="flex items-center justify-center gap-3 mb-4">
-              <div className="p-3 bg-gradient-to-r from-slate-700 to-gray-800 rounded-2xl shadow-lg">
-                <Brain className="h-8 w-8 text-white" />
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex-1" />
+              <div className="flex items-center justify-center gap-3">
+                <div className="p-3 bg-gradient-to-r from-slate-700 to-gray-800 rounded-2xl shadow-lg">
+                  <Brain className="h-8 w-8 text-white" />
+                </div>
+                <h1 className="text-5xl font-bold bg-gradient-to-r from-slate-700 via-gray-800 to-slate-900 bg-clip-text text-transparent">
+                  Threads-Genius AI
+                </h1>
+                <div className="flex items-center gap-1">
+                  <Star className="h-5 w-5 text-amber-500 fill-amber-500" />
+                  <Star className="h-5 w-5 text-amber-500 fill-amber-500" />
+                  <Star className="h-5 w-5 text-amber-500 fill-amber-500" />
+                </div>
               </div>
-              <h1 className="text-5xl font-bold bg-gradient-to-r from-slate-700 via-gray-800 to-slate-900 bg-clip-text text-transparent">
-                Threads-Genius AI
-              </h1>
-              <div className="flex items-center gap-1">
-                <Star className="h-5 w-5 text-amber-500 fill-amber-500" />
-                <Star className="h-5 w-5 text-amber-500 fill-amber-500" />
-                <Star className="h-5 w-5 text-amber-500 fill-amber-500" />
-              </div>
+              {isAdmin && (
+                <div className="flex-1 flex justify-end">
+                  <Button
+                    onClick={() => navigate("/admin")}
+                    variant="outline"
+                    className="border-amber-300 text-amber-700 hover:bg-amber-50 shadow-md"
+                  >
+                    <Shield className="h-4 w-4 mr-2" />
+                    管理者
+                  </Button>
+                </div>
+              )}
             </div>
             <p className="text-xl text-gray-700 max-w-3xl mx-auto leading-relaxed">
               <span className="font-semibold text-slate-700">Gemini搭載</span>次世代AI自動運用プラットフォーム
