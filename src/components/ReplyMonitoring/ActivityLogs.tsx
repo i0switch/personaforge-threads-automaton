@@ -43,6 +43,7 @@ export const ActivityLogs = () => {
           )
         `)
         .eq('user_id', user!.id)
+        .not('action_type', 'in', '("post_publish_failed","auto_schedule_cleanup","schedule_cleanup","safe_cleanup")')
         .order('created_at', { ascending: false })
         .limit(100);
 
