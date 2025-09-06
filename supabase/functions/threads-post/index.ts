@@ -114,47 +114,79 @@ serve(async (req) => {
 
     if (!bypassTimeCheck && post.auto_schedule && post.persona_id) {
       console.log('🕐 Checking if current time matches persona scheduled settings...');
-      
-      const now = new Date();
-      const nowHour = now.getHours();
-      const nowMinute = now.getMinutes();
-      
-      // Check auto post configs (fixed time)
+
+      // Determine persona timezone from configs (fallback to UTC)
+      // We fetch both configs first
       const { data: autoConfig } = await supabase
         .from('auto_post_configs')
         .select('post_time, post_times, multi_time_enabled, timezone, is_active')
         .eq('persona_id', post.persona_id)
         .eq('is_active', true)
         .single();
-      
-      // Check random post configs (random times)
+
       const { data: randomConfig } = await supabase
         .from('random_post_configs')
         .select('random_times, timezone, is_active')
         .eq('persona_id', post.persona_id)
         .eq('is_active', true)
         .single();
-      
+
+      const timezone = autoConfig?.timezone || randomConfig?.timezone || 'UTC';
+
+      // Helpers for timezone-aware comparisons and scheduling
+      const getTzHM = (zone: string) => {
+        const parts = new Intl.DateTimeFormat('en-US', {
+          timeZone: zone,
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false,
+        }).formatToParts(new Date());
+        const h = Number(parts.find(p => p.type === 'hour')?.value ?? '0');
+        const m = Number(parts.find(p => p.type === 'minute')?.value ?? '0');
+        return { h, m };
+      };
+
+      const getTimezoneOffset = (zone: string) => {
+        const now = new Date();
+        const utc = new Date(now.getTime() + now.getTimezoneOffset() * 60000);
+        const target = new Date(utc.toLocaleString('en-US', { timeZone: zone }));
+        return (utc.getTime() - target.getTime()) / 60000; // minutes
+      };
+
+      const zonedDateForTime = (timeStr: string, zone: string, dayOffset = 0) => {
+        // timeStr: 'HH:mm' or 'HH:mm:ss'
+        const now = new Date();
+        const base = new Date(now.getTime() + dayOffset * 24 * 60 * 60 * 1000);
+        const dateStr = new Intl.DateTimeFormat('en-CA', {
+          timeZone: zone,
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+        }).format(base);
+        const local = new Date(`${dateStr}T${timeStr}`);
+        const offsetMin = getTimezoneOffset(zone);
+        return new Date(local.getTime() - offsetMin * 60 * 1000); // UTC Date corresponding to local time
+      };
+
+      const { h: nowHour, m: nowMinute } = getTzHM(timezone);
       let timeMatches = false;
-      
+
       if (autoConfig) {
         console.log('📋 Auto config found, checking time slots...');
         if (autoConfig.multi_time_enabled && autoConfig.post_times?.length > 0) {
-          // Multiple times check
           for (const timeSlot of autoConfig.post_times) {
             const [hours, minutes] = timeSlot.split(':').map(Number);
             if (nowHour === hours && nowMinute === minutes) {
               timeMatches = true;
-              console.log(`✅ Time matches auto config slot: ${timeSlot}`);
+              console.log(`✅ Time matches auto config slot (tz ${timezone}): ${timeSlot}`);
               break;
             }
           }
         } else if (autoConfig.post_time) {
-          // Single time check
           const [hours, minutes] = autoConfig.post_time.toString().split(':').map(Number);
           if (nowHour === hours && nowMinute === minutes) {
             timeMatches = true;
-            console.log(`✅ Time matches auto config: ${autoConfig.post_time}`);
+            console.log(`✅ Time matches auto config (tz ${timezone}): ${autoConfig.post_time}`);
           }
         }
       } else if (randomConfig) {
@@ -164,7 +196,7 @@ serve(async (req) => {
             const [hours, minutes] = timeSlot.split(':').map(Number);
             if (nowHour === hours && nowMinute === minutes) {
               timeMatches = true;
-              console.log(`✅ Time matches random config slot: ${timeSlot}`);
+              console.log(`✅ Time matches random config slot (tz ${timezone}): ${timeSlot}`);
               break;
             }
           }
@@ -173,58 +205,63 @@ serve(async (req) => {
         console.log('⚠️ No active posting config found for persona, allowing manual post');
         timeMatches = true; // Allow posts if no config exists
       }
-      
+
       if (!timeMatches) {
-        console.warn(`🚫 Time mismatch: Current ${nowHour}:${nowMinute < 10 ? '0' : ''}${nowMinute} does not match any configured time slots`);
-        
-        // Reschedule to next valid time slot
+        const paddedMinute = nowMinute < 10 ? `0${nowMinute}` : `${nowMinute}`;
+        console.warn(`🚫 Time mismatch: Current ${nowHour}:${paddedMinute} (${timezone}) does not match any configured time slots`);
+
+        // Reschedule to next valid time slot in persona timezone, then convert to UTC
         let nextScheduledTime: Date | null = null;
-        if (autoConfig) {
-          if (autoConfig.multi_time_enabled && autoConfig.post_times?.length > 0) {
-            // Find next time slot
-            const currentMinutes = nowHour * 60 + nowMinute;
-            for (const timeSlot of autoConfig.post_times) {
-              const [hours, minutes] = timeSlot.split(':').map(Number);
-              const slotMinutes = hours * 60 + minutes;
-              if (slotMinutes > currentMinutes) {
-                const nextRun = new Date(now);
-                nextRun.setHours(hours, minutes, 0, 0);
-                nextScheduledTime = nextRun;
-                break;
-              }
-            }
-            // If no slot today, use first slot tomorrow
-            if (!nextScheduledTime) {
-              const [hours, minutes] = autoConfig.post_times[0].split(':').map(Number);
-              const nextRun = new Date(now);
-              nextRun.setDate(nextRun.getDate() + 1);
-              nextRun.setHours(hours, minutes, 0, 0);
-              nextScheduledTime = nextRun;
-            }
-          } else if (autoConfig.post_time) {
-            const [hours, minutes] = autoConfig.post_time.toString().split(':').map(Number);
-            nextScheduledTime = new Date(now);
-            nextScheduledTime.setHours(hours, minutes, 0, 0);
-            if (nextScheduledTime <= now) {
-              nextScheduledTime.setDate(nextScheduledTime.getDate() + 1);
+        const currentMinutes = nowHour * 60 + nowMinute;
+
+        const computeNextFromSlots = (slots: string[]) => {
+          // Normalize and sort slots just in case
+          const normalized = [...slots].map(s => s.length === 5 ? `${s}:00` : s).sort();
+          for (const slot of normalized) {
+            const [hh, mm] = slot.split(':').map(Number);
+            const slotMin = hh * 60 + mm;
+            if (slotMin > currentMinutes) {
+              nextScheduledTime = zonedDateForTime(`${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`, timezone, 0);
+              return;
             }
           }
+          // No slot left today -> first slot tomorrow
+          const [h0, m0] = normalized[0].split(':').map(Number);
+          nextScheduledTime = zonedDateForTime(`${String(h0).padStart(2, '0')}:${String(m0).padStart(2, '0')}`, timezone, 1);
+        };
+
+        if (autoConfig) {
+          if (autoConfig.multi_time_enabled && autoConfig.post_times?.length > 0) {
+            computeNextFromSlots(autoConfig.post_times);
+          } else if (autoConfig.post_time) {
+            const [hours, minutes] = autoConfig.post_time.toString().split(':').map(Number);
+            // Today at configured time in tz; if passed, schedule for tomorrow
+            const candidate = zonedDateForTime(`${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`, timezone, 0);
+            const { h: ch, m: cm } = getTzHM(timezone);
+            const candMinutes = hours * 60 + minutes;
+            const nowMin = ch * 60 + cm;
+            nextScheduledTime = candMinutes > nowMin
+              ? candidate
+              : zonedDateForTime(`${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`, timezone, 1);
+          }
+        } else if (randomConfig && randomConfig.random_times?.length > 0) {
+          computeNextFromSlots(randomConfig.random_times);
         }
-        
+
         if (nextScheduledTime) {
           await supabase
             .from('posts')
             .update({ status: 'scheduled', scheduled_for: nextScheduledTime.toISOString() })
             .eq('id', postId);
-          
-          console.log(`📅 Post rescheduled to: ${nextScheduledTime.toISOString()}`);
+
+          console.log(`📅 Post rescheduled to (UTC): ${nextScheduledTime.toISOString()} (tz: ${timezone})`);
         }
-        
+
         return new Response(
           JSON.stringify({ 
             success: false, 
             time_mismatch: true, 
-            message: `Current time ${nowHour}:${nowMinute < 10 ? '0' : ''}${nowMinute} does not match configured posting times`,
+            message: `Current time ${nowHour}:${paddedMinute} (${timezone}) does not match configured posting times`,
             rescheduled_to: nextScheduledTime?.toISOString() || null
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
