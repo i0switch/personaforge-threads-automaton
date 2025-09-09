@@ -8,6 +8,11 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
+// 無限ループ防止：レート制限
+const requestCache = new Map<string, number>();
+const RATE_LIMIT_WINDOW = 5000; // 5秒
+const MAX_REQUESTS_PER_WINDOW = 50; // 5秒間に最大50リクエスト
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -20,6 +25,35 @@ serve(async (req) => {
     );
 
     const { key, fallback } = await req.json();
+    
+    // 無限ループ防止：レート制限チェック
+    const now = Date.now();
+    const requestCount = requestCache.get(key) || 0;
+    const lastRequest = requestCache.get(`${key}_time`) || 0;
+    
+    if (now - lastRequest < RATE_LIMIT_WINDOW) {
+      if (requestCount >= MAX_REQUESTS_PER_WINDOW) {
+        console.log(`⚠️ レート制限: ${key} の呼び出し回数が制限を超えました`);
+        return new Response(
+          JSON.stringify({ 
+            success: true, 
+            secret: fallback || null,
+            source: 'rate_limited'
+          }),
+          { 
+            headers: { 
+              ...corsHeaders, 
+              'Content-Type': 'application/json' 
+            } 
+          }
+        );
+      }
+      requestCache.set(key, requestCount + 1);
+    } else {
+      requestCache.set(key, 1);
+      requestCache.set(`${key}_time`, now);
+    }
+    
     console.log(`🔑 シークレット取得リクエスト: ${key}`);
 
     if (!key) {

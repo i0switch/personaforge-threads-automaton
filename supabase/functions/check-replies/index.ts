@@ -13,6 +13,11 @@ const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+// 無限ループ防止：処理済みペルソナをトラッキング
+const processedPersonas = new Set<string>();
+const MAX_PROCESS_COUNT = 100; // 最大処理数制限
+let processCount = 0;
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -20,6 +25,18 @@ serve(async (req) => {
 
   try {
     console.log('Starting reply check...');
+    
+    // 処理数制限チェック
+    if (processCount >= MAX_PROCESS_COUNT) {
+      console.log('⚠️ 処理数制限に達しました。無限ループ防止のため終了します。');
+      return new Response(JSON.stringify({ 
+        message: 'Process limit reached to prevent infinite loop',
+        processCount 
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200
+      });
+    }
 
     // アクティブなリプライチェック設定を取得
     const { data: checkSettings } = await supabase
@@ -55,6 +72,22 @@ serve(async (req) => {
       if (!persona?.id) {
         console.log(`Skipping invalid persona`);
         continue;
+      }
+
+      // 無限ループ防止：重複処理チェック
+      if (processedPersonas.has(persona.id)) {
+        console.log(`⚠️ ペルソナ ${persona.id} は既に処理済みです。スキップします。`);
+        continue;
+      }
+      
+      // 処理数カウンタ増加
+      processCount++;
+      processedPersonas.add(persona.id);
+      
+      // 緊急停止：異常な処理数検出
+      if (processCount > MAX_PROCESS_COUNT) {
+        console.log('🚨 緊急停止：異常な処理数を検出しました');
+        break;
       }
 
       // アクセストークンを個別に取得（復号化のため）
