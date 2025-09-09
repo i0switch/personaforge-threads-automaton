@@ -50,15 +50,19 @@ serve(async (req) => {
     // Gemini APIを使用してAI返信を生成
     console.log(`🧠 AI返信生成開始 - リプライ内容: "${replyContent}"`);
     
+    // 元投稿とリプライチェーンの情報を取得
+    const contextInfo = await getReplyContext(replyId, supabase);
+    
     const aiPrompt = `あなたは${persona.name}です。
 年齢: ${persona.age || '不明'}
 性格: ${persona.personality || 'フレンドリー'}  
 話し方: ${persona.tone_of_voice || 'カジュアル'}
 専門分野: ${persona.expertise?.join(', ') || 'なし'}
 
-以下のリプライに対して、このペルソナとして140文字以内で親しみやすく返信してください。
+以下の会話に対して、このペルソナとして140文字以内で自然に返信してください。
 
-受信したリプライ: "${replyContent}"`;
+${contextInfo.originalPost ? `【元投稿】\n${contextInfo.originalPost}\n` : ''}${contextInfo.replyChain ? `【これまでの会話】\n${contextInfo.replyChain}\n` : ''}【今回のリプライ】
+${replyContent}`;
 
     const aiReplyText = await generateWithGeminiRotation(aiPrompt, userId);
     console.log(`✅ AI返信生成完了: "${aiReplyText}"`);
@@ -383,6 +387,68 @@ async function getAccessToken(persona: any): Promise<string | null> {
   } catch (error) {
     console.error('❌ トークン取得エラー - persona:', persona.name, error);
     return null;
+  }
+}
+
+// リプライの文脈情報を取得する関数
+async function getReplyContext(replyId: string, supabase: any) {
+  try {
+    // 現在のリプライ情報を取得
+    const { data: currentReply, error: replyError } = await supabase
+      .from('thread_replies')
+      .select('thread_id, parent_id, content')
+      .eq('reply_id', replyId)
+      .single();
+
+    if (replyError || !currentReply) {
+      console.log('⚠️ リプライ情報取得失敗、リプライのみで返信生成');
+      return { originalPost: null, replyChain: null };
+    }
+
+    const threadId = currentReply.thread_id;
+    let originalPost = null;
+    let replyChain = null;
+
+    // 元投稿を取得（thread_idで検索）
+    try {
+      const { data: postData, error: postError } = await supabase
+        .from('posts')
+        .select('content')
+        .eq('threads_post_id', threadId)
+        .single();
+
+      if (!postError && postData) {
+        originalPost = postData.content;
+      }
+    } catch (e) {
+      console.log('📝 元投稿情報なし（外部投稿の可能性）');
+    }
+
+    // リプライチェーンを取得（同じthread_idの過去のリプライを時系列順で）
+    try {
+      const { data: chainData, error: chainError } = await supabase
+        .from('thread_replies')
+        .select('content, created_at, reply_id')
+        .eq('thread_id', threadId)
+        .neq('reply_id', replyId) // 現在のリプライは除外
+        .order('created_at', { ascending: true })
+        .limit(10); // 最大10件の過去リプライ
+
+      if (!chainError && chainData && chainData.length > 0) {
+        replyChain = chainData
+          .map((reply: any, index: number) => `${index + 1}. ${reply.content}`)
+          .join('\n');
+      }
+    } catch (e) {
+      console.log('🔄 リプライチェーン取得エラー:', e);
+    }
+
+    console.log(`📖 文脈情報取得完了 - 元投稿: ${originalPost ? 'あり' : 'なし'}, チェーン: ${replyChain ? 'あり' : 'なし'}`);
+    return { originalPost, replyChain };
+
+  } catch (error) {
+    console.error('❌ 文脈情報取得エラー:', error);
+    return { originalPost: null, replyChain: null };
   }
 }
 
