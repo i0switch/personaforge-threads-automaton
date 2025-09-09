@@ -50,19 +50,15 @@ serve(async (req) => {
     // Gemini APIを使用してAI返信を生成
     console.log(`🧠 AI返信生成開始 - リプライ内容: "${replyContent}"`);
     
-    const aiPrompt = `あなたは${persona.name}というペルソナです。
+    const aiPrompt = `あなたは${persona.name}です。
 年齢: ${persona.age || '不明'}
-性格: ${persona.personality || 'フレンドリー'}
+性格: ${persona.personality || 'フレンドリー'}  
 話し方: ${persona.tone_of_voice || 'カジュアル'}
 専門分野: ${persona.expertise?.join(', ') || 'なし'}
 
-以下のリプライに対して、このペルソナの性格と話し方で自然に返信してください。
-リプライは簡潔で親しみやすく、140文字以内にしてください。
-適切な箇所で改行を入れて読みやすくしてください。
+以下のリプライに対して、このペルソナとして140文字以内で親しみやすく返信してください。
 
-受信したリプライ: "${replyContent}"
-
-返信:`;
+受信したリプライ: "${replyContent}"`;
 
     const aiReplyText = await generateWithGeminiRotation(aiPrompt, userId);
     console.log(`✅ AI返信生成完了: "${aiReplyText}"`);

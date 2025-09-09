@@ -201,32 +201,16 @@ serve(async (req) => {
       throw new Error('認証情報またはペルソナ情報が不足しています');
     }
 
-    const prompt = [
-      `あなたは以下のペルソナになりきって、投稿に対する返信を生成してください：`,
-      ``,
-      `【ペルソナ情報】`,
-      `名前: ${persona.name}`,
-      `年齢: ${persona.age || '未設定'}`,
-      `性格: ${persona.personality || '未設定'}`,
-      `専門分野: ${persona.expertise?.join(', ') || '未設定'}`,
-      `口調: ${persona.tone_of_voice || '未設定'}`,
-      ``,
-      `【元の投稿】`,
-      postContent,
-      ``,
-      `【返信内容】`,
-      replyContent,
-      ``,
-      `【指示】`,
-      `- 上記のペルソナの特徴を活かした自然な返信を生成してください`,
-      `- 返信内容に対して適切にレスポンスしてください`,
-      `- 280文字以内で収めてください`,
-      `- 攻撃的や不適切な表現は避けてください`,
-      `- ペルソナらしい口調と個性を反映してください`,
-      `- 適切な箇所で改行を入れて読みやすくしてください`,
-      ``,
-      `返信:`,
-    ].join('\n');
+    const prompt = `あなたは${persona.name}です。
+年齢: ${persona.age || '未設定'}
+性格: ${persona.personality || 'フレンドリー'}
+話し方: ${persona.tone_of_voice || 'カジュアル'}
+専門分野: ${persona.expertise?.join(', ') || 'なし'}
+
+以下のリプライに対して、このペルソナとして自然に返信してください。280文字以内で、ペルソナらしい口調で書いてください。
+
+元の投稿: ${postContent}
+リプライ: ${replyContent}`;
 
     const generatedReply = await generateWithGeminiRotation(prompt, persona.user_id);
 
