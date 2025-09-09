@@ -396,7 +396,7 @@ async function getReplyContext(replyId: string, supabase: any) {
     // 現在のリプライ情報を取得
     const { data: currentReply, error: replyError } = await supabase
       .from('thread_replies')
-      .select('thread_id, parent_id, content')
+      .select('original_post_id, reply_text')
       .eq('reply_id', replyId)
       .single();
 
@@ -405,11 +405,11 @@ async function getReplyContext(replyId: string, supabase: any) {
       return { originalPost: null, replyChain: null };
     }
 
-    const threadId = currentReply.thread_id;
+    const threadId = currentReply.original_post_id;
     let originalPost = null;
     let replyChain = null;
 
-    // 元投稿を取得（thread_idで検索）
+    // 元投稿を取得（original_post_idで検索）
     try {
       const { data: postData, error: postError } = await supabase
         .from('posts')
@@ -424,19 +424,19 @@ async function getReplyContext(replyId: string, supabase: any) {
       console.log('📝 元投稿情報なし（外部投稿の可能性）');
     }
 
-    // リプライチェーンを取得（同じthread_idの過去のリプライを時系列順で）
+    // リプライチェーンを取得（同じoriginal_post_idの過去のリプライを時系列順で）
     try {
       const { data: chainData, error: chainError } = await supabase
         .from('thread_replies')
-        .select('content, created_at, reply_id')
-        .eq('thread_id', threadId)
+        .select('reply_text, created_at, reply_id')
+        .eq('original_post_id', threadId)
         .neq('reply_id', replyId) // 現在のリプライは除外
         .order('created_at', { ascending: true })
         .limit(10); // 最大10件の過去リプライ
 
       if (!chainError && chainData && chainData.length > 0) {
         replyChain = chainData
-          .map((reply: any, index: number) => `${index + 1}. ${reply.content}`)
+          .map((reply: any, index: number) => `${index + 1}. ${reply.reply_text}`)
           .join('\n');
       }
     } catch (e) {
