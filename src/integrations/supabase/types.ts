@@ -1116,6 +1116,15 @@ export type Database = {
       }
     }
     Functions: {
+      audit_security_functions: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          function_name: string
+          recommendation: string
+          risk_level: string
+          security_mode: string
+        }[]
+      }
       authenticate_service_request: {
         Args: { request_headers: Json }
         Returns: boolean
@@ -1131,6 +1140,10 @@ export type Database = {
       calculate_timezone_aware_next_run: {
         Args: { current_schedule_time: string; timezone_name?: string }
         Returns: string
+      }
+      can_access_persona: {
+        Args: { persona_id_param: string }
+        Returns: boolean
       }
       check_admin_cron_access: {
         Args: Record<PropertyKey, never>
@@ -1167,7 +1180,15 @@ export type Database = {
         Args: { encrypted_token: string }
         Returns: string
       }
+      decrypt_access_token_safe: {
+        Args: { encrypted_token: string }
+        Returns: string
+      }
       encrypt_access_token: {
+        Args: { token: string }
+        Returns: string
+      }
+      encrypt_access_token_safe: {
         Args: { token: string }
         Returns: string
       }
@@ -1178,15 +1199,6 @@ export type Database = {
           jobid: number | null
           jobname: string | null
           schedule: string | null
-        }[]
-      }
-      get_cron_status_admin: {
-        Args: Record<PropertyKey, never>
-        Returns: {
-          active: boolean
-          jobid: number
-          jobname: string
-          schedule: string
         }[]
       }
       get_filtered_activity_logs_secure: {
@@ -1217,14 +1229,6 @@ export type Database = {
         Returns: {
           access_granted: boolean
           message: string
-        }[]
-      }
-      get_persona_tokens_secure: {
-        Args: { persona_id_param: string }
-        Returns: {
-          threads_access_token: string
-          threads_app_secret: string
-          webhook_verify_token: string
         }[]
       }
       get_security_recommendations: {
@@ -1279,6 +1283,10 @@ export type Database = {
           p_user_agent?: string
           p_user_id?: string
         }
+        Returns: undefined
+      }
+      log_security_event_safe: {
+        Args: { p_details?: Json; p_event_type: string }
         Returns: undefined
       }
       validate_password_strength: {
