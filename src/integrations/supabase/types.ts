@@ -709,6 +709,42 @@ export type Database = {
         }
         Relationships: []
       }
+      security_recommendations: {
+        Row: {
+          action_required: string
+          category: string
+          created_at: string | null
+          description: string
+          id: string
+          is_resolved: boolean | null
+          priority: string
+          title: string
+          updated_at: string | null
+        }
+        Insert: {
+          action_required: string
+          category: string
+          created_at?: string | null
+          description: string
+          id?: string
+          is_resolved?: boolean | null
+          priority: string
+          title: string
+          updated_at?: string | null
+        }
+        Update: {
+          action_required?: string
+          category?: string
+          created_at?: string | null
+          description?: string
+          id?: string
+          is_resolved?: boolean | null
+          priority?: string
+          title?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       self_reply_jobs: {
         Row: {
           attempt_count: number
@@ -1096,6 +1132,13 @@ export type Database = {
         Args: { current_schedule_time: string; timezone_name?: string }
         Returns: string
       }
+      check_admin_cron_access: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          access_granted: boolean
+          message: string
+        }[]
+      }
       check_login_attempts: {
         Args: { user_email: string }
         Returns: boolean
@@ -1169,12 +1212,28 @@ export type Database = {
           user_id: string
         }[]
       }
+      get_persona_tokens_safe: {
+        Args: { persona_id_param: string }
+        Returns: {
+          access_granted: boolean
+          message: string
+        }[]
+      }
       get_persona_tokens_secure: {
         Args: { persona_id_param: string }
         Returns: {
           threads_access_token: string
           threads_app_secret: string
           webhook_verify_token: string
+        }[]
+      }
+      get_security_recommendations: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          description: string
+          issue_type: string
+          recommendation: string
+          severity: string
         }[]
       }
       get_user_emails_for_admin: {
