@@ -1137,6 +1137,27 @@ export type Database = {
           schedule: string | null
         }[]
       }
+      get_cron_status_admin: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          active: boolean
+          jobid: number
+          jobname: string
+          schedule: string
+        }[]
+      }
+      get_filtered_activity_logs_secure: {
+        Args: { target_user_id?: string }
+        Returns: {
+          action_type: string
+          created_at: string
+          description: string
+          id: string
+          metadata: Json
+          persona_id: string
+          user_id: string
+        }[]
+      }
       get_persona_for_auto_reply: {
         Args: { persona_id_param: string }
         Returns: {
@@ -1146,6 +1167,14 @@ export type Database = {
           name: string
           threads_access_token: string
           user_id: string
+        }[]
+      }
+      get_persona_tokens_secure: {
+        Args: { persona_id_param: string }
+        Returns: {
+          threads_access_token: string
+          threads_app_secret: string
+          webhook_verify_token: string
         }[]
       }
       get_user_emails_for_admin: {
