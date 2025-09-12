@@ -1076,44 +1076,6 @@ export type Database = {
         }
         Relationships: []
       }
-      filtered_activity_logs: {
-        Row: {
-          action_type: string | null
-          created_at: string | null
-          description: string | null
-          id: string | null
-          metadata: Json | null
-          persona_id: string | null
-          user_id: string | null
-        }
-        Insert: {
-          action_type?: string | null
-          created_at?: string | null
-          description?: string | null
-          id?: string | null
-          metadata?: Json | null
-          persona_id?: string | null
-          user_id?: string | null
-        }
-        Update: {
-          action_type?: string | null
-          created_at?: string | null
-          description?: string | null
-          id?: string | null
-          metadata?: Json | null
-          persona_id?: string | null
-          user_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "activity_logs_persona_id_fkey"
-            columns: ["persona_id"]
-            isOneToOne: false
-            referencedRelation: "personas"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
     }
     Functions: {
       audit_security_functions: {
@@ -1192,6 +1154,16 @@ export type Database = {
         Args: { token: string }
         Returns: string
       }
+      generate_security_report: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          category: string
+          item: string
+          recommendation: string
+          risk_level: string
+          status: string
+        }[]
+      }
       get_cron_job_status: {
         Args: Record<PropertyKey, never>
         Returns: {
@@ -1238,6 +1210,27 @@ export type Database = {
           issue_type: string
           recommendation: string
           severity: string
+        }[]
+      }
+      get_system_status: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          component: string
+          details: Json
+          last_check: string
+          status: string
+        }[]
+      }
+      get_user_activity_logs: {
+        Args: { target_user_id?: string }
+        Returns: {
+          action_type: string
+          created_at: string
+          description: string
+          id: string
+          metadata: Json
+          persona_id: string
+          user_id: string
         }[]
       }
       get_user_emails_for_admin: {
