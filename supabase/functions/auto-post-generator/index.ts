@@ -488,11 +488,21 @@ serve(async (req) => {
         if (inserted.status !== 'scheduled') {
           const errorMsg = `CRITICAL: Post ${inserted.id} created with wrong status: ${inserted.status} (expected: scheduled)`;
           console.error(`🚨 ${errorMsg}`);
+          
+          // 🚨 CRITICAL: 壊れた投稿を即座に削除
+          await supabase.from('posts').delete().eq('id', inserted.id);
+          console.log(`🗑️ Deleted broken post ${inserted.id}`);
+          
           throw new Error(errorMsg);
         }
         if (!inserted.scheduled_for) {
           const errorMsg = `CRITICAL: Post ${inserted.id} created without scheduled_for date`;
           console.error(`🚨 ${errorMsg}`);
+          
+          // 🚨 CRITICAL: 壊れた投稿を即座に削除
+          await supabase.from('posts').delete().eq('id', inserted.id);
+          console.log(`🗑️ Deleted broken post ${inserted.id}`);
+          
           throw new Error(errorMsg);
         }
 
@@ -561,7 +571,26 @@ serve(async (req) => {
           }
         }
 
-        // 🚨 CRITICAL: 排他制御と二重チェック
+        // 🚨 CRITICAL: 排他制御と二重チェック（投稿作成前に実行）
+        const { data: preCreateCheck, error: preCheckError } = await supabase
+          .from('auto_post_configs')
+          .select('next_run_at, updated_at, is_active')
+          .eq('id', cfg.id)
+          .single();
+          
+        if (preCheckError || !preCreateCheck || !preCreateCheck.is_active) {
+          console.error(`🛑 Config ${cfg.id} is no longer active, aborting before post creation`);
+          failed++;
+          continue;
+        }
+        
+        // 次回実行時刻が変更されていないかチェック（重複実行防止）
+        if (preCreateCheck.next_run_at !== cfg.next_run_at) {
+          console.log(`⚠️ Config ${cfg.id} already processed by another instance. Safe abort.`);
+          continue;
+        }
+
+        // 🚨 CRITICAL: Post-creation validation and final check
         const { data: currentConfig, error: checkError } = await supabase
           .from('auto_post_configs')
           .select('next_run_at, updated_at, is_active')
