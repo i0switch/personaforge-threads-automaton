@@ -1091,6 +1091,14 @@ export type Database = {
         Args: { request_headers: Json }
         Returns: boolean
       }
+      auto_fix_queue_integrity: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
+      auto_fix_stuck_processing: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
       calculate_next_multi_time_run: {
         Args: {
           p_current_time: string
