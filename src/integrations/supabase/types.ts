@@ -156,20 +156,6 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "auto_post_configs_persona_id_fkey"
-            columns: ["persona_id"]
-            isOneToOne: false
-            referencedRelation: "personas"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "fk_auto_post_configs_persona"
-            columns: ["persona_id"]
-            isOneToOne: false
-            referencedRelation: "personas"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "fk_auto_post_configs_persona_id"
             columns: ["persona_id"]
             isOneToOne: false
@@ -407,13 +393,6 @@ export type Database = {
             referencedRelation: "personas"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "posts_persona_id_fkey"
-            columns: ["persona_id"]
-            isOneToOne: false
-            referencedRelation: "personas"
-            referencedColumns: ["id"]
-          },
         ]
       }
       profiles: {
@@ -491,21 +470,7 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_random_post_configs_persona"
-            columns: ["persona_id"]
-            isOneToOne: false
-            referencedRelation: "personas"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "fk_random_post_configs_persona_id"
-            columns: ["persona_id"]
-            isOneToOne: false
-            referencedRelation: "personas"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "random_post_configs_persona_id_fkey"
             columns: ["persona_id"]
             isOneToOne: false
             referencedRelation: "personas"
