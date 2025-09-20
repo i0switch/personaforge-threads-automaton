@@ -223,18 +223,36 @@ serve(async (req) => {
               })
               .eq('id', queueItem.post_id);
 
-            // 🚨 CRITICAL FIX: post_queue更新を確実に実行
-            const { error: queueUpdateError } = await supabase
-              .from('post_queue')
-              .update({
-                status: 'queued',
-                scheduled_for: nextRetryTime.toISOString()
-              })
-              .eq('id', queueItem.id);
+            // 🚨 CRITICAL FIX: post_queue更新を確実に実行（複数回試行）
+            let queueUpdateSuccess = false;
+            for (let attempt = 1; attempt <= 3; attempt++) {
+              try {
+                const { error: queueUpdateError } = await supabase
+                  .from('post_queue')
+                  .update({
+                    status: 'queued',
+                    scheduled_for: nextRetryTime.toISOString(),
+                    updated_at: now.toISOString()
+                  })
+                  .eq('id', queueItem.id);
 
-            if (queueUpdateError) {
-              console.error(`CRITICAL: Failed to update queue status for ${queueItem.id}:`, queueUpdateError);
-              // エラーでも処理を続行（processingで詰まることを防止）
+                if (!queueUpdateError) {
+                  queueUpdateSuccess = true;
+                  break;
+                }
+                console.warn(`Queue update attempt ${attempt}/3 failed for ${queueItem.id}:`, queueUpdateError);
+              } catch (attemptError) {
+                console.warn(`Queue update attempt ${attempt}/3 exception for ${queueItem.id}:`, attemptError);
+              }
+            }
+            
+            if (!queueUpdateSuccess) {
+              console.error(`CRITICAL: All queue update attempts failed for ${queueItem.id}, marking as failed`);
+              try {
+                await supabase.from('post_queue').update({ status: 'failed' }).eq('id', queueItem.id);
+              } catch (fallbackError) {
+                console.error(`CRITICAL: Fallback update also failed for ${queueItem.id}:`, fallbackError);
+              }
             }
           } else {
             // 最大リトライ回数を超えた場合は失敗状態に
@@ -247,27 +265,63 @@ serve(async (req) => {
               })
               .eq('id', queueItem.post_id);
 
-            // 🚨 CRITICAL FIX: post_queue更新を確実に実行
-            const { error: queueFailError } = await supabase
-              .from('post_queue')
-              .update({ status: 'failed' })
-              .eq('id', queueItem.id);
+            // 🚨 CRITICAL FIX: post_queue更新を確実に実行（複数回試行）
+            let queueFailSuccess = false;
+            for (let attempt = 1; attempt <= 3; attempt++) {
+              try {
+                const { error: queueFailError } = await supabase
+                  .from('post_queue')
+                  .update({ 
+                    status: 'failed',
+                    updated_at: now.toISOString()
+                  })
+                  .eq('id', queueItem.id);
 
-            if (queueFailError) {
-              console.error(`CRITICAL: Failed to update queue status to failed for ${queueItem.id}:`, queueFailError);
-              // エラーでも処理を続行（processingで詰まることを防止）
+                if (!queueFailError) {
+                  queueFailSuccess = true;
+                  break;
+                }
+                console.warn(`Queue fail update attempt ${attempt}/3 failed for ${queueItem.id}:`, queueFailError);
+              } catch (attemptError) {
+                console.warn(`Queue fail update attempt ${attempt}/3 exception for ${queueItem.id}:`, attemptError);
+              }
+            }
+            
+            if (!queueFailSuccess) {
+              console.error(`CRITICAL: Failed to update queue to failed after all attempts: ${queueItem.id}`);
             }
           }
         } catch (updateError) {
-          // 🚨 CRITICAL FIX: 更新処理でエラーが発生した場合の最終安全網
+          // 🚨 CRITICAL FIX: 更新処理でエラーが発生した場合の最終安全網（確実実行）
           console.error(`CRITICAL: Queue update failed for ${queueItem.id}, forcing to failed:`, updateError);
-          try {
-            await supabase
-              .from('post_queue')
-              .update({ status: 'failed' })
-              .eq('id', queueItem.id);
-          } catch (finalError) {
-            console.error(`CRITICAL: Final safety update failed for queue ${queueItem.id}:`, finalError);
+          let finalSafetySuccess = false;
+          for (let attempt = 1; attempt <= 5; attempt++) {
+            try {
+              const { error: finalError } = await supabase
+                .from('post_queue')
+                .update({ 
+                  status: 'failed',
+                  updated_at: now.toISOString()
+                })
+                .eq('id', queueItem.id);
+              
+              if (!finalError) {
+                finalSafetySuccess = true;
+                console.log(`Final safety update succeeded on attempt ${attempt} for ${queueItem.id}`);
+                break;
+              }
+              console.warn(`Final safety attempt ${attempt}/5 failed for ${queueItem.id}:`, finalError);
+            } catch (safetyError) {
+              console.warn(`Final safety attempt ${attempt}/5 exception for ${queueItem.id}:`, safetyError);
+            }
+            // 指数バックオフで待機
+            if (attempt < 5) {
+              await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 100));
+            }
+          }
+          
+          if (!finalSafetySuccess) {
+            console.error(`EMERGENCY: All final safety attempts failed for ${queueItem.id}. Manual intervention required.`);
           }
         }
       }

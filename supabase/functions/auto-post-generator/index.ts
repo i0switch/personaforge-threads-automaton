@@ -163,8 +163,8 @@ async function generateWithGeminiRotation(prompt: string, userId: string): Promi
   
   let lastError: Error | null = null;
   
-  // 🚨 CRITICAL: Limit retries to prevent quota exhaustion
-  const maxTries = Math.min(apiKeys.length, RATE_LIMITS.GEMINI_RETRY_LIMIT);
+  // 🚨 CRITICAL: Limit retries to prevent quota exhaustion (最大2回まで)
+  const maxTries = Math.min(apiKeys.length, 2); // さらに制限強化
   
   for (let i = 0; i < maxTries; i++) {
     const apiKey = apiKeys[i];
@@ -187,6 +187,7 @@ async function generateWithGeminiRotation(prompt: string, userId: string): Promi
         continue;
       } else {
         // For other errors, don't continue trying other keys
+        console.error(`Non-quota error detected, stopping retry attempts: ${error.message}`);
         throw error;
       }
     }
