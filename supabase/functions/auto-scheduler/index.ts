@@ -208,42 +208,67 @@ serve(async (req) => {
         const newRetryCount = (post.retry_count || 0) + 1;
         const maxRetries = post.max_retries || 3;
 
-        if (newRetryCount <= maxRetries) {
-          // リトライ回数内の場合は再スケジュール
-          const nextRetryTime = new Date();
-          nextRetryTime.setMinutes(nextRetryTime.getMinutes() + (newRetryCount * 15));
+        try {
+          if (newRetryCount <= maxRetries) {
+            // リトライ回数内の場合は再スケジュール
+            const nextRetryTime = new Date();
+            nextRetryTime.setMinutes(nextRetryTime.getMinutes() + (newRetryCount * 15));
 
-          await supabase
-            .from('posts')
-            .update({
-              retry_count: newRetryCount,
-              last_retry_at: now.toISOString(),
-              scheduled_for: nextRetryTime.toISOString()
-            })
-            .eq('id', queueItem.post_id);
+            await supabase
+              .from('posts')
+              .update({
+                retry_count: newRetryCount,
+                last_retry_at: now.toISOString(),
+                scheduled_for: nextRetryTime.toISOString()
+              })
+              .eq('id', queueItem.post_id);
 
-          await supabase
-            .from('post_queue')
-            .update({
-              status: 'queued',
-              scheduled_for: nextRetryTime.toISOString()
-            })
-            .eq('id', queueItem.id);
-        } else {
-          // 最大リトライ回数を超えた場合は失敗状態に
-          await supabase
-            .from('posts')
-            .update({
-              status: 'failed',
-              retry_count: newRetryCount,
-              last_retry_at: now.toISOString()
-            })
-            .eq('id', queueItem.post_id);
+            // 🚨 CRITICAL FIX: post_queue更新を確実に実行
+            const { error: queueUpdateError } = await supabase
+              .from('post_queue')
+              .update({
+                status: 'queued',
+                scheduled_for: nextRetryTime.toISOString()
+              })
+              .eq('id', queueItem.id);
 
-          await supabase
-            .from('post_queue')
-            .update({ status: 'failed' })
-            .eq('id', queueItem.id);
+            if (queueUpdateError) {
+              console.error(`CRITICAL: Failed to update queue status for ${queueItem.id}:`, queueUpdateError);
+              // エラーでも処理を続行（processingで詰まることを防止）
+            }
+          } else {
+            // 最大リトライ回数を超えた場合は失敗状態に
+            await supabase
+              .from('posts')
+              .update({
+                status: 'failed',
+                retry_count: newRetryCount,
+                last_retry_at: now.toISOString()
+              })
+              .eq('id', queueItem.post_id);
+
+            // 🚨 CRITICAL FIX: post_queue更新を確実に実行
+            const { error: queueFailError } = await supabase
+              .from('post_queue')
+              .update({ status: 'failed' })
+              .eq('id', queueItem.id);
+
+            if (queueFailError) {
+              console.error(`CRITICAL: Failed to update queue status to failed for ${queueItem.id}:`, queueFailError);
+              // エラーでも処理を続行（processingで詰まることを防止）
+            }
+          }
+        } catch (updateError) {
+          // 🚨 CRITICAL FIX: 更新処理でエラーが発生した場合の最終安全網
+          console.error(`CRITICAL: Queue update failed for ${queueItem.id}, forcing to failed:`, updateError);
+          try {
+            await supabase
+              .from('post_queue')
+              .update({ status: 'failed' })
+              .eq('id', queueItem.id);
+          } catch (finalError) {
+            console.error(`CRITICAL: Final safety update failed for queue ${queueItem.id}:`, finalError);
+          }
         }
       }
     }
