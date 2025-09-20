@@ -396,7 +396,10 @@ serve(async (req) => {
     // 3. ランダムポスト設定を取得（制限付き）
     const { data: randomConfigs, error: randomCfgError } = await supabase
       .from('random_post_configs')
-      .select('*, personas!random_post_configs_persona_id_fkey(id, user_id, name, tone_of_voice, expertise, personality)')
+      .select(`
+        *,
+        personas!persona_id(id, user_id, name, tone_of_voice, expertise, personality)
+      `)
       .eq('is_active', true)
       .limit(RATE_LIMITS.MAX_TOTAL_POSTS_PER_RUN); // 🚨 CRITICAL: Limit random posts too
 
