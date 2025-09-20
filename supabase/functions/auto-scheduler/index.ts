@@ -60,7 +60,7 @@ serve(async (req) => {
         *,
         posts!inner(
           *,
-          personas!inner(threads_access_token)
+          personas!fk_posts_persona_id(threads_access_token)
         )
       `)
       .eq('status', 'queued')
@@ -82,7 +82,7 @@ serve(async (req) => {
       .from('posts')
       .select(`
         *,
-        personas!inner(threads_access_token)
+        personas!fk_posts_persona_id(threads_access_token)
       `)
       .eq('status', 'scheduled')
       .not('scheduled_for', 'is', null)

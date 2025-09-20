@@ -46,8 +46,8 @@ export const MonitoringDashboard = () => {
         .from('personas')
         .select(`
           id, name, is_active,
-          auto_post_configs!auto_post_configs_persona_id_fkey(id, is_active, next_run_at, created_at),
-          random_post_configs!random_post_configs_persona_id_fkey(id, is_active, next_run_at, created_at)
+          auto_post_configs!fk_auto_post_configs_persona_id(id, is_active, next_run_at, created_at),
+          random_post_configs!fk_random_post_configs_persona_id(id, is_active, next_run_at, created_at)
         `)
         .eq('is_active', true);
 
