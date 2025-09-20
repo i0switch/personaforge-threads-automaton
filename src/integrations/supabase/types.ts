@@ -169,6 +169,13 @@ export type Database = {
             referencedRelation: "personas"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "fk_auto_post_configs_persona_id"
+            columns: ["persona_id"]
+            isOneToOne: false
+            referencedRelation: "personas"
+            referencedColumns: ["id"]
+          },
         ]
       }
       auto_replies: {
@@ -394,6 +401,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "fk_posts_persona_id"
+            columns: ["persona_id"]
+            isOneToOne: false
+            referencedRelation: "personas"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "posts_persona_id_fkey"
             columns: ["persona_id"]
             isOneToOne: false
@@ -484,6 +498,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "fk_random_post_configs_persona_id"
+            columns: ["persona_id"]
+            isOneToOne: false
+            referencedRelation: "personas"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "random_post_configs_persona_id_fkey"
             columns: ["persona_id"]
             isOneToOne: false
@@ -551,6 +572,13 @@ export type Database = {
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "fk_reply_check_settings_persona_id"
+            columns: ["persona_id"]
+            isOneToOne: false
+            referencedRelation: "personas"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "reply_check_settings_persona_id_fkey"
             columns: ["persona_id"]
