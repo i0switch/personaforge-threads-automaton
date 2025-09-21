@@ -398,7 +398,7 @@ serve(async (req) => {
       .from('random_post_configs')
       .select(`
         *,
-        personas!persona_id(id, user_id, name, tone_of_voice, expertise, personality)
+        personas!fk_random_post_configs_persona_id(id, user_id, name, tone_of_voice, expertise, personality)
       `)
       .eq('is_active', true)
       .limit(RATE_LIMITS.MAX_TOTAL_POSTS_PER_RUN); // 🚨 CRITICAL: Limit random posts too
