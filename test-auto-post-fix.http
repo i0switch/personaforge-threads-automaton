@@ -1,0 +1,8 @@
+### Test auto-post-generator after PGRST201 fix
+POST https://tqcgbsnoiarnawnppwia.supabase.co/functions/v1/auto-post-generator
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRxY2dic25vaWFybmF3bnBwd2lhIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0OTkxNTE4MSwiZXhwIjoyMDY1NDkxMTgxfQ.ZWCOCguMwfGY4V37KKaOb0RhRDW6pZfgLWEMbgT11-c
+Content-Type: application/json
+
+{
+  "test_mode": true
+}
