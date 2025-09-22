@@ -229,7 +229,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       console.log('Attempting signup for:', email); // デバッグ用ログ追加
       // 本番環境のURLを強制使用
       const redirectUrl = 'https://threads-genius-ai.lovable.app/';
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
@@ -240,6 +240,47 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         }
       });
       console.log('Signup result:', error ? 'error' : 'success'); // デバッグ用ログ追加
+      
+      // サインアップ成功時にプロファイルとアカウントステータスを作成
+      if (!error && data.user) {
+        try {
+          console.log('Creating profile for new user:', data.user.id);
+          
+          // プロファイル作成
+          const { error: profileError } = await supabase
+            .from('profiles')
+            .insert({
+              user_id: data.user.id,
+              display_name: displayName || email
+            });
+          
+          if (profileError) {
+            console.error('Profile creation error:', profileError);
+          } else {
+            console.log('Profile created successfully');
+          }
+          
+          // アカウントステータス作成
+          const { error: statusError } = await supabase
+            .from('user_account_status')
+            .insert({
+              user_id: data.user.id,
+              is_active: true,
+              is_approved: true,
+              persona_limit: 1
+            });
+          
+          if (statusError) {
+            console.error('Account status creation error:', statusError);
+          } else {
+            console.log('Account status created successfully');
+          }
+        } catch (profileCreationError) {
+          console.error('Error creating user profile data:', profileCreationError);
+          // プロファイル作成エラーはサインアップをブロックしない
+        }
+      }
+      
       return { error };
     } catch (error) {
       console.error('Signup error:', error); // デバッグ用ログ追加
