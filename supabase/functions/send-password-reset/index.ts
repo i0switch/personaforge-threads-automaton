@@ -105,6 +105,14 @@ const handler = async (req: Request): Promise<Response> => {
 
     console.log("Password reset email sent successfully:", emailResponse);
 
+    // Log detailed email response for debugging
+    if (emailResponse.error) {
+      console.error("Resend API error:", emailResponse.error);
+      throw new Error(`メール送信エラー: ${emailResponse.error.message}`);
+    }
+    
+    console.log("Email sent with ID:", emailResponse.data?.id);
+
     return new Response(JSON.stringify({ success: true }), {
       status: 200,
       headers: {
