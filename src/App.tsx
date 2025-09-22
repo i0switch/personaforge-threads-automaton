@@ -25,6 +25,7 @@ import AutoPostSchedules from "@/pages/AutoPostSchedules";
 import RandomPostConfig from "@/pages/RandomPostConfig";
 import SelfReplySettings from "@/pages/SelfReplySettings";
 import ErrorDashboard from "@/pages/ErrorDashboard";
+import PasswordReset from "@/pages/PasswordReset";
 
 const queryClient = new QueryClient();
 
@@ -39,6 +40,7 @@ function App() {
                 <ErrorBoundary>
                   <Routes>
                     <Route path="/auth" element={<Auth />} />
+                    <Route path="/auth/reset-password" element={<PasswordReset />} />
                     <Route
                       path="/"
                       element={

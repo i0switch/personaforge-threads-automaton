@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, Mail } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -25,6 +25,8 @@ const Auth = () => {
   const [displayName, setDisplayName] = useState("");
   const [error, setError] = useState("");
   const [isBlocked, setIsBlocked] = useState(false);
+  const [resetEmail, setResetEmail] = useState("");
+  const [resetSent, setResetSent] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -141,6 +143,35 @@ const Auth = () => {
     }
   };
 
+  const handlePasswordReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setIsLoading(true);
+
+    try {
+      // Call our password reset edge function
+      const response = await supabase.functions.invoke('send-password-reset', {
+        body: { email: resetEmail }
+      });
+
+      if (response.error) {
+        throw response.error;
+      }
+
+      setResetSent(true);
+      toast({
+        title: "パスワードリセットメール送信完了",
+        description: "リセット用のリンクをメールでお送りしました。メールをご確認ください。",
+      });
+
+    } catch (error: any) {
+      console.error("Password reset error:", error);
+      setError(error.message || "パスワードリセットメールの送信に失敗しました。");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   if (user) {
     return null;
   }
@@ -166,9 +197,10 @@ const Auth = () => {
           </CardHeader>
           <CardContent>
             <Tabs defaultValue="signin" className="w-full">
-              <TabsList className="grid w-full grid-cols-2">
+              <TabsList className="grid w-full grid-cols-3">
                 <TabsTrigger value="signin">ログイン</TabsTrigger>
                 <TabsTrigger value="signup">新規登録</TabsTrigger>
+                <TabsTrigger value="reset">リセット</TabsTrigger>
               </TabsList>
 
               <TabsContent value="signin">
@@ -216,6 +248,23 @@ const Auth = () => {
                   <Button type="submit" className="w-full" disabled={isLoading || isBlocked}>
                     {isLoading ? "ログイン中..." : "ログイン"}
                   </Button>
+
+                  <div className="text-center">
+                    <Button
+                      type="button"
+                      variant="link"
+                      className="text-sm"
+                      onClick={() => {
+                        // Switch to reset tab and set email if provided
+                        const tabs = document.querySelector('[role="tablist"]') as HTMLElement;
+                        const resetTab = tabs?.querySelector('[value="reset"]') as HTMLElement;
+                        resetTab?.click();
+                        if (email) setResetEmail(email);
+                      }}
+                    >
+                      パスワードを忘れた方はこちら
+                    </Button>
+                  </div>
                 </form>
               </TabsContent>
 
@@ -280,6 +329,65 @@ const Auth = () => {
                     {isLoading ? "作成中..." : "アカウント作成"}
                   </Button>
                 </form>
+              </TabsContent>
+
+              <TabsContent value="reset">
+                {resetSent ? (
+                  <div className="text-center space-y-4">
+                    <div className="mx-auto w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+                      <Mail className="h-6 w-6 text-blue-600" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900">
+                        メールを送信しました
+                      </h3>
+                      <p className="text-sm text-gray-600 mt-2">
+                        {resetEmail} にパスワードリセット用のリンクを送信しました。
+                        メールをご確認ください。
+                      </p>
+                    </div>
+                    <Button
+                      onClick={() => {
+                        setResetSent(false);
+                        setResetEmail("");
+                      }}
+                      variant="outline"
+                      className="w-full"
+                    >
+                      別のメールアドレスでリセット
+                    </Button>
+                  </div>
+                ) : (
+                  <form onSubmit={handlePasswordReset} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="reset-email">メールアドレス</Label>
+                      <Input
+                        id="reset-email"
+                        type="email"
+                        value={resetEmail}
+                        onChange={(e) => setResetEmail(e.target.value)}
+                        placeholder="your@email.com"
+                        required
+                        autoComplete="email"
+                      />
+                      <p className="text-sm text-gray-600">
+                        登録済みのメールアドレスを入力してください。
+                        パスワードリセット用のリンクをお送りします。
+                      </p>
+                    </div>
+
+                    {error && (
+                      <Alert variant="destructive">
+                        <AlertCircle className="h-4 w-4" />
+                        <AlertDescription>{error}</AlertDescription>
+                      </Alert>
+                    )}
+
+                    <Button type="submit" className="w-full" disabled={isLoading}>
+                      {isLoading ? "送信中..." : "リセットリンクを送信"}
+                    </Button>
+                  </form>
+                )}
               </TabsContent>
             </Tabs>
           </CardContent>
