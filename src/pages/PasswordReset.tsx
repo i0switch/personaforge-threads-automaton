@@ -28,15 +28,16 @@ const PasswordReset = () => {
   const type = searchParams.get("type");
 
   useEffect(() => {
-    // If user is already logged in, redirect to home
-    if (user) {
-      navigate("/");
+    // Check if we have the required tokens first
+    if (!accessToken || !refreshToken || type !== "recovery") {
+      setError("無効なパスワードリセットリンクです。再度リセットを実行してください。");
       return;
     }
 
-    // Check if we have the required tokens
-    if (!accessToken || !refreshToken || type !== "recovery") {
-      setError("無効なパスワードリセットリンクです。再度リセットを実行してください。");
+    // If user is already logged in but we have reset tokens, allow password reset
+    // Only redirect if no reset tokens are present
+    if (user && (!accessToken || !refreshToken || type !== "recovery")) {
+      navigate("/");
       return;
     }
 
