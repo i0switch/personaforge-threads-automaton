@@ -32,13 +32,13 @@ const handler = async (req: Request): Promise<Response> => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // Generate password reset link using Supabase
-    const resetUrl = "https://threads-genius-ai.lovable.app/auth/reset-password";
+    const redirectTo = "https://threads-genius-ai.lovable.app/auth/reset-password";
     
     const { data, error: resetError } = await supabase.auth.admin.generateLink({
       type: 'recovery',
       email: email,
       options: {
-        redirectTo: resetUrl,
+        redirectTo: redirectTo,
       }
     });
 
@@ -56,6 +56,9 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     console.log("Reset link generated successfully for:", email);
+    
+    // Use the actual generated link
+    const actualResetUrl = data.properties?.action_link || redirectTo;
 
     // Send email with Resend
     const emailResponse = await resend.emails.send({
@@ -77,7 +80,7 @@ const handler = async (req: Request): Promise<Response> => {
           </div>
           
           <div style="text-align: center; margin: 30px 0;">
-            <a href="${resetUrl}" 
+            <a href="${actualResetUrl}" 
                style="background-color: #007bff; color: white; padding: 12px 30px; 
                       text-decoration: none; border-radius: 5px; display: inline-block;
                       font-weight: bold;">
