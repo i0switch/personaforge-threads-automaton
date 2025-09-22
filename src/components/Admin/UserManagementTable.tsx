@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
-import { Search, UserCheck, UserX, Loader2, Trash2, ExternalLink, Edit } from "lucide-react";
+import { Search, UserCheck, UserX, Loader2, Trash2, ExternalLink, Edit, Key } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -342,6 +342,55 @@ export const UserManagementTable = () => {
     }));
   };
 
+  const resetUserPassword = async (email: string) => {
+    const newPassword = prompt(`${email} の新しいパスワードを入力してください（8文字以上）:`);
+    
+    if (!newPassword) {
+      return;
+    }
+
+    if (newPassword.length < 8) {
+      toast({
+        title: "エラー",
+        description: "パスワードは8文字以上である必要があります。",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!confirm(`${email} のパスワードを「${newPassword}」にリセットしますか？`)) {
+      return;
+    }
+
+    setUpdating(email);
+    
+    try {
+      const { data, error } = await supabase.functions.invoke('admin-reset-password', {
+        body: {
+          email: email,
+          newPassword: newPassword
+        }
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "成功",
+        description: `${email} のパスワードをリセットしました。`,
+      });
+
+    } catch (error) {
+      console.error('Error resetting password:', error);
+      toast({
+        title: "エラー",
+        description: "パスワードリセットに失敗しました。",
+        variant: "destructive",
+      });
+    } finally {
+      setUpdating(null);
+    }
+  };
+
   const filteredUsers = users.filter(user => {
     const matchesSearch = user.display_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          user.email.toLowerCase().includes(searchTerm.toLowerCase());
@@ -513,6 +562,21 @@ export const UserManagementTable = () => {
                         <>
                           <UserCheck className="h-4 w-4 mr-1" />
                           承認
+                        </>
+                      )}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => resetUserPassword(userAccount.email)}
+                      disabled={updating === userAccount.user_id || updating === userAccount.email}
+                    >
+                      {updating === userAccount.email ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <>
+                          <Key className="h-4 w-4 mr-1" />
+                          パスワードリセット
                         </>
                       )}
                     </Button>
