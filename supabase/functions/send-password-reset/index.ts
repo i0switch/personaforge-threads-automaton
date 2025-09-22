@@ -31,11 +31,19 @@ const handler = async (req: Request): Promise<Response> => {
     
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Check if user exists
-    const { data: users, error: userError } = await supabase.auth.admin.listUsers();
-    const userExists = users?.users.some(user => user.email === email);
+    // Generate password reset link using Supabase
+    const resetUrl = "https://threads-genius-ai.lovable.app/auth/reset-password";
+    
+    const { data, error: resetError } = await supabase.auth.admin.generateLink({
+      type: 'recovery',
+      email: email,
+      options: {
+        redirectTo: resetUrl,
+      }
+    });
 
-    if (!userExists) {
+    if (resetError) {
+      console.error("Error generating reset link:", resetError);
       // Don't reveal if user exists or not for security
       console.log("Password reset requested for non-existent user:", email);
       return new Response(JSON.stringify({ success: true }), {
@@ -47,21 +55,7 @@ const handler = async (req: Request): Promise<Response> => {
       });
     }
 
-    // Generate password reset link using Supabase
-    const resetUrl = "https://threads-genius-ai.lovable.app/auth/reset-password";
-    
-    const { error: resetError } = await supabase.auth.admin.generateLink({
-      type: 'recovery',
-      email: email,
-      options: {
-        redirectTo: resetUrl,
-      }
-    });
-
-    if (resetError) {
-      console.error("Error generating reset link:", resetError);
-      throw new Error("パスワードリセットリンクの生成に失敗しました");
-    }
+    console.log("Reset link generated successfully for:", email);
 
     // Send email with Resend
     const emailResponse = await resend.emails.send({
