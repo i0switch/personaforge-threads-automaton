@@ -65,7 +65,7 @@ const handler = async (req: Request): Promise<Response> => {
 
     // Send email with Resend
     const emailResponse = await resend.emails.send({
-      from: "Threads-Genius AI <noreply@threads-genius-ai.lovable.app>",
+      from: "Threads-Genius AI <onboarding@resend.dev>",
       to: [email],
       subject: "パスワードリセットのご案内",
       html: `
