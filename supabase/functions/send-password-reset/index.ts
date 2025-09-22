@@ -23,16 +23,25 @@ const handler = async (req: Request): Promise<Response> => {
   try {
     const { email }: PasswordResetRequest = await req.json();
 
-    console.log("Password reset requested for:", email);
+    console.log("=== Password Reset Start ===");
+    console.log("Email:", email);
+    console.log("Timestamp:", new Date().toISOString());
 
     // Initialize Supabase client
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     
+    if (!supabaseUrl || !supabaseServiceKey) {
+      console.error("Missing Supabase configuration");
+      throw new Error("サーバー設定エラー");
+    }
+    
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    console.log("Supabase client initialized");
 
     // Generate password reset link using Supabase
     const redirectTo = "https://threads-genius-ai.lovable.app/auth/reset-password";
+    console.log("Generating reset link for:", email);
     
     const { data, error: resetError } = await supabase.auth.admin.generateLink({
       type: 'recovery',
@@ -43,7 +52,8 @@ const handler = async (req: Request): Promise<Response> => {
     });
 
     if (resetError) {
-      console.error("Error generating reset link:", resetError);
+      console.error("Generate link error:", resetError);
+      console.error("Error details:", JSON.stringify(resetError, null, 2));
       // Don't reveal if user exists or not for security
       console.log("Password reset requested for non-existent user:", email);
       return new Response(JSON.stringify({ success: true }), {
@@ -55,12 +65,23 @@ const handler = async (req: Request): Promise<Response> => {
       });
     }
 
-    console.log("Reset link generated successfully for:", email);
+    console.log("Reset link generated successfully");
+    console.log("Link data:", data ? "Present" : "Missing");
     
     // Use the actual generated link
     const actualResetUrl = data.properties?.action_link || redirectTo;
+    console.log("Using reset URL:", actualResetUrl.substring(0, 50) + "...");
+
+    // Check Resend API key
+    const resendApiKey = Deno.env.get("RESEND_API_KEY");
+    if (!resendApiKey) {
+      console.error("Missing RESEND_API_KEY");
+      throw new Error("メール送信サービス設定エラー");
+    }
+    console.log("Resend API key present");
 
     // Send email with Resend
+    console.log("Sending email to:", email);
     const emailResponse = await resend.emails.send({
       from: "Threads-Genius AI <onboarding@resend.dev>",
       to: [email],
@@ -103,15 +124,17 @@ const handler = async (req: Request): Promise<Response> => {
       `,
     });
 
-    console.log("Password reset email sent successfully:", emailResponse);
+    console.log("Email response status:", emailResponse.data ? "Success" : "Error");
 
     // Log detailed email response for debugging
     if (emailResponse.error) {
       console.error("Resend API error:", emailResponse.error);
+      console.error("Full error:", JSON.stringify(emailResponse.error, null, 2));
       throw new Error(`メール送信エラー: ${emailResponse.error.message}`);
     }
     
     console.log("Email sent with ID:", emailResponse.data?.id);
+    console.log("=== Password Reset Success ===");
 
     return new Response(JSON.stringify({ success: true }), {
       status: 200,
