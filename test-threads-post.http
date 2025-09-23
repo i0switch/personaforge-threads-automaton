@@ -1,4 +1,4 @@
-### Test threads-post function with authentication fix
+### Test threads-post function with THAA token fix
 POST https://tqcgbsnoiarnawnppwia.supabase.co/functions/v1/threads-post
 Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRxY2dic25vaWFybmF3bnBwd2lhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk5MTUxODEsImV4cCI6MjA2NTQ5MTE4MX0.5_mXobtncEbIHyigC_EqP-z1cr7AWYepR7L2CZwjBvI
 Content-Type: application/json
