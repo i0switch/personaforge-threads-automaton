@@ -26,6 +26,7 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { useAccountStatus } from "@/hooks/useAccountStatus";
 import { AccountStatusBanner } from "@/components/AccountStatusBanner";
+import { TokenMissingAlert } from "@/components/PersonaSetup/TokenMissingAlert";
 import { supabase } from "@/integrations/supabase/client";
 
 const Index = () => {
@@ -188,6 +189,8 @@ const Index = () => {
         </div>
 
         <AccountStatusBanner />
+        
+        <TokenMissingAlert />
 
         {/* Enhanced Admin Section */}
 
