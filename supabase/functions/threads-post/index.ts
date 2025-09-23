@@ -335,20 +335,27 @@ serve(async (req) => {
     let threadsAccessToken: string | null = null;
     
     try {
-      // retrieve-secretファンクションを使用してトークンを取得
+      // retrieve-secretファンクションを認証付きで呼び出し
       const { data: tokenData, error: tokenError } = await supabase.functions.invoke('retrieve-secret', {
         body: { 
           key: `threads_access_token_${post.persona_id}`,
           fallback: post.personas?.threads_access_token
+        },
+        headers: {
+          Authorization: `Bearer ${supabaseServiceKey}`
         }
       });
 
-      if (tokenData?.secret && !tokenError) {
+      console.log('🔍 Token response:', { success: tokenData?.success, source: tokenData?.source, hasSecret: !!tokenData?.secret });
+
+      if (tokenData?.success && tokenData?.secret && tokenData.secret !== 'null' && tokenData.secret !== null) {
         console.log('✅ トークン取得成功（retrieve-secret）');
         threadsAccessToken = tokenData.secret;
       } else if (post.personas?.threads_access_token?.startsWith('THAA')) {
         console.log('✅ 非暗号化トークン使用');
         threadsAccessToken = post.personas.threads_access_token;
+      } else {
+        console.log('⚠️ トークンが取得できませんでした:', { tokenData, tokenError });
       }
     } catch (error) {
       console.error('❌ トークン復号化エラー:', error);
