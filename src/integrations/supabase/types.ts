@@ -1071,6 +1071,13 @@ export type Database = {
       }
     }
     Functions: {
+      admin_reschedule_all_failed_posts: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          persona_name: string
+          rescheduled_count: number
+        }[]
+      }
       audit_security_functions: {
         Args: Record<PropertyKey, never>
         Returns: {
@@ -1282,6 +1289,10 @@ export type Database = {
       log_security_event_safe: {
         Args: { p_details?: Json; p_event_type: string }
         Returns: undefined
+      }
+      reschedule_failed_posts_for_persona: {
+        Args: { p_persona_id: string }
+        Returns: number
       }
       validate_password_strength: {
         Args: { password: string }
