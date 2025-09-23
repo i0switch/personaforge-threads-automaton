@@ -4,6 +4,6 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 Content-Type: application/json
 
 {
-  "postId": "118b3da3-3a19-46ca-aea4-6ff52b5b8ee8",
+  "postId": "e314f194-a4ec-45d3-ac72-ea953fe3fe2b",
   "userId": "506e9e3d-f3f3-4920-b467-ab3d39183679"
 }
