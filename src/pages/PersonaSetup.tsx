@@ -327,8 +327,25 @@ const PersonaSetup = () => {
         setShowLimitDialog(true);
         return;
       }
-      
-      setEditingPersona(null);
+       
+      setEditingPersona({
+        id: '',
+        user_id: user?.id || '',
+        name: '',
+        age: '',
+        personality: '',
+        expertise: '',
+        tone_of_voice: '',
+        avatar_url: '',
+        threads_app_id: '',
+        threads_app_secret: '',
+        threads_access_token: '',
+        threads_username: '',
+        webhook_verify_token: '',
+        auto_reply_enabled: false,
+        ai_auto_reply_enabled: false,
+        auto_reply_delay_minutes: 0
+      });
       setIsEditing(true);
     }, 200);
   };

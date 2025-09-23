@@ -170,6 +170,7 @@ export const usePersonaLimit = () => {
     }
 
     return () => {
+      console.log('🧹 Cleaning up usePersonaLimit subscriptions');
       try {
         if (accountChannel) supabase.removeChannel(accountChannel);
         if (personasChannel) supabase.removeChannel(personasChannel);

@@ -38,21 +38,23 @@ serve(async (req) => {
       });
     }
 
-    // アクティブなリプライチェック設定を取得
-    const { data: checkSettings } = await supabase
-      .from('reply_check_settings')
-      .select(`
-        *,
-        personas (
-          id,
-          name,
-          user_id,
-          threads_username,
-          ai_auto_reply_enabled,
-          auto_reply_enabled
-        )
-      `)
-      .eq('is_active', true);
+  // アクティブなリプライチェック設定を取得（アクティブなペルソナのみ）
+  const { data: checkSettings } = await supabase
+    .from('reply_check_settings')
+    .select(`
+      *,
+      personas!inner (
+        id,
+        name,
+        user_id,
+        threads_username,
+        ai_auto_reply_enabled,
+        auto_reply_enabled,
+        is_active
+      )
+    `)
+    .eq('is_active', true)
+    .eq('personas.is_active', true);
 
     if (!checkSettings || checkSettings.length === 0) {
       console.log('No active reply check settings found');
