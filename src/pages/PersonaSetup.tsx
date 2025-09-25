@@ -89,25 +89,63 @@ const PersonaSetup = () => {
       
       if (sessionError) {
         console.error('Session error:', sessionError);
-        throw new Error('認証セッションの取得に失敗しました');
+        throw new Error('認証セッションの取得に失敗しました。再ログインしてください。');
       }
       
       if (!session || !session.access_token) {
         console.error('No valid session found');
-        throw new Error('有効なセッションが見つかりません。再ログインしてください');
+        throw new Error('有効なセッションが見つかりません。再ログインしてください。');
       }
 
-      // JWTトークンの有効性を確認
-      const tokenPayload = JSON.parse(atob(session.access_token.split('.')[1]));
+      // JWTトークンの構造と有効性を確認
+      let tokenPayload: any;
+      try {
+        tokenPayload = JSON.parse(atob(session.access_token.split('.')[1]));
+      } catch (parseError) {
+        console.error('Invalid JWT token format:', parseError);
+        await supabase.auth.signOut({ scope: 'local' });
+        throw new Error('認証トークンが無効です。再ログインしてください。');
+      }
+
+      // subクレーム（ユーザーID）の存在確認
+      if (!tokenPayload.sub) {
+        console.error('JWT token missing sub claim (user ID)');
+        await supabase.auth.signOut({ scope: 'local' });
+        throw new Error('認証トークンにユーザーIDが含まれていません。再ログインしてください。');
+      }
+
+      // トークンの有効期限確認
       const currentTime = Math.floor(Date.now() / 1000);
-      
       if (tokenPayload.exp && tokenPayload.exp < currentTime) {
         console.error('Token expired, attempting refresh...');
         const { data: refreshedSession, error: refreshError } = await supabase.auth.refreshSession();
         
         if (refreshError || !refreshedSession.session) {
-          throw new Error('セッションの更新に失敗しました。再ログインしてください');
+          console.error('Token refresh failed:', refreshError);
+          await supabase.auth.signOut({ scope: 'local' });
+          throw new Error('セッションの更新に失敗しました。再ログインしてください。');
         }
+        
+        // リフレッシュされたセッションの再検証
+        const refreshedPayload = JSON.parse(atob(refreshedSession.session.access_token.split('.')[1]));
+        if (!refreshedPayload.sub) {
+          console.error('Refreshed token also missing sub claim');
+          await supabase.auth.signOut({ scope: 'local' });
+          throw new Error('認証トークンが無効です。再ログインしてください。');
+        }
+      }
+
+      // auth.uid()が実際に機能するかテスト
+      const { data: testData, error: testError } = await supabase
+        .from('user_account_status')
+        .select('user_id')
+        .eq('user_id', user.id)
+        .limit(1);
+
+      if (testError && (testError.message.includes('invalid claim') || testError.message.includes('bad_jwt'))) {
+        console.error('Auth UID test failed:', testError);
+        await supabase.auth.signOut({ scope: 'local' });
+        throw new Error('認証状態が無効です。再ログインしてください。');
       }
 
       console.log('Authentication validated successfully');
@@ -273,6 +311,17 @@ const PersonaSetup = () => {
       await refetchLimit();
     } catch (error) {
       console.error("Error saving persona:", error);
+      
+      // 認証エラーの場合は自動的にログアウトしてログインページにリダイレクト
+      if (error instanceof Error && 
+          (error.message.includes('再ログインしてください') || 
+           error.message.includes('認証トークン') ||
+           error.message.includes('認証状態が無効'))) {
+        setTimeout(() => {
+          window.location.href = '/auth';
+        }, 2000);
+      }
+      
       toast({
         title: "エラー",
         description: error instanceof Error ? error.message : "ペルソナの保存に失敗しました。",
