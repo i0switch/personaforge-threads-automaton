@@ -175,7 +175,7 @@ const PersonaSetup = () => {
 
         const response = await supabase.functions.invoke('save-secret', {
           body: {
-            keyName: `threads_app_secret_${editingPersona?.id || 'new'}`,
+            keyName: `threads_app_secret_${editingPersona?.id || `new_${Date.now()}`}`,
             keyValue: formData.threads_app_secret
           },
           headers: {
@@ -377,7 +377,7 @@ const PersonaSetup = () => {
       }
        
       setEditingPersona({
-        id: '',
+        id: null as any,
         user_id: user?.id || '',
         name: '',
         age: '',
