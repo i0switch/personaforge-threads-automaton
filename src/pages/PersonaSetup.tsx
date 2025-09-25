@@ -127,12 +127,21 @@ const PersonaSetup = () => {
         user_id: user.id
       };
 
+      // セッション確認とリフレッシュ
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !session) {
+        console.error('認証セッションエラー:', sessionError);
+        toast({
+          title: "認証エラー",
+          description: "セッションが無効です。ログインし直してください。",
+          variant: "destructive",
+        });
+        return;
+      }
+
       // threads_app_secretが入力されている場合のみ暗号化して保存
       if (formData.threads_app_secret && formData.threads_app_secret.trim() !== "" && formData.threads_app_secret !== "***設定済み***") {
         console.log("Encrypting threads_app_secret for persona:", editingPersona?.id || 'new');
-        
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) throw new Error('認証が必要です');
 
         const response = await supabase.functions.invoke('save-secret', {
           body: {
@@ -172,13 +181,22 @@ const PersonaSetup = () => {
           description: "ペルソナが更新されました。",
         });
       } else {
+        // セッション確認してからINSERT実行
+        const { data: { session: currentSession } } = await supabase.auth.getSession();
+        if (!currentSession) {
+          throw new Error('認証セッションが無効です。ログインし直してください。');
+        }
+
         const { data: insertedData, error } = await supabase
           .from("personas")
           .insert([personaData])
           .select('id')
           .single();
 
-        if (error) throw error;
+        if (error) {
+          console.error('Persona insert error:', error);
+          throw error;
+        }
         
         personaId = insertedData.id;
         
