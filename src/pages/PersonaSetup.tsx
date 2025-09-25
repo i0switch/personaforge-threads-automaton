@@ -186,15 +186,15 @@ const PersonaSetup = () => {
       
       let personaData: any = {
         name: formData.name,
-        age: formData.age,
-        personality: formData.personality,
+        age: formData.age || null,
+        personality: formData.personality || null,
         expertise: expertiseArray,
-        tone_of_voice: formData.tone_of_voice,
-        avatar_url: formData.avatar_url || null,
-        threads_app_id: formData.threads_app_id || null,
-        threads_access_token: formData.threads_access_token || null,
-        threads_username: formData.threads_username || null,
-        webhook_verify_token: formData.webhook_verify_token || null,
+        tone_of_voice: formData.tone_of_voice || null,
+        avatar_url: formData.avatar_url?.trim() || null,
+        threads_app_id: formData.threads_app_id?.trim() || null,
+        threads_access_token: formData.threads_access_token?.trim() || null,
+        threads_username: formData.threads_username?.trim() || null,
+        webhook_verify_token: formData.webhook_verify_token?.trim() || null,
         auto_reply_enabled: formData.auto_reply_enabled || false,
         ai_auto_reply_enabled: formData.ai_auto_reply_enabled || false,
         auto_reply_delay_minutes: formData.auto_reply_delay_minutes || 0,
@@ -208,7 +208,7 @@ const PersonaSetup = () => {
       }
 
       // threads_app_secretが入力されている場合のみ暗号化して保存
-      if (formData.threads_app_secret && formData.threads_app_secret.trim() !== "" && formData.threads_app_secret !== "***設定済み***") {
+      if (formData.threads_app_secret?.trim() && formData.threads_app_secret.trim() !== "" && formData.threads_app_secret !== "***設定済み***") {
         console.log("Encrypting threads_app_secret for persona:", editingPersona?.id || 'new');
 
         const response = await supabase.functions.invoke('save-secret', {
