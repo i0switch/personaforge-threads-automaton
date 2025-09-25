@@ -39,21 +39,39 @@ export const PersonaForm = ({ editingPersona, onSubmit, onCancel }: PersonaFormP
     if (editingPersona) {
       setFormData({
         name: editingPersona.name || "",
-        age: editingPersona.age || "",
-        personality: editingPersona.personality || "",
+        age: editingPersona.age ?? "",
+        personality: editingPersona.personality ?? "",
         expertise: Array.isArray(editingPersona.expertise) 
           ? editingPersona.expertise.join(", ") 
           : "",
-        tone_of_voice: editingPersona.tone_of_voice || "",
-        avatar_url: editingPersona.avatar_url || "",
-        threads_app_id: editingPersona.threads_app_id || "",
+        tone_of_voice: editingPersona.tone_of_voice ?? "",
+        avatar_url: editingPersona.avatar_url ?? "",
+        threads_app_id: editingPersona.threads_app_id ?? "",
         threads_app_secret: editingPersona.threads_app_secret ? "***設定済み***" : "",
-        threads_access_token: editingPersona.threads_access_token || "",
-        threads_username: editingPersona.threads_username || "",
-        webhook_verify_token: editingPersona.webhook_verify_token || "",
+        threads_access_token: editingPersona.threads_access_token ?? "",
+        threads_username: editingPersona.threads_username ?? "",
+        webhook_verify_token: editingPersona.webhook_verify_token ?? "",
         auto_reply_enabled: editingPersona.auto_reply_enabled || false,
         ai_auto_reply_enabled: editingPersona.ai_auto_reply_enabled || false,
         auto_reply_delay_minutes: editingPersona.auto_reply_delay_minutes || 0
+      });
+    } else {
+      // 新規作成時は完全にリセット
+      setFormData({
+        name: "",
+        age: "",
+        personality: "",
+        expertise: "",
+        tone_of_voice: "",
+        avatar_url: "",
+        threads_app_id: "",
+        threads_app_secret: "",
+        threads_access_token: "",
+        threads_username: "",
+        webhook_verify_token: "",
+        auto_reply_enabled: false,
+        ai_auto_reply_enabled: false,
+        auto_reply_delay_minutes: 0
       });
     }
   }, [editingPersona]);

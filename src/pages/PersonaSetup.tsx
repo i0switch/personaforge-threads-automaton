@@ -234,7 +234,7 @@ const PersonaSetup = () => {
 
       let personaId: string;
       
-      if (editingPersona) {
+      if (editingPersona && editingPersona.id) {
         const { error } = await supabase
           .from("personas")
           .update(personaData)
