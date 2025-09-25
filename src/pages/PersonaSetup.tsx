@@ -73,41 +73,77 @@ const PersonaSetup = () => {
   };
 
   const handleSubmit = async (formData: PersonaFormData) => {
-    if (!user) return;
-
-    // 新規作成時のペルソナ上限チェック（最新の情報で再確認）
-    if (!editingPersona) {
-      await refetchLimit();
-      
-      // 再度現在のペルソナ数を直接確認
-      const { data: currentPersonas, error: countError } = await supabase
-        .from("personas")
-        .select("id")
-        .eq("user_id", user.id);
-
-      if (countError) {
-        console.error("Error checking current persona count:", countError);
-        toast({
-          title: "エラー",
-          description: "ペルソナ数の確認に失敗しました。",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      const currentCount = currentPersonas?.length || 0;
-      const limit = limitInfo?.personaLimit || 1;
-
-      console.log(`Before creation: ${currentCount}/${limit} personas`);
-
-      if (currentCount >= limit) {
-        console.log('Persona limit reached, showing dialog');
-        setShowLimitDialog(true);
-        return;
-      }
+    if (!user) {
+      toast({
+        title: "認証エラー",
+        description: "ログインしていません。",
+        variant: "destructive",
+      });
+      return;
     }
 
     try {
+      // セッション確認とリフレッシュを最初に実行
+      console.log('Checking authentication session...');
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError) {
+        console.error('Session error:', sessionError);
+        throw new Error('認証セッションの取得に失敗しました');
+      }
+      
+      if (!session || !session.access_token) {
+        console.error('No valid session found');
+        throw new Error('有効なセッションが見つかりません。再ログインしてください');
+      }
+
+      // JWTトークンの有効性を確認
+      const tokenPayload = JSON.parse(atob(session.access_token.split('.')[1]));
+      const currentTime = Math.floor(Date.now() / 1000);
+      
+      if (tokenPayload.exp && tokenPayload.exp < currentTime) {
+        console.error('Token expired, attempting refresh...');
+        const { data: refreshedSession, error: refreshError } = await supabase.auth.refreshSession();
+        
+        if (refreshError || !refreshedSession.session) {
+          throw new Error('セッションの更新に失敗しました。再ログインしてください');
+        }
+      }
+
+      console.log('Authentication validated successfully');
+
+      // 新規作成時のペルソナ上限チェック（最新の情報で再確認）
+      if (!editingPersona) {
+        await refetchLimit();
+        
+        // 再度現在のペルソナ数を直接確認
+        const { data: currentPersonas, error: countError } = await supabase
+          .from("personas")
+          .select("id")
+          .eq("user_id", user.id);
+
+        if (countError) {
+          console.error("Error checking current persona count:", countError);
+          toast({
+            title: "エラー",
+            description: "ペルソナ数の確認に失敗しました。",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        const currentCount = currentPersonas?.length || 0;
+        const limit = limitInfo?.personaLimit || 1;
+
+        console.log(`Before creation: ${currentCount}/${limit} personas`);
+
+        if (currentCount >= limit) {
+          console.log('Persona limit reached, showing dialog');
+          setShowLimitDialog(true);
+          return;
+        }
+      }
+
       const expertiseArray = formData.expertise.split(',').map((item: string) => item.trim()).filter(Boolean);
       
       let personaData: any = {
@@ -127,16 +163,10 @@ const PersonaSetup = () => {
         user_id: user.id
       };
 
-      // セッション確認とリフレッシュ
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError || !session) {
-        console.error('認証セッションエラー:', sessionError);
-        toast({
-          title: "認証エラー",
-          description: "セッションが無効です。ログインし直してください。",
-          variant: "destructive",
-        });
-        return;
+      // セッション確認とリフレッシュ（2回目確認）
+      const { data: { session: finalSession } } = await supabase.auth.getSession();
+      if (!finalSession) {
+        throw new Error('最終認証チェックに失敗しました');
       }
 
       // threads_app_secretが入力されている場合のみ暗号化して保存
@@ -149,7 +179,7 @@ const PersonaSetup = () => {
             keyValue: formData.threads_app_secret
           },
           headers: {
-            Authorization: `Bearer ${session.access_token}`,
+            Authorization: `Bearer ${finalSession.access_token}`,
           },
         });
 
