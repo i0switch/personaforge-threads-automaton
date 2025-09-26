@@ -166,20 +166,12 @@ async function processReply(persona: any, reply: any): Promise<boolean> {
       return false;
     }
 
-    // リプライが既に存在するかチェック
-    const { data: existingReply } = await supabase
-      .from('thread_replies')
-      .select('id, auto_reply_sent')
-      .eq('reply_id', reply.id)
-      .maybeSingle();
-
-    if (existingReply) {
+    // Step 1: リプライをデータベースに保存（重複チェックも兼ねる）
+    const saveResult = await saveReplyToDatabaseSafe(persona, reply);
+    if (!saveResult.isNew) {
       console.log(`⏭️ 既に処理済みのリプライ: ${reply.id}`);
       return false;
     }
-
-    // Step 1: リプライをデータベースに保存
-    await saveReplyToDatabase(persona, reply);
 
     // Step 2: アクティビティログを記録
     await logActivity(persona.user_id, persona.id, 'reply_received', 
@@ -233,32 +225,62 @@ async function processReply(persona: any, reply: any): Promise<boolean> {
   }
 }
 
-// リプライをデータベースに保存
-async function saveReplyToDatabase(persona: any, reply: any): Promise<void> {
+// リプライをデータベースに保存（重複チェック付き）
+async function saveReplyToDatabaseSafe(persona: any, reply: any): Promise<{ isNew: boolean }> {
   console.log(`💾 リプライをデータベースに保存中: ${reply.id}`);
 
-  const { error } = await supabase
-    .from('thread_replies')
-    .upsert({
-      user_id: persona.user_id,
-      persona_id: persona.id,
-      original_post_id: reply.replied_to?.id || reply.root_post?.id,
-      reply_id: reply.id,
-      reply_text: reply.text || '',
-      reply_author_id: reply.username,
-      reply_author_username: reply.username,
-      reply_timestamp: new Date(reply.timestamp || Date.now()).toISOString(),
-      auto_reply_sent: false
-    }, {
-      onConflict: 'reply_id'
-    });
+  try {
+    // まず、既存のリプライをチェック
+    const { data: existingReply } = await supabase
+      .from('thread_replies')
+      .select('id, auto_reply_sent')
+      .eq('reply_id', reply.id)
+      .maybeSingle();
 
-  if (error) {
-    console.error('❌ リプライ保存エラー:', error);
+    if (existingReply) {
+      console.log(`⏭️ 既に存在するリプライ: ${reply.id}`);
+      return { isNew: false };
+    }
+
+    // 新しいリプライを挿入（INSERTのみ使用で重複エラーを回避）
+    const { error } = await supabase
+      .from('thread_replies')
+      .insert({
+        user_id: persona.user_id,
+        persona_id: persona.id,
+        original_post_id: reply.replied_to?.id || reply.root_post?.id,
+        reply_id: reply.id,
+        reply_text: reply.text || '',
+        reply_author_id: reply.username,
+        reply_author_username: reply.username,
+        reply_timestamp: new Date(reply.timestamp || Date.now()).toISOString(),
+        auto_reply_sent: false
+      });
+
+    if (error) {
+      // 重複エラーの場合（unique constraint violation）
+      if (error.code === '23505') {
+        console.log(`⏭️ 重複によりスキップ: ${reply.id}`);
+        return { isNew: false };
+      }
+      console.error('❌ リプライ保存エラー:', error);
+      throw error;
+    }
+
+    console.log(`✅ リプライ保存完了: ${reply.id}`);
+    return { isNew: true };
+  } catch (error) {
+    console.error('❌ リプライ保存処理エラー:', error);
     throw error;
   }
+}
 
-  console.log(`✅ リプライ保存完了: ${reply.id}`);
+// 既存の関数も保持（後方互換性のため）
+async function saveReplyToDatabase(persona: any, reply: any): Promise<void> {
+  const result = await saveReplyToDatabaseSafe(persona, reply);
+  if (!result.isNew) {
+    throw new Error('Reply already exists');
+  }
 }
 
 // トリガー自動返信（定型文）を処理
