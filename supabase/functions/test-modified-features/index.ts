@@ -7,6 +7,29 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+interface TestResult {
+  test: string;
+  persona?: any;
+  replyId?: any;
+  replyText?: any;
+  success: boolean;
+  details: any;
+  responseFormat?: string[] | null;
+  error?: any;
+  extractedReplies?: { id: string; text: string; }[];
+}
+
+interface TestResults {
+  testTime: string;
+  tests: TestResult[];
+  summary?: {
+    total: number;
+    successful: number;
+    failed: number;
+    successRate: number;
+  };
+}
+
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -19,7 +42,7 @@ serve(async (req) => {
   }
 
   try {
-    const testResults = {
+    const testResults: TestResults = {
       testTime: new Date().toISOString(),
       tests: []
     };
@@ -58,7 +81,7 @@ serve(async (req) => {
             test: 'Token Retrieval',
             persona: persona.name,
             success: false,
-            details: error.message
+            details: error instanceof Error ? error.message : String(error)
           });
         }
       }
@@ -102,7 +125,7 @@ serve(async (req) => {
       testResults.tests.push({
         test: 'AI Reply Response Format',
         success: false,
-        details: error.message
+        details: error instanceof Error ? error.message : String(error)
       });
     }
 
@@ -150,7 +173,7 @@ serve(async (req) => {
         testResults.tests.push({
           test: 'Trigger Reply Test',
           success: false,
-          details: error.message
+          details: error instanceof Error ? error.message : String(error)
         });
       }
     } else {
@@ -253,7 +276,7 @@ serve(async (req) => {
     console.error('❌ テスト実行エラー:', error);
     return new Response(JSON.stringify({ 
       error: 'Test execution failed',
-      details: error.message,
+      details: error instanceof Error ? error.message : String(error),
       timestamp: new Date().toISOString()
     }), {
       status: 500,

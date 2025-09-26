@@ -151,14 +151,15 @@ async function generateWithGeminiRotation(prompt: string, userId: string): Promi
       console.log(`Successfully generated content with API key ${i + 1}`);
       return generatedPrompt;
     } catch (error) {
-      console.log(`API key ${i + 1} failed:`, error.message);
-      lastError = error;
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.log(`API key ${i + 1} failed:`, errorMessage);
+      lastError = error instanceof Error ? error : new Error(String(error));
       
       // Check if it's a quota/rate limit error that should trigger rotation
-      if (error.message.includes('429') || 
-          error.message.includes('quota') || 
-          error.message.includes('RESOURCE_EXHAUSTED') ||
-          error.message.includes('Rate limit')) {
+      if (errorMessage.includes('429') || 
+          errorMessage.includes('quota') || 
+          errorMessage.includes('RESOURCE_EXHAUSTED') ||
+          errorMessage.includes('Rate limit')) {
         console.log(`Rate limit/quota error detected, trying next API key...`);
         continue;
       } else {
@@ -242,7 +243,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: false,
-        error: error.message || 'Failed to generate image prompt'
+        error: (error instanceof Error ? error.message : String(error)) || 'Failed to generate image prompt'
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
     )

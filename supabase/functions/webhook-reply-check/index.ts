@@ -67,17 +67,17 @@ serve(async (req) => {
       const persona = setting.personas;
       
       try {
-        console.log(`Checking replies for persona: ${persona.name} (${persona.id})`);
+        console.log(`Checking replies for persona: ${(persona as any).name} (${(persona as any).id})`);
         
         // アクセストークンを個別に取得（復号化のため）
         const { data: personaWithToken } = await supabase
           .from('personas')
           .select('threads_access_token')
-          .eq('id', persona.id)
+          .eq('id', (persona as any).id)
           .maybeSingle();
 
         if (!personaWithToken?.threads_access_token) {
-          console.log(`Skipping persona ${persona.id} - no access token`);
+          console.log(`Skipping persona ${(persona as any).id} - no access token`);
           return 0;
         }
 
@@ -86,7 +86,7 @@ serve(async (req) => {
           .rpc('decrypt_access_token', { encrypted_token: personaWithToken.threads_access_token });
 
         if (decryptError || !decryptedToken) {
-          console.log(`Skipping persona ${persona.id} - token decryption failed:`, decryptError);
+          console.log(`Skipping persona ${(persona as any).id} - token decryption failed:`, decryptError);
           return 0;
         }
 
@@ -95,7 +95,7 @@ serve(async (req) => {
         const { data: recentPosts } = await supabase
           .from('posts')
           .select('id, content, published_at')
-          .eq('persona_id', persona.id)
+          .eq('persona_id', (persona as any).id)
           .eq('status', 'published')
           .not('published_at', 'is', null)
           .gte('published_at', twentyFourHoursAgo)
@@ -103,7 +103,7 @@ serve(async (req) => {
           .limit(5); // 最新5件のみチェック
 
         if (!recentPosts || recentPosts.length === 0) {
-          console.log(`No recent posts found for persona ${persona.id}`);
+          console.log(`No recent posts found for persona ${(persona as any).id}`);
           return 0;
         }
 
@@ -129,7 +129,7 @@ serve(async (req) => {
         return repliesFound;
 
       } catch (error) {
-        console.error(`Error processing persona ${persona.id}:`, error);
+        console.error(`Error processing persona ${(persona as any).id}:`, error);
         return 0;
       }
     });
@@ -154,7 +154,7 @@ serve(async (req) => {
     console.error('Webhook reply check error:', error);
     return new Response(JSON.stringify({ 
       error: 'Internal server error',
-      message: error.message 
+      message: error instanceof Error ? error.message : String(error) 
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 500

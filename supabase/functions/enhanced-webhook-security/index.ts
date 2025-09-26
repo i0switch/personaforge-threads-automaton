@@ -57,7 +57,7 @@ async function checkRateLimit(endpoint: string, identifier: string): Promise<boo
         endpoint,
         identifier,
         request_count: existing ? existing.request_count + 1 : 1,
-        window_start: existing ? existing.window_start : new Date().toISOString()
+        window_start: (existing as any)?.window_start || new Date().toISOString()
       }, {
         onConflict: 'endpoint,identifier'
       });

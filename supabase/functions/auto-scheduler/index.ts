@@ -456,7 +456,7 @@ serve(async (req) => {
     console.error('=== Auto-scheduler error ===', error);
     return new Response(
       JSON.stringify({ 
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
         success: false,
         timestamp: new Date().toISOString()
       }),

@@ -110,7 +110,7 @@ serve(async (req) => {
     
     return new Response(
       JSON.stringify({ 
-        error: error.message || 'APIキーの暗号化に失敗しました' 
+        error: (error instanceof Error ? error.message : String(error)) || 'APIキーの暗号化に失敗しました' 
       }),
       { 
         status: 400,

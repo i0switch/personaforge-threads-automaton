@@ -92,7 +92,7 @@ serve(async (req) => {
           console.log('✅ ユーザー認証成功:', user.id);
         }
       } catch (authErr) {
-        console.log('⚠️ 認証をスキップ（内部呼び出し）:', authErr.message);
+        console.log('⚠️ 認証をスキップ（内部呼び出し）:', authErr instanceof Error ? authErr.message : String(authErr));
       }
     }
 
@@ -113,7 +113,7 @@ serve(async (req) => {
           console.log('📍 ユーザーIDをfallbackから特定:', userId);
         }
       } catch (err) {
-        console.log('⚠️ fallbackからのユーザー特定失敗:', err.message);
+        console.log('⚠️ fallbackからのユーザー特定失敗:', err instanceof Error ? err.message : String(err));
       }
     }
 
@@ -224,7 +224,7 @@ serve(async (req) => {
       );
 
     } catch (decryptError) {
-      console.error('❌ 復号化失敗:', decryptError.message);
+      console.error('❌ 復号化失敗:', decryptError instanceof Error ? decryptError.message : String(decryptError));
       console.log('🔄 復号化失敗のためfallbackを返します');
       
       return new Response(
@@ -247,7 +247,7 @@ serve(async (req) => {
     
     return new Response(
       JSON.stringify({ 
-        error: error.message || 'APIキーの取得に失敗しました' 
+        error: (error instanceof Error ? error.message : String(error)) || 'APIキーの取得に失敗しました' 
       }),
       { 
         status: 500,

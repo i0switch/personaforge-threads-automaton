@@ -687,7 +687,7 @@ serve(async (req) => {
       // Safe fire-and-forget
       // eslint-disable-next-line @typescript-eslint/no-floating-promises
       supabase.functions.invoke('self-reply-processor', { body: { limit: 10 } })
-        .then((res) => console.log('Triggered self-reply-processor:', res.status))
+        .then((res) => console.log('Triggered self-reply-processor:', res.data))
         .catch((e) => console.error('Failed to trigger self-reply-processor', e));
     } catch (e) {
       console.error('Self-reply trigger error', e);
@@ -709,10 +709,10 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('Error in threads-post function:', error);
-    console.error('Error stack:', error.stack);
+    console.error('Error stack:', error instanceof Error ? error.stack : 'no stack');
     return new Response(
       JSON.stringify({ 
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
         success: false 
       }),
       { 

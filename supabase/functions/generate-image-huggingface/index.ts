@@ -1,7 +1,7 @@
 
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { Client } from "npm:@gradio/client@latest";
+import { Client } from "https://esm.sh/@gradio/client@1.15.3";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -91,7 +91,7 @@ serve(async (req) => {
     const clientOptions = {};
     if (hfToken) {
       console.log('Using HF_TOKEN for authentication');
-      clientOptions.hf_token = hfToken;
+      (clientOptions as any).hf_token = hfToken;
     }
     
     // Gradio Clientを使用して接続
@@ -132,12 +132,12 @@ serve(async (req) => {
     console.log('=== PROCESSING RESPONSE ===');
     console.log('Result data:', result.data);
     
-    if (!result || !result.data || !result.data[0]) {
+    if (!result || !result.data || !(result.data as any)[0]) {
       console.error('No valid result received from Gradio');
       throw new Error('No image data received from Gradio API');
     }
     
-    let imageData = result.data[0];
+    let imageData = (result.data as any)[0];
     console.log('Image data type:', typeof imageData);
     
     // 結果の処理
@@ -194,16 +194,16 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('=== ERROR ===');
-    console.error('Error type:', error.constructor.name);
-    console.error('Error message:', error.message);
-    console.error('Error stack:', error.stack);
+    console.error('Error type:', error instanceof Error ? error.constructor.name : 'unknown');
+    console.error('Error message:', error instanceof Error ? error.message : String(error));
+    console.error('Error stack:', error instanceof Error ? error.stack : 'no stack');
     
     return new Response(
       JSON.stringify({ 
         success: false,
         error: 'Image generation failed', 
-        details: error.message,
-        type: error.constructor.name
+        details: error instanceof Error ? error.message : String(error),
+        type: error instanceof Error ? error.constructor.name : 'unknown'
       }),
       {
         status: 500,

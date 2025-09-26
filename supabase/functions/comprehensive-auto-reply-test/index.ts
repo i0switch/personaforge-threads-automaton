@@ -177,7 +177,7 @@ serve(async (req) => {
     console.error('❌ 包括テストエラー:', error);
     return new Response(JSON.stringify({ 
       success: false,
-      error: error.message,
+      error: error instanceof Error ? error.message : String(error),
       testResults: []
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

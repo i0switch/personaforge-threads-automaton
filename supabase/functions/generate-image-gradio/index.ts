@@ -126,12 +126,12 @@ serve(async (req) => {
 
     console.log('Gradio result structure:', result);
 
-    if (!result.data || !result.data[0]) {
+    if (!result.data || !(result.data as any)[0]) {
       throw new Error('No image data returned from Gradio space');
     }
 
     // The result should contain the generated image data
-    const imageData = result.data[0];
+    const imageData = (result.data as any)[0];
     console.log('Generated image data type:', typeof imageData);
     console.log('Generated image data preview:', typeof imageData === 'string' ? imageData.substring(0, 100) + '...' : imageData);
     

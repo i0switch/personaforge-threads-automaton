@@ -62,7 +62,7 @@ serve(async (req) => {
         try {
           const keyMaterial = await crypto.subtle.importKey(
             'raw',
-            encoder.encode(encryptionKey.padEnd(32, '0').slice(0, 32)),
+            encoder.encode(encryptionKey?.padEnd(32, '0').slice(0, 32) || '0'.repeat(32)),
             { name: 'AES-GCM' },
             false,
             ['decrypt']
@@ -176,14 +176,15 @@ serve(async (req) => {
           console.log(`Successfully generated content with API key ${i + 1}`);
           return generatedReply;
         } catch (error) {
-          console.log(`API key ${i + 1} failed:`, error.message);
-          lastError = error;
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          console.log(`API key ${i + 1} failed:`, errorMessage);
+          lastError = error instanceof Error ? error : new Error(String(error));
           
           // Check if it's a quota/rate limit error that should trigger rotation
-          if (error.message.includes('429') || 
-              error.message.includes('quota') || 
-              error.message.includes('RESOURCE_EXHAUSTED') ||
-              error.message.includes('Rate limit')) {
+          if (errorMessage.includes('429') || 
+              errorMessage.includes('quota') || 
+              errorMessage.includes('RESOURCE_EXHAUSTED') ||
+              errorMessage.includes('Rate limit')) {
             console.log(`Rate limit/quota error detected, trying next API key...`);
             continue;
           } else {
@@ -229,7 +230,7 @@ serve(async (req) => {
     
     return new Response(
       JSON.stringify({ 
-        error: error.message || 'Failed to generate auto reply' 
+        error: (error instanceof Error ? error.message : String(error)) || 'Failed to generate auto reply' 
       }),
       { 
         status: 500,
