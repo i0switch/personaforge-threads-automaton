@@ -132,6 +132,23 @@ serve(async (req) => {
       return c;
     };
 
+    // 長時間processingのままのキューアイテムをクリーンアップ（スタックした処理を防ぐ）
+    const timeoutMinutes = 10;
+    const timeoutThreshold = new Date(now.getTime() - timeoutMinutes * 60 * 1000);
+    
+    const { data: timeoutItems, error: timeoutError } = await supabase
+      .from('post_queue')
+      .update({ status: 'failed', updated_at: new Date().toISOString() })
+      .eq('status', 'processing')
+      .lt('updated_at', timeoutThreshold.toISOString())
+      .select('id');
+
+    if (timeoutError) {
+      console.error('Error cleaning up timeout queue items:', timeoutError);
+    } else if (timeoutItems && timeoutItems.length > 0) {
+      console.warn(`🔧 Auto-fixed ${timeoutItems.length} stuck processing queue items`);
+    }
+
     let processedCount = 0;
     let successCount = 0;
     let failedCount = 0;
@@ -170,15 +187,25 @@ serve(async (req) => {
         }
         processedRunCount.set(personaId, runCount + 1);
 
-        // キューアイテムを処理中に更新
-        const { error: updateQueueError } = await supabase
+        // アトミックな状態更新：queuedからprocessingに変更（既に処理中の場合はスキップ）
+        const { data: lockResult, error: lockError } = await supabase
           .from('post_queue')
-          .update({ status: 'processing' })
-          .eq('id', queueItem.id);
+          .update({ status: 'processing', updated_at: new Date().toISOString() })
+          .eq('id', queueItem.id)
+          .eq('status', 'queued') // 重要：queuedの場合のみ更新
+          .select('id');
 
-        if (updateQueueError) {
-          console.error('Error updating queue status:', updateQueueError);
+        if (lockError) {
+          console.error('Error locking queue item:', lockError);
+          continue;
         }
+
+        if (!lockResult || lockResult.length === 0) {
+          console.warn(`⏭️ Queue item ${queueItem.id} already processed by another instance, skipping`);
+          continue;
+        }
+
+        console.log(`🔒 Successfully locked queue item ${queueItem.id} for processing`);
 
         // Threads投稿を実行
         const { data: postResult, error: postError } = await supabase.functions.invoke('threads-post', {
@@ -195,12 +222,23 @@ serve(async (req) => {
 
         // threads-post関数内で既にキューステータスは'completed'に更新済み
         // ここでは追加の更新は不要（重複更新を防止）
-        console.log(`Queue item ${queueItem.id} already updated to completed by threads-post`);
+        console.log(`✅ Queue item ${queueItem.id} processing completed successfully`);
         
         successCount++;
 
       } catch (error) {
         console.error(`Error processing queue item ${queueItem.id}:`, error);
+        
+        // 失敗した場合はステータスをfailedに更新
+        try {
+          await supabase
+            .from('post_queue')
+            .update({ status: 'failed', updated_at: new Date().toISOString() })
+            .eq('id', queueItem.id);
+        } catch (updateError) {
+          console.error('Failed to update queue item status to failed:', updateError);
+        }
+        
         failedCount++;
 
         // 失敗時の処理
