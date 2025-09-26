@@ -199,7 +199,7 @@ async function generateWithGeminiRotation(prompt: string, userId: string): Promi
 
 async function generateWithGemini(prompt: string, apiKey: string): Promise<string> {
   if (!apiKey) throw new Error('Gemini API key is not configured');
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
 
   const body = {
     contents: [
