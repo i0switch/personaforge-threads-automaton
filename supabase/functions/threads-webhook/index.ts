@@ -283,6 +283,37 @@ async function saveReplyToDatabase(persona: any, reply: any): Promise<void> {
   }
 }
 
+// 絵文字とテキストの正規化関数
+function normalizeEmojiAndText(text: string): string {
+  if (!text) return '';
+  
+  return text
+    .normalize('NFC') // Unicode正規化
+    .replace(/[\uFE0E\uFE0F]/g, '') // variation selector除去
+    .replace(/\s+/g, ' ') // 複数空白を単一空白に
+    .trim()
+    .toLowerCase();
+}
+
+// より柔軟なキーワードマッチング
+function isKeywordMatch(replyText: string, keyword: string): boolean {
+  const normalizedReply = normalizeEmojiAndText(replyText);
+  const normalizedKeyword = normalizeEmojiAndText(keyword);
+  
+  // 完全一致チェック
+  if (normalizedReply === normalizedKeyword) {
+    return true;
+  }
+  
+  // 部分一致チェック（絵文字の場合は完全一致を優先）
+  if (normalizedKeyword.length > 1) {
+    return normalizedReply.includes(normalizedKeyword);
+  }
+  
+  // 単一文字（絵文字など）の場合は厳密チェック
+  return normalizedReply === normalizedKeyword;
+}
+
 // トリガー自動返信（定型文）を処理
 async function processTemplateAutoReply(persona: any, reply: any): Promise<{ sent: boolean, method?: string }> {
   console.log(`🎯 定型文自動返信チェック開始`);
@@ -301,19 +332,20 @@ async function processTemplateAutoReply(persona: any, reply: any): Promise<{ sen
 
   console.log(`✅ 定型文自動返信設定が有効 - persona: ${persona.name}, 設定数: ${autoRepliesSettings.length}`);
 
-  const replyText = (reply.text || '').trim().toLowerCase();
-  console.log(`🔍 リプライテキスト: "${replyText}"`);
+  const replyText = reply.text || '';
+  const normalizedReply = normalizeEmojiAndText(replyText);
+  console.log(`🔍 リプライテキスト: "${replyText}" → 正規化: "${normalizedReply}"`);
 
   for (const setting of autoRepliesSettings) {
     const keywords = setting.trigger_keywords || [];
     console.log(`🔑 チェック中のキーワード:`, keywords);
 
     for (const keyword of keywords) {
-      const cleanKeyword = keyword.trim().toLowerCase();
-      console.log(`🔍 キーワード "${cleanKeyword}" をテキスト "${replyText}" と照合中`);
+      const normalizedKeyword = normalizeEmojiAndText(keyword);
+      console.log(`🔍 キーワード "${keyword}" → 正規化: "${normalizedKeyword}" をテキストと照合中`);
       
-      if (replyText.includes(cleanKeyword)) {
-        console.log(`🎉 キーワードマッチ: "${keyword}" → 返信: "${setting.response_template}"`);
+      if (isKeywordMatch(replyText, keyword)) {
+        console.log(`🎉 キーワードマッチ成功: "${keyword}" → 返信: "${setting.response_template}"`);
         
         try {
           // 遅延時間を取得（定型文設定の遅延時間またはペルソナのデフォルト遅延時間）
