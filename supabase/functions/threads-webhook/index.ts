@@ -653,16 +653,19 @@ async function getAccessToken(persona: any): Promise<string | null> {
   }
 }
 
-// auto_reply_sentフラグを更新
+// auto_reply_sentフラグと返信ステータスを更新
 async function updateAutoReplySentFlag(replyId: string, sent: boolean): Promise<void> {
   try {
     const { error } = await supabase
       .from('thread_replies')
-      .update({ auto_reply_sent: sent })
+      .update({ 
+        auto_reply_sent: sent,
+        reply_status: sent ? 'completed' : 'pending'
+      })
       .eq('reply_id', replyId);
     
     if (error) {
-      console.error('❌ auto_reply_sentフラグ更新エラー:', error);
+      console.error('❌ 返信ステータス更新エラー:', error);
     } else {
       console.log(`✅ auto_reply_sentフラグ更新完了: ${replyId} -> ${sent}`);
     }
