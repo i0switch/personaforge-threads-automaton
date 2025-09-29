@@ -1181,6 +1181,14 @@ export type Database = {
           schedule: string | null
         }[]
       }
+      get_duplicate_queue_items: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          duplicate_count: number
+          post_id: string
+          status: string
+        }[]
+      }
       get_filtered_activity_logs_secure: {
         Args: { target_user_id?: string }
         Returns: {

@@ -238,8 +238,8 @@ async function testErrorMonitoring() {
 
 function evaluateQuality(results: any) {
   let score = 0;
-  const recommendations = [];
-  const critical_issues = [];
+  const recommendations: string[] = [];
+  const critical_issues: string[] = [];
 
   // スコア計算 (100点満点)
   Object.entries(results).forEach(([key, result]: [string, any]) => {
