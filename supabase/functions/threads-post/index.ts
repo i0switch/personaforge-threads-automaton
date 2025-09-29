@@ -97,19 +97,13 @@ serve(async (req) => {
     }
 
     // Safety guard: Check persona scheduled time (except manual "publish now")
-    // If the post has a scheduled_for timestamp and it's due (allowing small tolerance),
-    // bypass persona time-window checks to honor the scheduled time precisely.
+    // CRITICAL FIX: If the post has a scheduled_for timestamp, ALWAYS bypass time checks.
+    // The scheduler has already validated the time when creating/queuing the post.
+    // Re-checking here causes already-scheduled posts to be rescheduled incorrectly.
     let bypassTimeCheck = false;
     if (post.scheduled_for) {
-      try {
-        const dueToleranceMs = 60_000; // 60s tolerance around minute boundaries
-        const scheduledAtMs = new Date(post.scheduled_for).getTime();
-        if (!Number.isNaN(scheduledAtMs) && scheduledAtMs <= Date.now() + dueToleranceMs) {
-          bypassTimeCheck = true;
-        }
-      } catch (e) {
-        console.warn('Failed to parse scheduled_for, continuing with normal checks');
-      }
+      bypassTimeCheck = true;
+      console.log('⏭️ Bypassing time check: post has scheduled_for timestamp');
     }
 
     if (!bypassTimeCheck && post.auto_schedule && post.persona_id) {
