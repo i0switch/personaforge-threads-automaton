@@ -787,10 +787,10 @@ serve(async (req) => {
           console.log(`✅ DEBUG: Processing random post for ${persona.name} at ${timeStr}`);
           slotsProcessed++;
 
-          // 🚨 CRITICAL FIX: scheduled_forを即座に実行時刻に設定（タイムゾーン問題を回避）
+          // 🚨 CRITICAL FIX v2: scheduled_forを即座に実行時刻に設定（タイムゾーン問題を完全回避）
           // ランダムポストは「今すぐ投稿」として処理し、auto-schedulerが即座に処理する
           const targetTime = new Date(); // 現在時刻（UTC）
-          console.log(`📅 DEBUG: Setting immediate execution time: ${targetTime.toISOString()} for slot ${timeStr}`);
+          console.log(`📅 IMMEDIATE EXECUTION: ${targetTime.toISOString()} for slot ${timeStr} (persona: ${persona.name})`);
 
 
           // ランダムポスト用のプロンプト生成（独自ロジック）
