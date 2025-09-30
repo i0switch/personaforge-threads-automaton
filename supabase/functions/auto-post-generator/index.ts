@@ -680,10 +680,19 @@ serve(async (req) => {
     }
 
     // 5. ランダムポスト処理（厳格な制限付き）
+    console.log(`🔍 DEBUG: Starting random post processing loop. Found ${randomConfigs?.length || 0} configs`);
+    
     for (const randomCfg of randomConfigs || []) {
       try {
+        console.log(`🔍 DEBUG: Processing random config ${randomCfg.id} for persona ${randomCfg.persona_id}`);
+        
         const persona = randomCfg.personas;
-        if (!persona) continue;
+        if (!persona) {
+          console.log(`⚠️ DEBUG: No persona found for config ${randomCfg.id}, skipping`);
+          continue;
+        }
+        
+        console.log(`🔍 DEBUG: Persona found: ${persona.name} (${persona.id})`);
 
         // 🚨 CRITICAL: Rate limiting check for random posts too
         const rateLimitOk = await checkPersonaRateLimit(persona.id);
@@ -692,15 +701,20 @@ serve(async (req) => {
           processed++;
           continue;
         }
+        
+        console.log(`✅ DEBUG: Rate limit OK for ${persona.name}`);
 
         // 今日の日付を取得（設定のタイムゾーンで）
         const today = new Date().toLocaleDateString('en-CA', { 
           timeZone: randomCfg.timezone || 'UTC' 
         });
         
+        console.log(`📅 DEBUG: Today date: ${today}, last_posted_date: ${randomCfg.last_posted_date}`);
+        
         // 日付が変わったかチェックし、必要に応じてposted_times_todayをリセット
         let postedTimesToday = randomCfg.posted_times_today || [];
         if (randomCfg.last_posted_date !== today) {
+          console.log(`🔄 DEBUG: Date changed, resetting posted_times_today`);
           postedTimesToday = [];
           // データベースも更新
           await supabase
@@ -711,6 +725,11 @@ serve(async (req) => {
             })
             .eq('id', randomCfg.id);
         }
+        
+        console.log(`📋 DEBUG: posted_times_today: ${JSON.stringify(postedTimesToday)}`);
+        console.log(`⏰ DEBUG: random_times: ${JSON.stringify(randomCfg.random_times)}`);
+        console.log(`🌐 DEBUG: timezone: ${randomCfg.timezone}`);
+        console.log(`⏰ DEBUG: next_run_at: ${randomCfg.next_run_at}`);
 
         // 設定された各時間をチェック（制限付き）
         const randomTimes = randomCfg.random_times || ['09:00:00', '12:00:00', '18:00:00'];
@@ -752,19 +771,26 @@ serve(async (req) => {
 
           // 現在時刻が設定時刻を過ぎているかチェック + 許容ウィンドウ（60分）
           const nowUtc = new Date();
+          console.log(`🔍 DEBUG: Checking slot ${timeStr} - nowUtc: ${nowUtc.toISOString()}, targetTime: ${targetTime.toISOString()}`);
+          
           if (nowUtc < targetTime) {
+            console.log(`⏰ DEBUG: Slot ${timeStr} not yet reached, skipping`);
             continue; // まだ時刻前
           }
           const diffMs = nowUtc.getTime() - targetTime.getTime();
+          console.log(`⏱️ DEBUG: Time difference for ${timeStr}: ${Math.round(diffMs/1000)}s`);
+          
           const windowMs = 60 * 60 * 1000; // 🚨 CRITICAL: 60分ウィンドウ（cronが1分間隔なので余裕を持たせる）
           if (diffMs > windowMs) {
+            // 🚨 CRITICAL FIX: スキップ時もslotsProcessedをインクリメント（データベース更新トリガー）
+            slotsProcessed++;
             // 1時間以上遅れた場合はスキップし、記録だけ残す（次回スキップされないように）
             console.log(`⏭️ Skipping heavily outdated random slot ${timeStr} (diff ${Math.round(diffMs/1000)}s), marking as posted to prevent retry`);
             postedTimesToday.push(timeStr); // 🚨 CRITICAL: スキップ時も記録して無限ループ防止
-            continue;
+            break; // 🚨 CRITICAL: breakして即座にデータベース更新に進む
           }
 
-          console.log(`Processing random post for ${persona.name} at ${timeStr}`);
+          console.log(`✅ DEBUG: Processing random post for ${persona.name} at ${timeStr}`);
           slotsProcessed++;
 
           // ランダムポスト用のプロンプト生成（独自ロジック）
