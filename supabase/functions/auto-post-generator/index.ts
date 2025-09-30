@@ -807,7 +807,7 @@ serve(async (req) => {
           break; // 1回の実行で1ポストのみ（大量生成防止）
         }
 
-        // 投稿があった場合、posted_times_todayを更新
+        // 投稿があった場合、posted_times_todayとnext_run_atを更新
         if (hasPosted) {
           // 🚨 CRITICAL: Double-check config is still active before updating
           const { data: stillActive, error: activeErr } = await supabase
@@ -817,14 +817,28 @@ serve(async (req) => {
             .single();
             
           if (!activeErr && stillActive?.is_active) {
+            // 次回実行時刻を計算（全時間スロットが終わるまで更新しない）
+            const allSlotsPosted = randomTimes.every(time => postedTimesToday.includes(time));
+            const updateData: any = { 
+              posted_times_today: postedTimesToday,
+              last_posted_date: today,
+              updated_at: new Date().toISOString()
+            };
+            
+            // 全スロット投稿済み、または明日に移行する場合は次回実行時刻を更新
+            if (allSlotsPosted || postedTimesToday.length >= randomTimes.length) {
+              const nextRunAt = calculateRandomNextRun(randomTimes, randomCfg.timezone || 'UTC');
+              updateData.next_run_at = nextRunAt;
+              console.log(`📅 All slots posted for persona ${persona.name}, next run: ${nextRunAt}`);
+            }
+            
             await supabase
               .from('random_post_configs')
-              .update({ 
-                posted_times_today: postedTimesToday,
-                last_posted_date: today
-              })
+              .update(updateData)
               .eq('id', randomCfg.id)
               .eq('is_active', true); // 🚨 Only update if still active
+              
+            console.log(`✅ Updated random config ${randomCfg.id}`, updateData);
           } else {
             console.log(`⚠️ Random config ${randomCfg.id} was deactivated, skipping state update`);
           }
