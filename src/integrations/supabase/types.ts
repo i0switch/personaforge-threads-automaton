@@ -1298,9 +1298,21 @@ export type Database = {
         Args: { p_details?: Json; p_event_type: string }
         Returns: undefined
       }
+      pause_tokenless_persona_configs: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          had_auto_post: boolean
+          had_random_post: boolean
+          persona_name: string
+        }[]
+      }
       reschedule_failed_posts_for_persona: {
         Args: { p_persona_id: string }
         Returns: number
+      }
+      sync_queue_with_post_status: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
       }
       validate_password_strength: {
         Args: { password: string }
