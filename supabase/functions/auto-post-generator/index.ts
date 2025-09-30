@@ -736,6 +736,16 @@ serve(async (req) => {
         let hasPosted = false;
         let slotsProcessed = 0;
 
+        // 🚨 CRITICAL FIX: タイムゾーンでの現在時刻を取得（HH:mm:ss形式）
+        const nowInTz = new Date().toLocaleTimeString('en-US', {
+          timeZone: randomCfg.timezone || 'UTC',
+          hour12: false,
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit'
+        }); // 例: "22:59:00" (JST)
+        console.log(`🕐 DEBUG: Current time in ${randomCfg.timezone}: ${nowInTz}`);
+
         for (const timeStr of randomTimes) {
           // 🚨 CRITICAL: Limit slots processed per run
           if (slotsProcessed >= 1) {
@@ -745,53 +755,46 @@ serve(async (req) => {
           
           // 既に投稿済みの時間はスキップ
           if (postedTimesToday.includes(timeStr)) {
+            console.log(`⏭️ DEBUG: Slot ${timeStr} already posted today, skipping`);
             continue;
           }
 
-          // 現在時刻と設定時刻を比較
-          const [hours, minutes, seconds = 0] = timeStr.split(':').map(Number);
-          const targetTime = new Date();
-          
-          // タイムゾーンを考慮して今日の設定時刻を作成
-          if (randomCfg.timezone === 'UTC') {
-            targetTime.setUTCHours(hours, minutes, seconds, 0);
-          } else {
-            // 指定タイムゾーンでの時刻を作成
-            const formatter = new Intl.DateTimeFormat('en-CA', {
-              timeZone: randomCfg.timezone,
-              year: 'numeric',
-              month: '2-digit',
-              day: '2-digit'
-            });
-            const todayStr = formatter.format(new Date());
-            const localDateTime = new Date(`${todayStr}T${timeStr}`);
-            const utcOffset = getTimezoneOffset(randomCfg.timezone);
-            targetTime.setTime(localDateTime.getTime() - utcOffset * 60 * 1000);
-          }
+          console.log(`🔍 DEBUG: Checking slot ${timeStr} vs current ${nowInTz}`);
 
-          // 現在時刻が設定時刻を過ぎているかチェック + 許容ウィンドウ（60分）
-          const nowUtc = new Date();
-          console.log(`🔍 DEBUG: Checking slot ${timeStr} - nowUtc: ${nowUtc.toISOString()}, targetTime: ${targetTime.toISOString()}`);
-          
-          if (nowUtc < targetTime) {
-            console.log(`⏰ DEBUG: Slot ${timeStr} not yet reached, skipping`);
+          // 🚨 CRITICAL FIX: タイムゾーン内での時刻比較（文字列比較で十分）
+          if (nowInTz < timeStr) {
+            console.log(`⏰ DEBUG: Slot ${timeStr} not yet reached (current: ${nowInTz}), skipping`);
             continue; // まだ時刻前
           }
-          const diffMs = nowUtc.getTime() - targetTime.getTime();
-          console.log(`⏱️ DEBUG: Time difference for ${timeStr}: ${Math.round(diffMs/1000)}s`);
+
+          // 60分ウィンドウのチェック（タイムゾーン内での分単位計算）
+          const [nowH, nowM] = nowInTz.split(':').map(Number);
+          const [targetH, targetM] = timeStr.split(':').map(Number);
+          const nowMinutes = nowH * 60 + nowM;
+          const targetMinutes = targetH * 60 + targetM;
+          const diffMinutes = nowMinutes - targetMinutes;
           
-          const windowMs = 60 * 60 * 1000; // 🚨 CRITICAL: 60分ウィンドウ（cronが1分間隔なので余裕を持たせる）
-          if (diffMs > windowMs) {
+          console.log(`⏱️ DEBUG: Time difference for ${timeStr}: ${diffMinutes} minutes`);
+
+          if (diffMinutes > 60) {
             // 🚨 CRITICAL FIX: スキップ時もslotsProcessedをインクリメント（データベース更新トリガー）
             slotsProcessed++;
-            // 1時間以上遅れた場合はスキップし、記録だけ残す（次回スキップされないように）
-            console.log(`⏭️ Skipping heavily outdated random slot ${timeStr} (diff ${Math.round(diffMs/1000)}s), marking as posted to prevent retry`);
+            console.log(`⏭️ Skipping heavily outdated random slot ${timeStr} (diff ${diffMinutes} minutes), marking as posted to prevent retry`);
             postedTimesToday.push(timeStr); // 🚨 CRITICAL: スキップ時も記録して無限ループ防止
             break; // 🚨 CRITICAL: breakして即座にデータベース更新に進む
           }
 
           console.log(`✅ DEBUG: Processing random post for ${persona.name} at ${timeStr}`);
           slotsProcessed++;
+
+          // 🚨 CRITICAL: targetTimeをタイムゾーンで正確に設定（投稿時刻として使用）
+          const today = new Date().toLocaleDateString('en-CA', { 
+            timeZone: randomCfg.timezone || 'UTC' 
+          });
+          const [hours, minutes, seconds = 0] = timeStr.split(':').map(Number);
+          const targetTime = new Date(`${today}T${timeStr}`);
+          console.log(`📅 DEBUG: Target time for post: ${targetTime.toISOString()}`);
+
 
           // ランダムポスト用のプロンプト生成（独自ロジック）
           const prompt = buildRandomPrompt(persona);
