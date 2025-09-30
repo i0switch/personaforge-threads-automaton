@@ -750,16 +750,17 @@ serve(async (req) => {
             targetTime.setTime(localDateTime.getTime() - utcOffset * 60 * 1000);
           }
 
-          // 現在時刻が設定時刻を過ぎているかチェック + 許容ウィンドウ（3分）
+          // 現在時刻が設定時刻を過ぎているかチェック + 許容ウィンドウ（60分）
           const nowUtc = new Date();
           if (nowUtc < targetTime) {
             continue; // まだ時刻前
           }
           const diffMs = nowUtc.getTime() - targetTime.getTime();
-          const windowMs = 3 * 60 * 1000; // 3分
+          const windowMs = 60 * 60 * 1000; // 🚨 CRITICAL: 60分ウィンドウ（cronが1分間隔なので余裕を持たせる）
           if (diffMs > windowMs) {
-            // 設定時間から大きく外れたスロットはスキップ（大量キャッチアップ防止）
-            console.log(`⏭️ Skipping outdated random slot ${timeStr} (diff ${Math.round(diffMs/1000)}s)`);
+            // 1時間以上遅れた場合はスキップし、記録だけ残す（次回スキップされないように）
+            console.log(`⏭️ Skipping heavily outdated random slot ${timeStr} (diff ${Math.round(diffMs/1000)}s), marking as posted to prevent retry`);
+            postedTimesToday.push(timeStr); // 🚨 CRITICAL: スキップ時も記録して無限ループ防止
             continue;
           }
 
@@ -807,8 +808,8 @@ serve(async (req) => {
           break; // 1回の実行で1ポストのみ（大量生成防止）
         }
 
-        // 投稿があった場合、posted_times_todayとnext_run_atを更新
-        if (hasPosted) {
+        // 🚨 CRITICAL: 投稿有無に関わらずposted_times_todayが更新された場合は記録
+        if (hasPosted || postedTimesToday.length > (randomCfg.posted_times_today || []).length) {
           // 🚨 CRITICAL: Double-check config is still active before updating
           const { data: stillActive, error: activeErr } = await supabase
             .from('random_post_configs')
@@ -817,7 +818,7 @@ serve(async (req) => {
             .single();
             
           if (!activeErr && stillActive?.is_active) {
-            // 次回実行時刻を計算（全時間スロットが終わるまで更新しない）
+            // 次回実行時刻を計算
             const allSlotsPosted = randomTimes.every(time => postedTimesToday.includes(time));
             const updateData: any = { 
               posted_times_today: postedTimesToday,
@@ -825,11 +826,29 @@ serve(async (req) => {
               updated_at: new Date().toISOString()
             };
             
-            // 全スロット投稿済み、または明日に移行する場合は次回実行時刻を更新
+            // 🚨 CRITICAL: 全スロット処理済み、またはスキップ含めて処理済みの場合は必ず次回実行時刻を更新
             if (allSlotsPosted || postedTimesToday.length >= randomTimes.length) {
               const nextRunAt = calculateRandomNextRun(randomTimes, randomCfg.timezone || 'UTC');
               updateData.next_run_at = nextRunAt;
-              console.log(`📅 All slots posted for persona ${persona.name}, next run: ${nextRunAt}`);
+              console.log(`📅 All slots processed for persona ${persona.name}, next run: ${nextRunAt}`);
+            } else {
+              // 🚨 CRITICAL: 部分的に処理した場合も、次の未処理スロットを計算
+              const remainingSlots = randomTimes.filter(time => !postedTimesToday.includes(time));
+              if (remainingSlots.length > 0) {
+                // 次の未処理スロットの時刻を計算
+                const nextSlot = remainingSlots[0];
+                const [hours, minutes] = nextSlot.split(':').map(Number);
+                const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: randomCfg.timezone || 'UTC' });
+                const nextSlotTime = new Date(`${todayStr}T${nextSlot}`);
+                
+                if (randomCfg.timezone !== 'UTC') {
+                  const utcOffset = getTimezoneOffset(randomCfg.timezone);
+                  nextSlotTime.setTime(nextSlotTime.getTime() - utcOffset * 60 * 1000);
+                }
+                
+                updateData.next_run_at = nextSlotTime.toISOString();
+                console.log(`📅 Next slot for persona ${persona.name}: ${nextSlot} (${updateData.next_run_at})`);
+              }
             }
             
             await supabase
