@@ -98,21 +98,6 @@ const SchedulingDashboard = () => {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="space-y-6">
             <SchedulingSettings />
-            <Card>
-              <CardHeader>
-                <CardTitle>下書き機能廃止のお知らせ</CardTitle>
-                <CardDescription>
-                  システムの安全性向上のため、下書き機能を廃止しました
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2 text-sm text-muted-foreground">
-                  <p>✅ すべての投稿は必ず予約日時を設定</p>
-                  <p>✅ 予約投稿の編集で日時は必須入力</p>
-                  <p>✅ エラー時の下書き化バグを根本解決</p>
-                </div>
-              </CardContent>
-            </Card>
           </div>
           <div>
             <PostQueue />

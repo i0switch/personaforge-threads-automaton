@@ -36,5 +36,6 @@ export const PostStatusBadge = ({ post }: PostStatusBadgeProps) => {
     return <Badge variant="secondary">予約済み</Badge>;
   }
   
-  return <Badge variant="outline">下書き</Badge>;
+  // draft状態は廃止されたため、エラーとして表示
+  return <Badge variant="destructive">エラー</Badge>;
 };
