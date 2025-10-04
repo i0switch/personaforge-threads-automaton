@@ -324,13 +324,13 @@ export function TemplateConfigComponent() {
         const templates = editingTemplates.get(persona.id) || config?.templates || [];
         
         return (
-          <Card key={persona.id} className="border-purple-200">
+          <Card key={persona.id}>
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div className="space-y-1">
                   <CardTitle className="text-xl">{persona.name}</CardTitle>
                   {config?.is_active && (
-                    <Badge className="bg-green-500">有効</Badge>
+                    <Badge variant="default">有効</Badge>
                   )}
                 </div>
                 <Switch

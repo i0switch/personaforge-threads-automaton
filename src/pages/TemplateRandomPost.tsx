@@ -36,53 +36,52 @@ export default function TemplateRandomPost() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-rose-50 p-6">
-      <div className="max-w-4xl mx-auto space-y-6">
-        <div className="flex items-center gap-4">
-          <Button
-            variant="ghost"
-            onClick={() => navigate("/")}
-            className="gap-2"
-          >
-            <ArrowLeft className="h-4 w-4" />
+    <div className="min-h-screen bg-background p-6">
+      <div className="max-w-5xl mx-auto space-y-6">
+        <header className="flex items-center gap-4">
+          <Button variant="outline" size="sm" onClick={() => navigate("/")}>
+            <ArrowLeft className="h-4 w-4 mr-2" />
             戻る
           </Button>
-        </div>
+          <div>
+            <h1 className="text-3xl font-bold">テンプレート文章ランダムポスト</h1>
+            <p className="text-muted-foreground mt-1">
+              設定したテンプレート文章から、指定時間にランダムに投稿
+            </p>
+          </div>
+        </header>
 
-        <Card className="border-0 bg-gradient-to-r from-purple-500 to-pink-600 shadow-xl">
-          <div className="bg-white/95 backdrop-blur-sm m-1 rounded-lg">
+        <main className="space-y-6">
+          <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-3 text-2xl">
-                <div className="p-2 bg-gradient-to-r from-purple-600 to-pink-600 rounded-lg">
-                  <FileText className="h-6 w-6 text-white" />
-                </div>
-                テンプレート文章ランダムポスト
+              <CardTitle className="flex items-center gap-2">
+                <FileText className="h-5 w-5" />
+                概要
               </CardTitle>
-              <CardDescription className="text-base">
+              <CardDescription>
                 設定した複数のテンプレート文章から、指定した時間にランダムにポストします。
-                <br />
-                <strong>既存の機能と共存可能：</strong>完全自動オートポストやランダムポスト機能が有効でも使用できます。
+                完全自動オートポストやランダムポスト機能が有効でも併用できます。
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="bg-purple-50 p-4 rounded-lg space-y-2">
-                <h3 className="font-semibold text-purple-900 flex items-center gap-2">
-                  <Clock className="h-5 w-5" />
-                  機能の特徴
-                </h3>
-                <ul className="space-y-2 text-sm text-purple-800">
-                  <li>✅ 複数のテンプレート文章を設定</li>
-                  <li>✅ 複数の投稿時間を指定可能</li>
-                  <li>✅ 指定時間にランダムにテンプレートを選択して投稿</li>
-                  <li>✅ 他の自動投稿機能と併用可能</li>
-                  <li>✅ タイムゾーン対応</li>
-                </ul>
+            <CardContent className="space-y-3">
+              <div className="flex items-start gap-2">
+                <Clock className="h-5 w-5 text-muted-foreground mt-0.5" />
+                <div className="space-y-2">
+                  <h3 className="font-semibold">機能の特徴</h3>
+                  <ul className="list-disc pl-6 text-sm text-muted-foreground space-y-1">
+                    <li>複数のテンプレート文章を設定</li>
+                    <li>複数の投稿時間を指定可能</li>
+                    <li>指定時間にランダムにテンプレートを選択して投稿</li>
+                    <li>他の自動投稿機能と併用可能</li>
+                    <li>タイムゾーン対応</li>
+                  </ul>
+                </div>
               </div>
             </CardContent>
-          </div>
-        </Card>
+          </Card>
 
-        <TemplateConfigComponent />
+          <TemplateConfigComponent />
+        </main>
       </div>
     </div>
   );
