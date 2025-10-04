@@ -23,6 +23,7 @@ import AutoPostMode from "@/pages/AutoPostMode";
 import AutoPostWizard from "@/pages/AutoPostWizard";
 import AutoPostSchedules from "@/pages/AutoPostSchedules";
 import RandomPostConfig from "@/pages/RandomPostConfig";
+import TemplateRandomPost from "@/pages/TemplateRandomPost";
 import SelfReplySettings from "@/pages/SelfReplySettings";
 import ErrorDashboard from "@/pages/ErrorDashboard";
 import PasswordReset from "@/pages/PasswordReset";
@@ -118,6 +119,14 @@ function App() {
                       element={
                         <ProtectedRoute>
                           <RandomPostConfig />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/template-random-post"
+                      element={
+                        <ProtectedRoute>
+                          <TemplateRandomPost />
                         </ProtectedRoute>
                       }
                     />

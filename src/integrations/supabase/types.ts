@@ -850,6 +850,51 @@ export type Database = {
         }
         Relationships: []
       }
+      template_random_post_configs: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          last_posted_date: string | null
+          next_run_at: string | null
+          persona_id: string
+          posted_times_today: Json | null
+          random_times: string[]
+          templates: string[]
+          timezone: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          last_posted_date?: string | null
+          next_run_at?: string | null
+          persona_id: string
+          posted_times_today?: Json | null
+          random_times?: string[]
+          templates?: string[]
+          timezone?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          last_posted_date?: string | null
+          next_run_at?: string | null
+          persona_id?: string
+          posted_times_today?: Json | null
+          random_times?: string[]
+          templates?: string[]
+          timezone?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       thread_replies: {
         Row: {
           auto_reply_sent: boolean | null

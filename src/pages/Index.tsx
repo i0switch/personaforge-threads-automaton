@@ -124,6 +124,16 @@ const Index = () => {
       disabled: false
     },
     {
+      title: "テンプレート文章ランダムポスト",
+      description: "設定したテンプレートから自動でランダム投稿",
+      icon: Sparkles,
+      path: "/template-random-post",
+      color: "from-purple-600 to-pink-700",
+      bgGradient: "from-purple-50 to-pink-50",
+      borderColor: "border-purple-200",
+      disabled: !isApproved || !isActive
+    },
+    {
       title: "セルフリプライモード",
       description: "自分の投稿へ自動リプライ設定",
       icon: MessageSquare,

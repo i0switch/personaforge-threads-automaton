@@ -1,0 +1,421 @@
+import { useState, useEffect } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/hooks/use-toast";
+import { Loader2, Plus, Trash2, Save } from "lucide-react";
+import { MultiTimeSelector } from "@/components/AutoPost/MultiTimeSelector";
+
+interface Persona {
+  id: string;
+  name: string;
+}
+
+interface TemplateConfig {
+  id: string;
+  persona_id: string;
+  is_active: boolean;
+  random_times: string[];
+  templates: string[];
+  timezone: string;
+  next_run_at: string | null;
+}
+
+export function TemplateConfigComponent() {
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const [loading, setLoading] = useState(true);
+  const [personas, setPersonas] = useState<Persona[]>([]);
+  const [configs, setConfigs] = useState<Map<string, TemplateConfig>>(new Map());
+  const [processingPersonas, setProcessingPersonas] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (user) {
+      loadData();
+    }
+  }, [user]);
+
+  const loadData = async () => {
+    try {
+      setLoading(true);
+
+      // ペルソナを取得
+      const { data: personasData, error: personasError } = await supabase
+        .from('personas')
+        .select('id, name')
+        .eq('user_id', user!.id)
+        .eq('is_active', true)
+        .order('name');
+
+      if (personasError) throw personasError;
+      setPersonas(personasData || []);
+
+      // 設定を取得
+      const { data: configsData, error: configsError } = await supabase
+        .from('template_random_post_configs')
+        .select('*')
+        .eq('user_id', user!.id);
+
+      if (configsError) throw configsError;
+
+      const configMap = new Map<string, TemplateConfig>();
+      (configsData || []).forEach((config) => {
+        configMap.set(config.persona_id, config);
+      });
+      setConfigs(configMap);
+    } catch (error: any) {
+      console.error('Error loading data:', error);
+      toast({
+        title: "エラー",
+        description: "データの読み込みに失敗しました",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getConfigForPersona = (personaId: string): TemplateConfig | null => {
+    return configs.get(personaId) || null;
+  };
+
+  const calculateNextRun = (times: string[], timezone: string = 'UTC'): string => {
+    if (!times || times.length === 0) return new Date().toISOString();
+    
+    const now = new Date();
+    const nowInTz = new Date(now.toLocaleString('en-US', { timeZone: timezone }));
+    const currentTime = nowInTz.toTimeString().split(' ')[0].slice(0, 8);
+    
+    // Find next slot today
+    const nextSlot = times.find(t => t > currentTime);
+    
+    if (nextSlot) {
+      const [h, m, s] = nextSlot.split(':').map(Number);
+      nowInTz.setHours(h, m, s || 0, 0);
+      return nowInTz.toISOString();
+    } else {
+      // Tomorrow's first slot
+      nowInTz.setDate(nowInTz.getDate() + 1);
+      const [h, m, s] = times[0].split(':').map(Number);
+      nowInTz.setHours(h, m, s || 0, 0);
+      return nowInTz.toISOString();
+    }
+  };
+
+  const togglePersonaConfig = async (persona: Persona) => {
+    try {
+      setProcessingPersonas(prev => new Set(prev).add(persona.id));
+      
+      const existingConfig = getConfigForPersona(persona.id);
+      
+      if (existingConfig) {
+        // Toggle existing config
+        const newIsActive = !existingConfig.is_active;
+        
+        const { error } = await supabase
+          .from('template_random_post_configs')
+          .update({ 
+            is_active: newIsActive,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', existingConfig.id);
+        
+        if (error) throw error;
+        
+        const updatedConfig = { ...existingConfig, is_active: newIsActive };
+        setConfigs(prev => new Map(prev).set(persona.id, updatedConfig));
+        
+        toast({
+          title: newIsActive ? "有効化しました" : "無効化しました",
+          description: `${persona.name}のテンプレートランダムポストを${newIsActive ? '有効' : '無効'}にしました`,
+        });
+      } else {
+        // Create new config with defaults
+        const userTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        const defaultTimes = ['10:00:00', '14:00:00', '18:00:00'];
+        const nextRunAt = calculateNextRun(defaultTimes, userTz);
+        
+        const { data, error } = await supabase
+          .from('template_random_post_configs')
+          .insert({
+            user_id: user!.id,
+            persona_id: persona.id,
+            is_active: true,
+            random_times: defaultTimes,
+            templates: [],
+            timezone: userTz,
+            next_run_at: nextRunAt,
+            posted_times_today: [],
+          })
+          .select()
+          .single();
+        
+        if (error) throw error;
+        
+        setConfigs(prev => new Map(prev).set(persona.id, data));
+        
+        toast({
+          title: "設定を作成しました",
+          description: `${persona.name}のテンプレートランダムポスト設定を作成しました`,
+        });
+      }
+      
+      await loadData();
+    } catch (error: any) {
+      console.error('Error toggling config:', error);
+      toast({
+        title: "エラー",
+        description: error.message || "設定の切り替えに失敗しました",
+        variant: "destructive",
+      });
+    } finally {
+      setProcessingPersonas(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(persona.id);
+        return newSet;
+      });
+    }
+  };
+
+  const updateRandomTimes = async (personaId: string, newTimes: string[]) => {
+    try {
+      const config = getConfigForPersona(personaId);
+      if (!config) return;
+      
+      const nextRunAt = calculateNextRun(newTimes, config.timezone);
+      
+      const { error } = await supabase
+        .from('template_random_post_configs')
+        .update({
+          random_times: newTimes,
+          next_run_at: nextRunAt,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', config.id);
+      
+      if (error) throw error;
+      
+      await loadData();
+      
+      toast({
+        title: "更新しました",
+        description: "投稿時間を更新しました",
+      });
+    } catch (error: any) {
+      console.error('Error updating times:', error);
+      toast({
+        title: "エラー",
+        description: "時間の更新に失敗しました",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const [editingTemplates, setEditingTemplates] = useState<Map<string, string[]>>(new Map());
+
+  const addTemplate = (personaId: string) => {
+    const current = editingTemplates.get(personaId) || [];
+    setEditingTemplates(prev => new Map(prev).set(personaId, [...current, '']));
+  };
+
+  const updateTemplate = (personaId: string, index: number, value: string) => {
+    const current = editingTemplates.get(personaId) || [];
+    const updated = [...current];
+    updated[index] = value;
+    setEditingTemplates(prev => new Map(prev).set(personaId, updated));
+  };
+
+  const removeTemplate = (personaId: string, index: number) => {
+    const current = editingTemplates.get(personaId) || [];
+    const updated = current.filter((_, i) => i !== index);
+    setEditingTemplates(prev => new Map(prev).set(personaId, updated));
+  };
+
+  const saveTemplates = async (personaId: string) => {
+    try {
+      const config = getConfigForPersona(personaId);
+      if (!config) return;
+      
+      const templates = (editingTemplates.get(personaId) || []).filter(t => t.trim());
+      
+      if (templates.length === 0) {
+        toast({
+          title: "エラー",
+          description: "少なくとも1つのテンプレートを入力してください",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      const { error } = await supabase
+        .from('template_random_post_configs')
+        .update({
+          templates,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', config.id);
+      
+      if (error) throw error;
+      
+      await loadData();
+      setEditingTemplates(prev => {
+        const newMap = new Map(prev);
+        newMap.delete(personaId);
+        return newMap;
+      });
+      
+      toast({
+        title: "保存しました",
+        description: `${templates.length}個のテンプレートを保存しました`,
+      });
+    } catch (error: any) {
+      console.error('Error saving templates:', error);
+      toast({
+        title: "エラー",
+        description: "テンプレートの保存に失敗しました",
+        variant: "destructive",
+      });
+    }
+  };
+
+  useEffect(() => {
+    // Initialize editing templates from loaded configs
+    const newMap = new Map<string, string[]>();
+    configs.forEach((config, personaId) => {
+      if (!editingTemplates.has(personaId)) {
+        newMap.set(personaId, config.templates || []);
+      }
+    });
+    if (newMap.size > 0) {
+      setEditingTemplates(prev => new Map([...prev, ...newMap]));
+    }
+  }, [configs]);
+
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center p-12">
+        <Loader2 className="h-8 w-8 animate-spin text-purple-600" />
+      </div>
+    );
+  }
+
+  if (personas.length === 0) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>ペルソナが見つかりません</CardTitle>
+          <CardDescription>
+            テンプレートランダムポストを使用するには、まずペルソナを作成してください。
+          </CardDescription>
+        </CardHeader>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {personas.map((persona) => {
+        const config = getConfigForPersona(persona.id);
+        const isProcessing = processingPersonas.has(persona.id);
+        const templates = editingTemplates.get(persona.id) || config?.templates || [];
+        
+        return (
+          <Card key={persona.id} className="border-purple-200">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  <CardTitle className="text-xl">{persona.name}</CardTitle>
+                  {config?.is_active && (
+                    <Badge className="bg-green-500">有効</Badge>
+                  )}
+                </div>
+                <Switch
+                  checked={config?.is_active || false}
+                  onCheckedChange={() => togglePersonaConfig(persona)}
+                  disabled={isProcessing}
+                />
+              </div>
+            </CardHeader>
+            
+            {config?.is_active && (
+              <CardContent className="space-y-6">
+                {/* 投稿時間設定 */}
+                <div className="space-y-2">
+                  <MultiTimeSelector
+                    times={config.random_times || []}
+                    onChange={(times) => updateRandomTimes(persona.id, times)}
+                  />
+                </div>
+                
+                {/* テンプレート設定 */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-semibold">テンプレート文章</h3>
+                    <Button
+                      onClick={() => addTemplate(persona.id)}
+                      size="sm"
+                      variant="outline"
+                      className="gap-2"
+                    >
+                      <Plus className="h-4 w-4" />
+                      追加
+                    </Button>
+                  </div>
+                  
+                  {templates.length === 0 && (
+                    <p className="text-sm text-gray-500">
+                      テンプレートを追加してください
+                    </p>
+                  )}
+                  
+                  <div className="space-y-3">
+                    {templates.map((template, index) => (
+                      <div key={index} className="flex gap-2">
+                        <Textarea
+                          value={template}
+                          onChange={(e) => updateTemplate(persona.id, index, e.target.value)}
+                          placeholder="投稿内容を入力..."
+                          className="flex-1"
+                          rows={3}
+                        />
+                        <Button
+                          onClick={() => removeTemplate(persona.id, index)}
+                          size="sm"
+                          variant="ghost"
+                          className="text-red-500 hover:text-red-700"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                  
+                  {templates.length > 0 && (
+                    <Button
+                      onClick={() => saveTemplates(persona.id)}
+                      className="w-full gap-2"
+                    >
+                      <Save className="h-4 w-4" />
+                      テンプレートを保存
+                    </Button>
+                  )}
+                </div>
+                
+                {/* 次回実行時刻 */}
+                {config.next_run_at && (
+                  <div className="text-sm text-gray-600">
+                    次回実行: {new Date(config.next_run_at).toLocaleString('ja-JP')}
+                  </div>
+                )}
+              </CardContent>
+            )}
+          </Card>
+        );
+      })}
+    </div>
+  );
+}

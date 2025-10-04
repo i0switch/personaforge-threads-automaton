@@ -925,6 +925,238 @@ serve(async (req) => {
       }
     }
 
+    // 6. テンプレート文章ランダムポスト処理（新機能 - 既存機能と共存可能）
+    let templatePosted = 0;
+    let templateFailed = 0;
+    
+    console.log('📝 Starting template random post processing...');
+    
+    const { data: templateConfigs, error: templateFetchError } = await supabase
+      .from('template_random_post_configs')
+      .select(`
+        *,
+        personas:persona_id (
+          id, name, user_id, is_active, 
+          personality, tone_of_voice, expertise,
+          threads_access_token, threads_user_id
+        )
+      `)
+      .eq('is_active', true)
+      .lte('next_run_at', now.toISOString())
+      .order('next_run_at', { ascending: true });
+    
+    if (templateFetchError) {
+      console.error('Error fetching template random post configs:', templateFetchError);
+    }
+    
+    console.log(`📝 Found ${templateConfigs?.length || 0} template random post configs`);
+    
+    for (const templateCfg of templateConfigs || []) {
+      try {
+        const persona = templateCfg.personas;
+        if (!persona || !persona.is_active) {
+          console.log(`❌ Persona ${templateCfg.persona_id} not found or inactive for template config ${templateCfg.id}`);
+          continue;
+        }
+        
+        console.log(`📝 Processing template config ${templateCfg.id} for persona ${persona.name}`);
+        
+        // Rate limit check
+        const rateLimitOk = await checkPersonaRateLimit(persona.id);
+        if (!rateLimitOk) {
+          console.log(`🛑 Rate limit exceeded for template persona ${persona.id}, skipping`);
+          continue;
+        }
+        
+        // Timezone-aware processing
+        const tz = templateCfg.timezone || 'UTC';
+        const nowInTz = new Date().toLocaleString('en-US', { timeZone: tz });
+        const localNow = new Date(nowInTz);
+        const currentTime = localNow.toTimeString().split(' ')[0].slice(0, 8); // HH:MM:SS
+        const todayDate = localNow.toISOString().split('T')[0]; // YYYY-MM-DD
+        
+        console.log(`🕐 DEBUG: Current time in ${tz}: ${currentTime}`);
+        console.log(`📅 DEBUG: Today date: ${todayDate}, last_posted_date: ${templateCfg.last_posted_date}`);
+        
+        // Reset posted_times_today if it's a new day
+        let postedTimesToday = templateCfg.posted_times_today || [];
+        if (typeof postedTimesToday === 'string') {
+          postedTimesToday = JSON.parse(postedTimesToday);
+        }
+        
+        if (templateCfg.last_posted_date !== todayDate) {
+          postedTimesToday = [];
+          console.log(`🗓️ New day detected, resetting posted_times_today`);
+        }
+        
+        console.log(`📋 DEBUG: posted_times_today:`, postedTimesToday);
+        console.log(`⏰ DEBUG: random_times:`, templateCfg.random_times);
+        
+        // Find next available time slot
+        let shouldPost = false;
+        let selectedTime: string | null = null;
+        
+        for (const slot of templateCfg.random_times || []) {
+          console.log(`🔍 DEBUG: Checking slot ${slot} vs current ${currentTime}`);
+          
+          if (postedTimesToday.includes(slot)) {
+            console.log(`⏭️ DEBUG: Slot ${slot} already posted today, skipping`);
+            continue;
+          }
+          
+          if (slot <= currentTime) {
+            shouldPost = true;
+            selectedTime = slot;
+            console.log(`✅ DEBUG: Slot ${slot} is ready for posting`);
+            break;
+          } else {
+            console.log(`⏰ DEBUG: Slot ${slot} not yet reached (current: ${currentTime}), skipping`);
+          }
+        }
+        
+        if (!shouldPost || !selectedTime) {
+          console.log(`⏭️ No available time slot for template config ${templateCfg.id}`);
+          continue;
+        }
+        
+        // Select random template
+        const templates = templateCfg.templates || [];
+        if (templates.length === 0) {
+          console.log(`❌ No templates configured for config ${templateCfg.id}`);
+          continue;
+        }
+        
+        const randomTemplate = templates[Math.floor(Math.random() * templates.length)];
+        console.log(`📝 Selected template: "${randomTemplate.substring(0, 50)}..."`);
+        
+        // Create post with selected template
+        const postData = {
+          user_id: templateCfg.user_id,
+          persona_id: templateCfg.persona_id,
+          content: randomTemplate,
+          status: 'scheduled',
+          scheduled_for: new Date().toISOString(), // Post immediately
+          auto_schedule: true,
+          platform: 'threads',
+          app_identifier: 'threads-manager-app'
+        };
+        
+        console.log(`📅 Creating template post for persona ${persona.name}...`);
+        
+        const { data: newPost, error: postError } = await supabase
+          .from('posts')
+          .insert(postData)
+          .select()
+          .single();
+        
+        if (postError || !newPost) {
+          console.error(`❌ Failed to create template post:`, postError);
+          templateFailed++;
+          continue;
+        }
+        
+        console.log(`✅ Template post created: ${newPost.id}`);
+        
+        // Add to queue for immediate posting
+        const { error: queueError } = await supabase
+          .from('post_queue')
+          .insert({
+            user_id: templateCfg.user_id,
+            post_id: newPost.id,
+            scheduled_for: new Date().toISOString(),
+            status: 'queued',
+            queue_position: 0
+          });
+        
+        if (queueError) {
+          console.error(`❌ Failed to add template post to queue:`, queueError);
+        } else {
+          console.log(`✅ Template post added to queue`);
+        }
+        
+        // Update posted_times_today
+        const updatedPostedTimes = [...postedTimesToday, selectedTime];
+        
+        // Calculate next run time
+        const nextSlots = (templateCfg.random_times || []).filter(
+          (s: string) => !updatedPostedTimes.includes(s)
+        );
+        
+        let nextRunAt: string;
+        if (nextSlots.length > 0) {
+          // Find next slot today
+          const nextSlot = nextSlots.find((s: string) => s > currentTime);
+          if (nextSlot) {
+            const nextRunDate = new Date(localNow);
+            const [h, m, s] = nextSlot.split(':').map(Number);
+            nextRunDate.setHours(h, m, s || 0, 0);
+            nextRunAt = nextRunDate.toISOString();
+          } else {
+            // No more slots today, schedule for tomorrow
+            const tomorrowDate = new Date(localNow);
+            tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+            const [h, m, s] = (templateCfg.random_times[0] as string).split(':').map(Number);
+            tomorrowDate.setHours(h, m, s || 0, 0);
+            nextRunAt = tomorrowDate.toISOString();
+          }
+        } else {
+          // All slots posted today, schedule for tomorrow
+          const tomorrowDate = new Date(localNow);
+          tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+          const [h, m, s] = (templateCfg.random_times[0] as string).split(':').map(Number);
+          tomorrowDate.setHours(h, m, s || 0, 0);
+          nextRunAt = tomorrowDate.toISOString();
+        }
+        
+        // Update config
+        const { error: updateError } = await supabase
+          .from('template_random_post_configs')
+          .update({
+            posted_times_today: updatedPostedTimes,
+            last_posted_date: todayDate,
+            next_run_at: nextRunAt,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', templateCfg.id)
+          .eq('is_active', true);
+        
+        if (updateError) {
+          console.error(`❌ Failed to update template config:`, updateError);
+        } else {
+          console.log(`✅ Template config updated, next_run_at: ${nextRunAt}`);
+          templatePosted++;
+        }
+        
+      } catch (e) {
+        console.error(`❌ Template random post error for config ${templateCfg.id}:`, e);
+        templateFailed++;
+        
+        // Apply cooldown on failure
+        try {
+          const { data: stillActive } = await supabase
+            .from('template_random_post_configs')
+            .select('is_active')
+            .eq('id', templateCfg.id)
+            .single();
+          
+          if (stillActive?.is_active) {
+            const nextRun = new Date(Date.now() + RATE_LIMITS.COOLDOWN_AFTER_FAILURE);
+            await supabase
+              .from('template_random_post_configs')
+              .update({
+                next_run_at: nextRun.toISOString(),
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', templateCfg.id)
+              .eq('is_active', true);
+            console.log(`✅ Applied cooldown to template config ${templateCfg.id}`);
+          }
+        } catch (cooldownError) {
+          console.error(`Failed to apply cooldown:`, cooldownError);
+        }
+      }
+    }
+
     return new Response(
       JSON.stringify({ 
         message: 'auto-post-generator completed with enhanced safety controls', 
@@ -933,6 +1165,9 @@ serve(async (req) => {
         failed,
         regular_configs: configs?.length || 0,
         random_configs: randomConfigs?.length || 0,
+        template_configs: templateConfigs?.length || 0,
+        template_posted: templatePosted,
+        template_failed: templateFailed,
         rate_limits_applied: true,
         max_posts_per_run: RATE_LIMITS.MAX_TOTAL_POSTS_PER_RUN
       }),
