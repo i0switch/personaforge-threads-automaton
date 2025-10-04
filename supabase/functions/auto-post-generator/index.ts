@@ -933,14 +933,7 @@ serve(async (req) => {
     
     const { data: templateConfigs, error: templateFetchError } = await supabase
       .from('template_random_post_configs')
-      .select(`
-        *,
-        personas:persona_id (
-          id, name, user_id, is_active, 
-          personality, tone_of_voice, expertise,
-          threads_access_token, threads_user_id
-        )
-      `)
+      .select('*')
       .eq('is_active', true)
       .lte('next_run_at', now.toISOString())
       .order('next_run_at', { ascending: true });
@@ -953,12 +946,22 @@ serve(async (req) => {
     
     for (const templateCfg of templateConfigs || []) {
       try {
-        const persona = templateCfg.personas;
-        if (!persona || !persona.is_active) {
+        console.log(`🔍 DEBUG: Processing template config ${templateCfg.id} for persona ${templateCfg.persona_id}`);
+        
+        // Fetch persona separately
+        const { data: persona, error: personaError } = await supabase
+          .from('personas')
+          .select('id, name, user_id, is_active, personality, tone_of_voice, expertise, threads_access_token, threads_user_id')
+          .eq('id', templateCfg.persona_id)
+          .eq('is_active', true)
+          .single();
+        
+        if (personaError || !persona) {
           console.log(`❌ Persona ${templateCfg.persona_id} not found or inactive for template config ${templateCfg.id}`);
           continue;
         }
         
+        console.log(`🔍 DEBUG: Persona found: ${persona.name} (${persona.id})`);
         console.log(`📝 Processing template config ${templateCfg.id} for persona ${persona.name}`);
         
         // Rate limit check
