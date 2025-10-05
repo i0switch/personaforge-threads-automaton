@@ -112,7 +112,21 @@ const CreatePosts = () => {
   // Load persona avatar as default face image when persona is selected
   useEffect(() => {
     if (selectedPersona && personas.length > 0) {
+      console.log('🔄 Persona changed to:', selectedPersona);
+      console.log('🧹 Clearing previous generated posts');
+      
+      // ペルソナ変更時に以前の生成投稿をクリア
+      setGeneratedPosts([]);
+      setImagePrompts({});
+      setPostImages({});
+      setPostImagePreviews({});
+      setPostsNeedingReview(new Set());
+      setReviewedPosts(new Set());
+      setCurrentStep(1); // ステップ1に戻す
+      
       const persona = personas.find(p => p.id === selectedPersona);
+      console.log('👤 Persona data:', persona?.name, persona?.id);
+      
       if (persona?.avatar_url) {
         setFaceImagePreview(persona.avatar_url);
         // Convert URL to File object for API usage
@@ -182,8 +196,10 @@ const CreatePosts = () => {
 
     setIsGenerating(true);
     try {
-      console.log('Starting post generation with:', {
+      const currentPersona = personas.find(p => p.id === selectedPersona);
+      console.log('📝 Starting post generation with:', {
         personaId: selectedPersona,
+        personaName: currentPersona?.name,
         topics: topics.split('\n').filter(t => t.trim()),
         selectedDates: selectedDates.map(d => format(d, 'yyyy-MM-dd')),
         selectedTimes,
@@ -208,6 +224,13 @@ const CreatePosts = () => {
       }
 
       if (data?.success && data?.posts && data.posts.length > 0) {
+        console.log('✅ Posts generated successfully');
+        console.log('📊 Generated posts persona IDs:', data.posts.map(p => ({
+          postId: p.id,
+          personaId: p.persona_id,
+          content: p.content.substring(0, 30) + '...'
+        })));
+        
         // 生成された投稿をセット
         setGeneratedPosts(data.posts);
         
@@ -384,14 +407,19 @@ const CreatePosts = () => {
 
       // 生成された投稿から persona_id を取得（状態よりも信頼性が高い）
       const personaIdFromPost = generatedPosts[0]?.persona_id;
-      console.log('=== Navigating to review-posts ===');
-      console.log('Persona ID from post:', personaIdFromPost);
-      console.log('Selected persona state:', selectedPersona);
+      console.log('=== 📋 Navigating to review-posts ===');
+      console.log('🎯 Persona ID from generated post:', personaIdFromPost);
+      console.log('🔄 Selected persona state:', selectedPersona);
+      console.log('📝 All post persona IDs:', updatedPosts.map(p => p.persona_id));
       
       const selectedPersonaData = personas.find(p => p.id === personaIdFromPost);
       
-      console.log('Updated posts:', updatedPosts.length);
-      console.log('Persona data:', selectedPersonaData?.name, selectedPersonaData?.id);
+      console.log('✅ Updated posts count:', updatedPosts.length);
+      console.log('👤 Persona data:', {
+        name: selectedPersonaData?.name,
+        id: selectedPersonaData?.id,
+        found: !!selectedPersonaData
+      });
       
       // Make sure we have valid data before navigation
       if (!selectedPersonaData) {
