@@ -254,7 +254,8 @@ async function saveReplyToDatabaseSafe(persona: any, reply: any): Promise<{ isNe
         reply_author_id: reply.username,
         reply_author_username: reply.username,
         reply_timestamp: new Date(reply.timestamp || Date.now()).toISOString(),
-        auto_reply_sent: false
+        auto_reply_sent: false,
+        reply_status: 'pending'
       });
 
     if (error) {
@@ -362,7 +363,7 @@ async function processTemplateAutoReply(persona: any, reply: any): Promise<{ sen
               .from('thread_replies')
               .update({ 
                 scheduled_reply_at: scheduledTime.toISOString(),
-                reply_status: 'scheduled'
+                reply_status: 'pending'  // 'scheduled'ではなく'pending'を使用
               })
               .eq('reply_id', reply.id);
             
