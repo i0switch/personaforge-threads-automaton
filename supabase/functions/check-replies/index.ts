@@ -259,7 +259,8 @@ async function checkRepliesForPost(persona: any, postId: string): Promise<number
                  reply_author_id: thread.username || '',
                  reply_author_username: thread.username,
                  reply_timestamp: new Date(thread.timestamp || Date.now()).toISOString(),
-                 auto_reply_sent: false
+                 auto_reply_sent: false,
+                 reply_status: 'pending'
                });
 
              if (!insertError) {
@@ -284,8 +285,8 @@ async function checkRepliesForPost(persona: any, postId: string): Promise<number
              } else {
                console.error(`❌ リプライ保存エラー: ${thread.id}`, insertError);
              }
-           } else if (!existingReply.auto_reply_sent) {
-             // 既存のリプライで、まだ自動返信が送信されていない場合
+           } else if (!existingReply.auto_reply_sent && existingReply.reply_status !== 'processing') {
+             // 既存のリプライで、まだ自動返信が送信されていない、かつ処理中でない場合
              shouldProcessAutoReply = true;
              console.log(`🔄 未送信自動返信を処理: ${thread.id}`);
            }
@@ -293,6 +294,21 @@ async function checkRepliesForPost(persona: any, postId: string): Promise<number
            // 自動返信の処理（キーワード自動返信 + AI自動返信）
            if (shouldProcessAutoReply) {
              console.log(`🤖 自動返信処理開始: ${thread.id} for persona ${persona.name}`);
+             
+             // 🔒 処理開始前に即座にステータスを更新（楽観的ロック）
+             const { error: lockError } = await supabase
+               .from('thread_replies')
+               .update({ 
+                 auto_reply_sent: true,
+                 reply_status: 'processing'
+               })
+               .eq('reply_id', thread.id)
+               .eq('auto_reply_sent', false); // 既に処理済みでないことを確認
+             
+             if (lockError) {
+               console.error(`❌ リプライロック失敗（既に処理中の可能性）: ${thread.id}`, lockError);
+               continue; // 既に他の処理が走っている可能性があるのでスキップ
+             }
              
              const replyObject = {
                id: thread.id,
@@ -303,38 +319,65 @@ async function checkRepliesForPost(persona: any, postId: string): Promise<number
              };
              
              try {
+               let replySent = false;
+               
                // キーワード自動返信をチェック
                if (persona.auto_reply_enabled) {
                  const templateResult = await processTemplateAutoReply(persona, replyObject);
                  if (templateResult.sent) {
                    console.log(`✅ 定型文自動返信成功 - reply: ${thread.id}`);
-                   await updateAutoReplySentFlag(thread.id, true);
-                   continue; // 定型文返信が送信されたら、AI返信はスキップ
+                   replySent = true;
                  }
                }
 
-                // AI自動返信をチェック
-                if (persona.ai_auto_reply_enabled) {
-                  const autoReplyResult = await supabase.functions.invoke('threads-auto-reply', {
-                    body: {
-                      postContent: 'Original post content', // 必要に応じて実際の投稿内容を取得
-                      replyContent: thread.text,
-                      replyId: thread.id,
-                      personaId: persona.id,
-                      userId: persona.user_id
-                    }
-                  });
+               // AI自動返信をチェック（定型文が送信されなかった場合のみ）
+               if (!replySent && persona.ai_auto_reply_enabled) {
+                 const autoReplyResult = await supabase.functions.invoke('threads-auto-reply', {
+                   body: {
+                     postContent: 'Original post content',
+                     replyContent: thread.text,
+                     replyId: thread.id,
+                     personaId: persona.id,
+                     userId: persona.user_id
+                   }
+                 });
 
-                  if (autoReplyResult.error) {
-                    console.error(`❌ AI自動返信呼び出しエラー:`, autoReplyResult.error);
-                  } else {
-                    console.log(`✅ AI自動返信呼び出し成功: ${thread.id}`);
-                  }
-                }
-              } catch (error) {
-                console.error(`❌ 自動返信処理エラー:`, error);
-              }
-            }
+                 if (autoReplyResult.error) {
+                   console.error(`❌ AI自動返信呼び出しエラー:`, autoReplyResult.error);
+                   // エラー時は処理失敗としてマーク
+                   await supabase
+                     .from('thread_replies')
+                     .update({ 
+                       reply_status: 'failed',
+                       auto_reply_sent: false // リトライ可能にする
+                     })
+                     .eq('reply_id', thread.id);
+                 } else {
+                   console.log(`✅ AI自動返信呼び出し成功: ${thread.id}`);
+                   replySent = true;
+                 }
+               }
+               
+               // 両方とも送信されなかった場合
+               if (!replySent) {
+                 console.log(`⚠️ 自動返信なし（設定無効または条件不一致） - reply: ${thread.id}`);
+                 await supabase
+                   .from('thread_replies')
+                   .update({ reply_status: 'pending' })
+                   .eq('reply_id', thread.id);
+               }
+             } catch (error) {
+               console.error(`❌ 自動返信処理エラー:`, error);
+               // エラー時はロックを解除
+               await supabase
+                 .from('thread_replies')
+                 .update({ 
+                   reply_status: 'failed',
+                   auto_reply_sent: false
+                 })
+                 .eq('reply_id', thread.id);
+             }
+           }
          }
        }
      }
@@ -415,12 +458,23 @@ async function processTemplateAutoReply(persona: any, reply: any): Promise<{ sen
             const accessToken = await getAccessToken(persona);
             if (!accessToken) {
               console.error('❌ アクセストークン取得失敗');
+              // エラー時はステータスを更新
+              await supabase
+                .from('thread_replies')
+                .update({ reply_status: 'failed' })
+                .eq('reply_id', reply.id);
               return { sent: false };
             }
             const success = await sendThreadsReply(persona, accessToken, reply.id, setting.response_template);
             
             if (success) {
               console.log(`✅ 定型文返信送信成功`);
+              // 送信成功時にステータスを更新
+              await supabase
+                .from('thread_replies')
+                .update({ reply_status: 'sent' })
+                .eq('reply_id', reply.id);
+              
               // アクティビティログを記録
               await logActivity(persona.user_id, persona.id, 'template_auto_reply_sent',
                 `定型文自動返信を送信: "${setting.response_template.substring(0, 50)}..."`, {
@@ -432,6 +486,11 @@ async function processTemplateAutoReply(persona: any, reply: any): Promise<{ sen
               return { sent: true, method: 'template' };
             } else {
               console.error(`❌ 定型文返信送信失敗`);
+              // 送信失敗時はステータスを更新
+              await supabase
+                .from('thread_replies')
+                .update({ reply_status: 'failed' })
+                .eq('reply_id', reply.id);
             }
           }
         } catch (error) {

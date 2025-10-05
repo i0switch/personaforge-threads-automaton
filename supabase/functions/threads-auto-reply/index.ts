@@ -139,10 +139,13 @@ ${replyContent}`;
       if (success) {
         console.log(`🎉 AI自動返信送信成功: "${aiReplyText}"`);
         
-        // auto_reply_sentフラグを更新
+        // 送信成功時にステータスを更新
         await supabase
           .from('thread_replies')
-          .update({ auto_reply_sent: true })
+          .update({ 
+            auto_reply_sent: true,
+            reply_status: 'sent'
+          })
           .eq('reply_id', replyId);
 
         // アクティビティログを記録
@@ -168,6 +171,15 @@ ${replyContent}`;
         });
       } else {
         console.error('❌ AI自動返信送信失敗');
+        // 送信失敗時はステータスを更新
+        await supabase
+          .from('thread_replies')
+          .update({ 
+            reply_status: 'failed',
+            auto_reply_sent: false // リトライ可能にする
+          })
+          .eq('reply_id', replyId);
+        
         return new Response(JSON.stringify({ error: 'Failed to send AI reply' }), {
           status: 500,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
