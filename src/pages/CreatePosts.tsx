@@ -382,11 +382,16 @@ const CreatePosts = () => {
         };
       }));
 
-      const selectedPersonaData = personas.find(p => p.id === selectedPersona);
-      
+      // 生成された投稿から persona_id を取得（状態よりも信頼性が高い）
+      const personaIdFromPost = generatedPosts[0]?.persona_id;
       console.log('=== Navigating to review-posts ===');
+      console.log('Persona ID from post:', personaIdFromPost);
+      console.log('Selected persona state:', selectedPersona);
+      
+      const selectedPersonaData = personas.find(p => p.id === personaIdFromPost);
+      
       console.log('Updated posts:', updatedPosts.length);
-      console.log('Persona:', selectedPersonaData?.name);
+      console.log('Persona data:', selectedPersonaData?.name, selectedPersonaData?.id);
       
       // Make sure we have valid data before navigation
       if (!selectedPersonaData) {
