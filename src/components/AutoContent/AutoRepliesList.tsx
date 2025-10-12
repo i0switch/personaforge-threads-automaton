@@ -17,6 +17,7 @@ interface AutoReply {
   persona_id: string;
   persona_name: string;
   auto_reply_sent: boolean;
+  ai_generated_response?: string;
 }
 
 interface Persona {
@@ -66,6 +67,7 @@ export const AutoRepliesList = () => {
           reply_timestamp,
           persona_id,
           auto_reply_sent,
+          reply_id,
           personas!inner(name)
         `)
         .eq('user_id', user?.id)
@@ -81,17 +83,39 @@ export const AutoRepliesList = () => {
 
       if (error) throw error;
 
-      const formattedData = data?.map(reply => ({
-        id: reply.id,
-        reply_text: reply.reply_text,
-        reply_author_username: reply.reply_author_username,
-        reply_timestamp: reply.reply_timestamp,
-        persona_id: reply.persona_id,
-        persona_name: (reply.personas as any)?.name || '不明',
-        auto_reply_sent: reply.auto_reply_sent
-      })) || [];
+      // activity_logsからAI生成返信文を取得
+      const repliesWithAIResponse = await Promise.all(
+        (data || []).map(async (reply) => {
+          const { data: logData } = await supabase
+            .from('activity_logs')
+            .select('metadata, description')
+            .eq('user_id', user?.id)
+            .or(`action_type.eq.ai_auto_reply_sent,action_type.eq.auto_reply_sent`)
+            .order('created_at', { ascending: false });
 
-      setReplies(formattedData);
+          // metadataからreply_idが一致するログを探す
+          const matchingLog = logData?.find(log => {
+            const metadata = log.metadata as any;
+            return metadata?.reply_id === reply.reply_id || 
+                   metadata?.original_reply_text === reply.reply_text;
+          });
+
+          const metadata = matchingLog?.metadata as any;
+          
+          return {
+            id: reply.id,
+            reply_text: reply.reply_text,
+            reply_author_username: reply.reply_author_username,
+            reply_timestamp: reply.reply_timestamp,
+            persona_id: reply.persona_id,
+            persona_name: (reply.personas as any)?.name || '不明',
+            auto_reply_sent: reply.auto_reply_sent,
+            ai_generated_response: metadata?.ai_response || metadata?.response_text || matchingLog?.description
+          };
+        })
+      );
+
+      setReplies(repliesWithAIResponse);
     } catch (error) {
       console.error('Error fetching replies:', error);
       toast({
@@ -163,8 +187,30 @@ export const AutoRepliesList = () => {
                       {format(new Date(reply.reply_timestamp), 'yyyy年M月d日 HH:mm', { locale: ja })}
                     </p>
                   </CardHeader>
-                  <CardContent>
-                    <p className="text-sm whitespace-pre-wrap">{reply.reply_text}</p>
+                  <CardContent className="space-y-4">
+                    <div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                          受信したリプライ
+                        </Badge>
+                      </div>
+                      <p className="text-sm whitespace-pre-wrap bg-gray-50 p-3 rounded-md">
+                        {reply.reply_text}
+                      </p>
+                    </div>
+                    
+                    {reply.ai_generated_response && (
+                      <div>
+                        <div className="flex items-center gap-2 mb-2">
+                          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                            AI生成返信文
+                          </Badge>
+                        </div>
+                        <p className="text-sm whitespace-pre-wrap bg-green-50 p-3 rounded-md">
+                          {reply.ai_generated_response}
+                        </p>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               ))}
