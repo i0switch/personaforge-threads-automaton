@@ -64,6 +64,16 @@ const Index = () => {
 
   const features = [
     {
+      title: "自動文章作成確認",
+      description: "自動返信・自動投稿の履歴を確認",
+      icon: Brain,
+      path: "/auto-generated-content",
+      color: "from-violet-600 to-purple-700",
+      bgGradient: "from-violet-50 to-purple-50",
+      borderColor: "border-violet-200",
+      disabled: !isApproved || !isActive
+    },
+    {
       title: "ペルソナ設定",
       description: "AIアシスタントの性格や専門分野を設定・編集",
       icon: Users,
