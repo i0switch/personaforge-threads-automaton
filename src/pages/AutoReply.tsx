@@ -33,6 +33,9 @@ const AutoReply = () => {
   // キーワード返信フォーム用の状態
   const [keywords, setKeywords] = useState("");
   const [responseTemplate, setResponseTemplate] = useState("");
+  
+  // フィルター用の状態
+  const [filterPersonaId, setFilterPersonaId] = useState<string>("all");
 
   useEffect(() => {
     loadData();
@@ -363,7 +366,25 @@ const AutoReply = () => {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {autoReplies.map((reply) => {
+                <div className="flex items-center gap-4 mb-4">
+                  <Label className="min-w-fit">ペルソナで絞り込み:</Label>
+                  <select 
+                    className="w-full max-w-xs p-2 border rounded-md"
+                    value={filterPersonaId}
+                    onChange={(e) => setFilterPersonaId(e.target.value)}
+                  >
+                    <option value="all">すべて</option>
+                    {personas.map((persona) => (
+                      <option key={persona.id} value={persona.id}>
+                        {persona.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                
+                {autoReplies
+                  .filter(reply => filterPersonaId === "all" || reply.persona_id === filterPersonaId)
+                  .map((reply) => {
                   const persona = personas.find(p => p.id === reply.persona_id);
                   return (
                     <div key={reply.id} className="border rounded-lg p-4">
