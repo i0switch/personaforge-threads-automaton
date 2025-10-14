@@ -271,9 +271,32 @@ export function TemplateConfigComponent() {
       
       updateTemplate(personaId, index, 'image_url', publicUrl);
       
+      // Auto-save templates after image upload
+      const config = getConfigForPersona(personaId);
+      if (config) {
+        const current = editingTemplates.get(personaId) || [];
+        const updated = [...current];
+        updated[index] = { ...updated[index], image_url: publicUrl };
+        
+        const templates = updated.filter(t => t.text.trim());
+        
+        if (templates.length > 0) {
+          const { error: saveError } = await supabase
+            .from('template_random_post_configs')
+            .update({
+              templates: templates as any,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', config.id);
+          
+          if (saveError) throw saveError;
+          await loadData();
+        }
+      }
+      
       toast({
         title: "画像をアップロードしました",
-        description: "テンプレートに画像が追加されました",
+        description: "テンプレートに画像が追加され、自動保存されました",
       });
     } catch (error: any) {
       console.error('Image upload error:', error);
