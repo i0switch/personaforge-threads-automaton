@@ -1095,7 +1095,7 @@ serve(async (req) => {
         // Update posted_times_today
         const updatedPostedTimes = [...postedTimesToday, selectedTime];
         
-        // Calculate next run time
+        // Calculate next run time with proper timezone handling
         const nextSlots = (templateCfg.random_times || []).filter(
           (s: string) => !updatedPostedTimes.includes(s)
         );
@@ -1105,25 +1105,45 @@ serve(async (req) => {
           // Find next slot today
           const nextSlot = nextSlots.find((s: string) => s > currentTime);
           if (nextSlot) {
-            const nextRunDate = new Date(localNow);
+            // Create date in the specified timezone
             const [h, m, s] = nextSlot.split(':').map(Number);
-            nextRunDate.setHours(h, m, s || 0, 0);
-            nextRunAt = nextRunDate.toISOString();
+            const nextRunDate = new Date(todayDate + 'T' + nextSlot);
+            
+            // Convert to UTC by adjusting for timezone offset
+            const utcOffset = getTimezoneOffset(tz);
+            const utcTime = new Date(nextRunDate.getTime() - utcOffset * 60 * 1000);
+            nextRunAt = utcTime.toISOString();
+            
+            console.log(`📅 Next slot: ${nextSlot} in ${tz} = ${nextRunAt} UTC`);
           } else {
-            // No more slots today, schedule for tomorrow
-            const tomorrowDate = new Date(localNow);
-            tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+            // No more slots today, schedule for tomorrow's first slot
+            const tomorrow = new Date(localNow);
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            const tomorrowStr = tomorrow.toISOString().split('T')[0];
             const [h, m, s] = (templateCfg.random_times[0] as string).split(':').map(Number);
-            tomorrowDate.setHours(h, m, s || 0, 0);
-            nextRunAt = tomorrowDate.toISOString();
+            const tomorrowSlot = new Date(tomorrowStr + 'T' + templateCfg.random_times[0]);
+            
+            // Convert to UTC
+            const utcOffset = getTimezoneOffset(tz);
+            const utcTime = new Date(tomorrowSlot.getTime() - utcOffset * 60 * 1000);
+            nextRunAt = utcTime.toISOString();
+            
+            console.log(`📅 All today's slots done, next: tomorrow ${templateCfg.random_times[0]} = ${nextRunAt} UTC`);
           }
         } else {
-          // All slots posted today, schedule for tomorrow
-          const tomorrowDate = new Date(localNow);
-          tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+          // All slots posted today, schedule for tomorrow's first slot
+          const tomorrow = new Date(localNow);
+          tomorrow.setDate(tomorrow.getDate() + 1);
+          const tomorrowStr = tomorrow.toISOString().split('T')[0];
           const [h, m, s] = (templateCfg.random_times[0] as string).split(':').map(Number);
-          tomorrowDate.setHours(h, m, s || 0, 0);
-          nextRunAt = tomorrowDate.toISOString();
+          const tomorrowSlot = new Date(tomorrowStr + 'T' + templateCfg.random_times[0]);
+          
+          // Convert to UTC
+          const utcOffset = getTimezoneOffset(tz);
+          const utcTime = new Date(tomorrowSlot.getTime() - utcOffset * 60 * 1000);
+          nextRunAt = utcTime.toISOString();
+          
+          console.log(`📅 All slots posted, next: tomorrow ${templateCfg.random_times[0]} = ${nextRunAt} UTC`);
         }
         
         // Update config
