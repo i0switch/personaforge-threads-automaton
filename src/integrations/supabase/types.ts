@@ -1464,6 +1464,10 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: undefined
       }
+      upsert_rate_limit: {
+        Args: { p_endpoint: string; p_identifier: string }
+        Returns: undefined
+      }
       validate_password_strength: {
         Args: { password: string }
         Returns: Json

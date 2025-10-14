@@ -3,6 +3,50 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
 import { z } from 'https://deno.land/x/zod@v3.22.4/mod.ts';
 
+// Phase 2 Security: Rate limiting function
+async function checkRateLimit(
+  supabase: any,
+  endpoint: string,
+  identifier: string
+): Promise<{ allowed: boolean; retryAfter?: number }> {
+  try {
+    const oneMinuteAgo = new Date(Date.now() - 60 * 1000).toISOString();
+    
+    const { data: recentRequests, error } = await supabase
+      .from('rate_limits')
+      .select('request_count, window_start')
+      .eq('endpoint', endpoint)
+      .eq('identifier', identifier)
+      .gte('window_start', oneMinuteAgo)
+      .single();
+
+    if (error && error.code !== 'PGRST116') {
+      console.error('Rate limit check error:', error);
+      return { allowed: true }; // エラー時は通過させる（既存機能保護）
+    }
+
+    const limit = 60; // 60 requests per minute
+    
+    if (recentRequests && recentRequests.request_count >= limit) {
+      const retryAfter = Math.ceil(
+        (new Date(recentRequests.window_start).getTime() + 60000 - Date.now()) / 1000
+      );
+      return { allowed: false, retryAfter };
+    }
+
+    // レート制限記録を更新
+    await supabase.rpc('upsert_rate_limit', {
+      p_endpoint: endpoint,
+      p_identifier: identifier
+    }).catch((err: any) => console.error('Failed to update rate limit:', err));
+
+    return { allowed: true };
+  } catch (error) {
+    console.error('Rate limit error:', error);
+    return { allowed: true }; // エラー時は通過させる（既存機能保護）
+  }
+}
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -69,6 +113,31 @@ serve(async (req) => {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
+    }
+
+    // Phase 2 Security: Rate limit check
+    const rateLimitResult = await checkRateLimit(
+      supabase,
+      'threads-webhook',
+      personaId
+    );
+    
+    if (!rateLimitResult.allowed) {
+      console.warn(`⚠️ レート制限超過: persona_id=${personaId}`);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Rate limit exceeded',
+          retryAfter: rateLimitResult.retryAfter 
+        }),
+        { 
+          status: 429, 
+          headers: { 
+            ...corsHeaders, 
+            'Content-Type': 'application/json',
+            'Retry-After': String(rateLimitResult.retryAfter || 60)
+          } 
+        }
+      );
     }
 
     // Facebook Webhook認証のチャレンジレスポンス処理（GETリクエスト）
