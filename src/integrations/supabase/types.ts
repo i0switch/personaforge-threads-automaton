@@ -932,7 +932,7 @@ export type Database = {
           persona_id: string
           posted_times_today: Json | null
           random_times: string[]
-          templates: string[]
+          templates: Json
           timezone: string
           updated_at: string
           user_id: string
@@ -946,7 +946,7 @@ export type Database = {
           persona_id: string
           posted_times_today?: Json | null
           random_times?: string[]
-          templates?: string[]
+          templates?: Json
           timezone?: string
           updated_at?: string
           user_id: string
@@ -960,7 +960,7 @@ export type Database = {
           persona_id?: string
           posted_times_today?: Json | null
           random_times?: string[]
-          templates?: string[]
+          templates?: Json
           timezone?: string
           updated_at?: string
           user_id?: string

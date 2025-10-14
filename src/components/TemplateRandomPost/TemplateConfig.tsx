@@ -15,12 +15,17 @@ interface Persona {
   name: string;
 }
 
+interface Template {
+  text: string;
+  image_url?: string;
+}
+
 interface TemplateConfig {
   id: string;
   persona_id: string;
   is_active: boolean;
   random_times: string[];
-  templates: string[];
+  templates: Template[];
   timezone: string;
   next_run_at: string | null;
 }
@@ -64,7 +69,18 @@ export function TemplateConfigComponent() {
 
       const configMap = new Map<string, TemplateConfig>();
       (configsData || []).forEach((config) => {
-        configMap.set(config.persona_id, config);
+        // Parse templates from jsonb to Template[]
+        const parsedTemplates = Array.isArray(config.templates) 
+          ? (config.templates as any[]).map(t => ({
+              text: typeof t === 'string' ? t : t.text || '',
+              image_url: typeof t === 'string' ? undefined : t.image_url
+            }))
+          : [];
+        
+        configMap.set(config.persona_id, {
+          ...config,
+          templates: parsedTemplates
+        });
       });
       setConfigs(configMap);
     } catch (error: any) {
@@ -146,17 +162,20 @@ export function TemplateConfigComponent() {
             persona_id: persona.id,
             is_active: true,
             random_times: defaultTimes,
-            templates: [],
+            templates: [] as any,
             timezone: userTz,
             next_run_at: nextRunAt,
-            posted_times_today: [],
+            posted_times_today: [] as any,
           })
           .select()
           .single();
         
         if (error) throw error;
         
-        setConfigs(prev => new Map(prev).set(persona.id, data));
+        setConfigs(prev => new Map(prev).set(persona.id, {
+          ...data,
+          templates: []
+        }));
         
         toast({
           title: "設定を作成しました",
@@ -215,17 +234,17 @@ export function TemplateConfigComponent() {
     }
   };
 
-  const [editingTemplates, setEditingTemplates] = useState<Map<string, string[]>>(new Map());
+  const [editingTemplates, setEditingTemplates] = useState<Map<string, Template[]>>(new Map());
 
   const addTemplate = (personaId: string) => {
     const current = editingTemplates.get(personaId) || [];
-    setEditingTemplates(prev => new Map(prev).set(personaId, [...current, '']));
+    setEditingTemplates(prev => new Map(prev).set(personaId, [...current, { text: '', image_url: undefined }]));
   };
 
-  const updateTemplate = (personaId: string, index: number, value: string) => {
+  const updateTemplate = (personaId: string, index: number, field: 'text' | 'image_url', value: string) => {
     const current = editingTemplates.get(personaId) || [];
     const updated = [...current];
-    updated[index] = value;
+    updated[index] = { ...updated[index], [field]: value };
     setEditingTemplates(prev => new Map(prev).set(personaId, updated));
   };
 
@@ -235,12 +254,47 @@ export function TemplateConfigComponent() {
     setEditingTemplates(prev => new Map(prev).set(personaId, updated));
   };
 
+  const handleImageUpload = async (personaId: string, index: number, file: File) => {
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${personaId}/${Date.now()}.${fileExt}`;
+      
+      const { error: uploadError, data } = await supabase.storage
+        .from('post-images')
+        .upload(fileName, file);
+      
+      if (uploadError) throw uploadError;
+      
+      const { data: { publicUrl } } = supabase.storage
+        .from('post-images')
+        .getPublicUrl(fileName);
+      
+      updateTemplate(personaId, index, 'image_url', publicUrl);
+      
+      toast({
+        title: "画像をアップロードしました",
+        description: "テンプレートに画像が追加されました",
+      });
+    } catch (error: any) {
+      console.error('Image upload error:', error);
+      toast({
+        title: "エラー",
+        description: "画像のアップロードに失敗しました",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const removeImage = (personaId: string, index: number) => {
+    updateTemplate(personaId, index, 'image_url', '');
+  };
+
   const saveTemplates = async (personaId: string) => {
     try {
       const config = getConfigForPersona(personaId);
       if (!config) return;
       
-      const templates = (editingTemplates.get(personaId) || []).filter(t => t.trim());
+      const templates = (editingTemplates.get(personaId) || []).filter(t => t.text.trim());
       
       if (templates.length === 0) {
         toast({
@@ -254,7 +308,7 @@ export function TemplateConfigComponent() {
       const { error } = await supabase
         .from('template_random_post_configs')
         .update({
-          templates,
+          templates: templates as any,
           updated_at: new Date().toISOString()
         })
         .eq('id', config.id);
@@ -284,7 +338,7 @@ export function TemplateConfigComponent() {
 
   useEffect(() => {
     // Initialize editing templates from loaded configs
-    const newMap = new Map<string, string[]>();
+    const newMap = new Map<string, Template[]>();
     configs.forEach((config, personaId) => {
       if (!editingTemplates.has(personaId)) {
         newMap.set(personaId, config.templates || []);
@@ -372,24 +426,59 @@ export function TemplateConfigComponent() {
                     </p>
                   )}
                   
-                  <div className="space-y-3">
+                  <div className="space-y-4">
                     {templates.map((template, index) => (
-                      <div key={index} className="flex gap-2">
-                        <Textarea
-                          value={template}
-                          onChange={(e) => updateTemplate(persona.id, index, e.target.value)}
-                          placeholder="投稿内容を入力..."
-                          className="flex-1"
-                          rows={3}
-                        />
-                        <Button
-                          onClick={() => removeTemplate(persona.id, index)}
-                          size="sm"
-                          variant="ghost"
-                          className="text-red-500 hover:text-red-700"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                      <div key={index} className="border rounded-lg p-4 space-y-3">
+                        <div className="flex gap-2">
+                          <Textarea
+                            value={template.text}
+                            onChange={(e) => updateTemplate(persona.id, index, 'text', e.target.value)}
+                            placeholder="投稿内容を入力..."
+                            className="flex-1"
+                            rows={3}
+                          />
+                          <Button
+                            onClick={() => removeTemplate(persona.id, index)}
+                            size="sm"
+                            variant="ghost"
+                            className="text-red-500 hover:text-red-700"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                        
+                        <div className="space-y-2">
+                          {template.image_url ? (
+                            <div className="relative">
+                              <img 
+                                src={template.image_url} 
+                                alt="Template preview" 
+                                className="w-32 h-32 object-cover rounded-lg border"
+                              />
+                              <Button
+                                onClick={() => removeImage(persona.id, index)}
+                                size="sm"
+                                variant="destructive"
+                                className="absolute top-2 right-2"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          ) : (
+                            <div>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  if (file) handleImageUpload(persona.id, index, file);
+                                }}
+                                className="text-sm"
+                                id={`image-${persona.id}-${index}`}
+                              />
+                            </div>
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>

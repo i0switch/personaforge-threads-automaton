@@ -1023,26 +1023,41 @@ serve(async (req) => {
         }
         
         // Select random template
-        const templates = templateCfg.templates || [];
+        const templates = Array.isArray(templateCfg.templates) ? templateCfg.templates : [];
         if (templates.length === 0) {
           console.log(`❌ No templates configured for config ${templateCfg.id}`);
           continue;
         }
         
-        const randomTemplate = templates[Math.floor(Math.random() * templates.length)];
-        console.log(`📝 Selected template: "${randomTemplate.substring(0, 50)}..."`);
+        const randomTemplateObj = templates[Math.floor(Math.random() * templates.length)];
+        const templateContent = typeof randomTemplateObj === 'string' 
+          ? randomTemplateObj 
+          : (randomTemplateObj as any).text || '';
+        const templateImage = typeof randomTemplateObj === 'object' && randomTemplateObj !== null
+          ? (randomTemplateObj as any).image_url
+          : null;
+        
+        console.log(`📝 Selected template: "${templateContent.substring(0, 50)}..."`);
+        if (templateImage) {
+          console.log(`🖼️ Template has image: ${templateImage}`);
+        }
         
         // Create post with selected template
-        const postData = {
+        const postData: any = {
           user_id: templateCfg.user_id,
           persona_id: templateCfg.persona_id,
-          content: randomTemplate,
+          content: templateContent,
           status: 'scheduled',
           scheduled_for: new Date().toISOString(), // Post immediately
           auto_schedule: true,
           platform: 'threads',
           app_identifier: 'threads-manager-app'
         };
+        
+        // Add image if available
+        if (templateImage) {
+          postData.images = [templateImage];
+        }
         
         console.log(`📅 Creating template post for persona ${persona.name}...`);
         
