@@ -1343,6 +1343,10 @@ export type Database = {
           user_id: string
         }[]
       }
+      get_persona_credential: {
+        Args: { p_credential_type: string; p_persona_id: string }
+        Returns: string
+      }
       get_persona_credentials_safe: {
         Args: { p_persona_id: string }
         Returns: {
