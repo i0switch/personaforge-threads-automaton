@@ -144,6 +144,42 @@ export type Database = {
           },
         ]
       }
+      api_credentials: {
+        Row: {
+          access_count: number | null
+          created_at: string
+          credential_type: string
+          encrypted_value: string
+          id: string
+          last_accessed_at: string | null
+          persona_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          access_count?: number | null
+          created_at?: string
+          credential_type: string
+          encrypted_value: string
+          id?: string
+          last_accessed_at?: string | null
+          persona_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          access_count?: number | null
+          created_at?: string
+          credential_type?: string
+          encrypted_value?: string
+          id?: string
+          last_accessed_at?: string | null
+          persona_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       auto_post_configs: {
         Row: {
           content_prefs: string | null
@@ -1231,6 +1267,10 @@ export type Database = {
         Args: { p_persona_id: string }
         Returns: undefined
       }
+      cleanup_old_rate_limits: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
       cleanup_persona_schedules: {
         Args: { p_persona_id: string }
         Returns: undefined
@@ -1301,6 +1341,14 @@ export type Database = {
           metadata: Json
           persona_id: string
           user_id: string
+        }[]
+      }
+      get_persona_credentials_safe: {
+        Args: { p_persona_id: string }
+        Returns: {
+          credential_type: string
+          has_value: boolean
+          last_accessed: string
         }[]
       }
       get_persona_for_auto_reply: {
