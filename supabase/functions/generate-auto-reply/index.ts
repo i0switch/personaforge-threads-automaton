@@ -1,10 +1,25 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
+import { z } from 'https://deno.land/x/zod@v3.22.4/mod.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+// Phase 1 Security: Input validation schema
+const AutoReplyRequestSchema = z.object({
+  postContent: z.string().min(1).max(5000),
+  replyContent: z.string().min(1).max(5000),
+  persona: z.object({
+    id: z.string().uuid().optional(),
+    name: z.string().max(100),
+    age: z.string().max(50).optional(),
+    personality: z.string().max(1000).optional(),
+    expertise: z.array(z.string().max(100)).optional(),
+    tone_of_voice: z.string().max(500).optional()
+  })
+});
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -17,11 +32,23 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const { postContent, replyContent, persona } = await req.json();
-
-    if (!postContent || !replyContent || !persona) {
-      throw new Error('Missing required fields: postContent, replyContent, persona');
+    // Phase 1 Security: Parse and validate request body
+    let rawBody;
+    try {
+      rawBody = await req.json();
+    } catch (e) {
+      console.error('Invalid JSON in request body:', e);
+      throw new Error('Invalid JSON in request body');
     }
+
+    const validationResult = AutoReplyRequestSchema.safeParse(rawBody);
+    if (!validationResult.success) {
+      console.error('Request validation failed:', validationResult.error);
+      throw new Error(`Invalid request format: ${validationResult.error.message}`);
+    }
+
+    const { postContent, replyContent, persona } = validationResult.data;
+    console.log(`✅ Input validation passed for persona: ${persona.name}`);
 
     const encryptionKey = Deno.env.get('ENCRYPTION_KEY');
     if (!encryptionKey) {

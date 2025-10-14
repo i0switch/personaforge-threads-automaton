@@ -1,6 +1,7 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
+import { z } from 'https://deno.land/x/zod@v3.22.4/mod.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -10,6 +11,45 @@ const corsHeaders = {
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+// Phase 1 Security: Webhook payload validation schema
+const WebhookReplyValueSchema = z.object({
+  id: z.string().max(100),
+  username: z.string().max(50),
+  text: z.string().max(5000),
+  media_type: z.string().optional(),
+  permalink: z.string().url().optional(),
+  replied_to: z.object({
+    id: z.string().max(100)
+  }).optional(),
+  root_post: z.object({
+    id: z.string().max(100),
+    owner_id: z.string().max(100).optional(),
+    username: z.string().max(50).optional()
+  }).optional(),
+  shortcode: z.string().max(100).optional(),
+  timestamp: z.string().optional()
+});
+
+const WebhookPayloadSchema = z.object({
+  app_id: z.string().optional(),
+  topic: z.string().optional(),
+  target_id: z.string().optional(),
+  time: z.number().optional(),
+  subscription_id: z.string().optional(),
+  has_uid_field: z.boolean().optional(),
+  values: z.array(z.object({
+    value: WebhookReplyValueSchema,
+    field: z.enum(['replies', 'mentions']).optional()
+  })).optional(),
+  // Legacy format support
+  entry: z.array(z.object({
+    changes: z.array(z.object({
+      field: z.enum(['replies', 'mentions']).optional(),
+      value: WebhookReplyValueSchema.optional()
+    })).optional()
+  })).optional()
+});
 
 serve(async (req) => {
   console.log(`🚀 Webhook受信: ${req.method} ${req.url}`);
@@ -76,7 +116,29 @@ serve(async (req) => {
     console.log(`✅ ペルソナ取得成功: ${persona.name}, 自動返信: ${persona.auto_reply_enabled}`);
 
     // Webhookペイロードを解析（POSTリクエストの場合のみ）
-    const payload = await req.json();
+    let rawPayload;
+    try {
+      rawPayload = await req.json();
+    } catch (e) {
+      console.error('❌ Invalid JSON payload:', e);
+      return new Response(JSON.stringify({ error: 'Invalid JSON payload' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // Phase 1 Security: Validate webhook payload structure
+    let payload;
+    try {
+      payload = WebhookPayloadSchema.parse(rawPayload);
+      console.log(`✅ Webhook payload validation passed`);
+    } catch (validationError) {
+      console.error('❌ Webhook payload validation failed:', validationError);
+      // Log but continue processing for backward compatibility
+      payload = rawPayload;
+      console.warn('⚠️ Processing unvalidated payload (backward compatibility mode)');
+    }
+    
     console.log(`📦 Webhookペイロード:`, JSON.stringify(payload, null, 2));
 
     // リプライデータを抽出
