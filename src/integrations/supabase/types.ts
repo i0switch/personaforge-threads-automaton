@@ -52,6 +52,42 @@ export type Database = {
           },
         ]
       }
+      activity_logs_archive: {
+        Row: {
+          action_type: string
+          archived_at: string
+          checksum: string | null
+          created_at: string
+          description: string | null
+          id: string
+          metadata: Json | null
+          persona_id: string | null
+          user_id: string
+        }
+        Insert: {
+          action_type: string
+          archived_at?: string
+          checksum?: string | null
+          created_at: string
+          description?: string | null
+          id: string
+          metadata?: Json | null
+          persona_id?: string | null
+          user_id: string
+        }
+        Update: {
+          action_type?: string
+          archived_at?: string
+          checksum?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          metadata?: Json | null
+          persona_id?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       analytics: {
         Row: {
           app_identifier: string | null
@@ -1131,6 +1167,10 @@ export type Database = {
           rescheduled_count: number
         }[]
       }
+      archive_old_activity_logs: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
       audit_security_functions: {
         Args: Record<PropertyKey, never>
         Returns: {
@@ -1213,6 +1253,15 @@ export type Database = {
       }
       encrypt_access_token_safe: {
         Args: { token: string }
+        Returns: string
+      }
+      generate_log_checksum: {
+        Args: {
+          p_action_type: string
+          p_created_at: string
+          p_id: string
+          p_user_id: string
+        }
         Returns: string
       }
       generate_security_report: {
