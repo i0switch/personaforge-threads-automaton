@@ -83,19 +83,17 @@ const PersonaSetup = () => {
     }
 
     try {
-      // セッション確認とリフレッシュを最初に実行
-      console.log('Checking authentication session...');
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      // 最初に必ずセッションをリフレッシュして最新のトークンを取得
+      console.log('Refreshing authentication session...');
+      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
       
-      if (sessionError) {
-        console.error('Session error:', sessionError);
-        throw new Error('認証セッションの取得に失敗しました。再ログインしてください。');
+      if (refreshError || !refreshData.session) {
+        console.error('Session refresh failed:', refreshError);
+        await supabase.auth.signOut({ scope: 'local' });
+        throw new Error('セッションの更新に失敗しました。再ログインしてください。');
       }
-      
-      if (!session || !session.access_token) {
-        console.error('No valid session found');
-        throw new Error('有効なセッションが見つかりません。再ログインしてください。');
-      }
+
+      const session = refreshData.session;
 
       // JWTトークンの構造と有効性を確認
       let tokenPayload: any;
@@ -114,26 +112,7 @@ const PersonaSetup = () => {
         throw new Error('認証トークンにユーザーIDが含まれていません。再ログインしてください。');
       }
 
-      // トークンの有効期限確認
-      const currentTime = Math.floor(Date.now() / 1000);
-      if (tokenPayload.exp && tokenPayload.exp < currentTime) {
-        console.error('Token expired, attempting refresh...');
-        const { data: refreshedSession, error: refreshError } = await supabase.auth.refreshSession();
-        
-        if (refreshError || !refreshedSession.session) {
-          console.error('Token refresh failed:', refreshError);
-          await supabase.auth.signOut({ scope: 'local' });
-          throw new Error('セッションの更新に失敗しました。再ログインしてください。');
-        }
-        
-        // リフレッシュされたセッションの再検証
-        const refreshedPayload = JSON.parse(atob(refreshedSession.session.access_token.split('.')[1]));
-        if (!refreshedPayload.sub) {
-          console.error('Refreshed token also missing sub claim');
-          await supabase.auth.signOut({ scope: 'local' });
-          throw new Error('認証トークンが無効です。再ログインしてください。');
-        }
-      }
+      console.log('Session validated successfully:', { userId: tokenPayload.sub });
 
       // auth.uid()が実際に機能するかテスト
       const { data: testData, error: testError } = await supabase
