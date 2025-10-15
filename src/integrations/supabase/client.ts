@@ -89,6 +89,33 @@ const createSafeStorage = () => {
 
 const safeStorage = createSafeStorage();
 
+// トークン検証ヘルパー
+const validateToken = (token: string): boolean => {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return false;
+    
+    const payload = JSON.parse(atob(parts[1]));
+    
+    // subクレーム（ユーザーID）が必須
+    if (!payload.sub) {
+      console.error('Invalid token: missing sub claim');
+      return false;
+    }
+    
+    // 有効期限チェック
+    if (payload.exp && payload.exp * 1000 < Date.now()) {
+      console.error('Invalid token: expired');
+      return false;
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Token validation error:', error);
+    return false;
+  }
+};
+
 // Configure Supabase client with proper auth settings
 export const supabase = createClient<Database>(
   supabaseConfig.url,
@@ -129,6 +156,27 @@ export const supabase = createClient<Database>(
     };
     console.warn('Supabase Realtime globally disabled to avoid CSP/WebSocket issues.');
   } catch {}
+
+  // 初期セッション検証と自動クリーンアップ
+  (async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (session?.access_token) {
+        const isValid = validateToken(session.access_token);
+        
+        if (!isValid) {
+          console.warn('Invalid session detected on startup, clearing...');
+          await supabase.auth.signOut({ scope: 'local' });
+          safeStorage.clear();
+        } else {
+          console.log('✓ Valid session confirmed on startup');
+        }
+      }
+    } catch (error) {
+      console.error('Session validation on startup failed:', error);
+    }
+  })();
 
   // Log configuration status (development only)
   if (import.meta.env.DEV) {
