@@ -61,7 +61,7 @@ const AutoReplyRequestSchema = z.object({
     age: z.string().max(50).optional(),
     personality: z.string().max(1000).optional(),
     expertise: z.array(z.string().max(100)).optional(),
-    tone_of_voice: z.string().max(500).optional()
+    tone_of_voice: z.string().max(5000).optional()
   })
 });
 
