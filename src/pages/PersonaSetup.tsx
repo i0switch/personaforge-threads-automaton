@@ -87,13 +87,14 @@ const PersonaSetup = () => {
       console.log('Refreshing authentication session...');
       const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
       
-      if (refreshError || !refreshData.session) {
+      if (refreshError || !refreshData.session || !refreshData.session.access_token) {
         console.error('Session refresh failed:', refreshError);
         await supabase.auth.signOut({ scope: 'local' });
         throw new Error('セッションの更新に失敗しました。再ログインしてください。');
       }
 
       const session = refreshData.session;
+      console.log('Session refreshed successfully, access_token length:', session.access_token.length);
 
       // JWTトークンの構造と有効性を確認
       let tokenPayload: any;
@@ -121,7 +122,7 @@ const PersonaSetup = () => {
         .eq('user_id', user.id)
         .limit(1);
 
-      if (testError && (testError.message.includes('invalid claim') || testError.message.includes('bad_jwt'))) {
+      if (testError) {
         console.error('Auth UID test failed:', testError);
         await supabase.auth.signOut({ scope: 'local' });
         throw new Error('認証状態が無効です。再ログインしてください。');
