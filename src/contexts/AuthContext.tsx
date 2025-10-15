@@ -146,11 +146,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           return; // リダイレクト中のため処理中断
         }
 
-        console.log('Checking for existing session');
+        console.log('🔍 Checking for existing session...');
         const { data: { session }, error } = await supabase.auth.getSession();
         if (error) {
-          console.error('Error getting session:', error);
+          console.error('❌ Error getting session:', error);
           // Clear potentially corrupted session data
+          localStorage.clear();
+          sessionStorage.clear();
           await supabase.auth.signOut({ scope: 'local' });
           if (mounted && !initialLoadComplete) {
             setSession(null);
@@ -164,21 +166,36 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         // Validate session if it exists
         if (session) {
           try {
+            // トークン構造と内容を検証
+            const parts = session.access_token.split('.');
+            if (parts.length !== 3) {
+              console.error('❌ Invalid token structure');
+              throw new Error('Invalid token structure');
+            }
+
+            const payload = JSON.parse(atob(parts[1]));
+            if (!payload.sub) {
+              console.error('❌ Token missing sub claim');
+              throw new Error('Token missing sub claim');
+            }
+
+            if (payload.exp && payload.exp * 1000 < Date.now()) {
+              console.error('❌ Token expired');
+              throw new Error('Token expired');
+            }
+
             // Check if token is still valid by making a simple API call
             const { error: testError } = await supabase.from('user_account_status').select('user_id').limit(1);
             if (testError && (testError.message.includes('invalid claim') || testError.message.includes('bad_jwt'))) {
-              console.log('Session token invalid, clearing session');
-              await supabase.auth.signOut({ scope: 'local' });
-              if (mounted && !initialLoadComplete) {
-                setSession(null);
-                setUser(null);
-                setLoading(false);
-                initialLoadComplete = true;
-              }
-              return;
+              console.error('❌ Session token invalid:', testError.message);
+              throw new Error('Session token invalid');
             }
+
+            console.log('✅ Session token valid');
           } catch (tokenError) {
-            console.log('Token validation failed, clearing session:', tokenError);
+            console.error('❌ Token validation failed, clearing session:', tokenError);
+            localStorage.clear();
+            sessionStorage.clear();
             await supabase.auth.signOut({ scope: 'local' });
             if (mounted && !initialLoadComplete) {
               setSession(null);
@@ -191,15 +208,17 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         }
         
         if (mounted && !initialLoadComplete) {
-          console.log('Found existing session:', !!session);
+          console.log(session ? '✅ Found existing valid session' : 'ℹ️ No session found');
           setSession(session);
           setUser(session?.user ?? null);
           setLoading(false);
           initialLoadComplete = true;
         }
       } catch (error) {
-        console.error('Auth initialization error:', error);
+        console.error('❌ Auth initialization error:', error);
         // Clear session on any error
+        localStorage.clear();
+        sessionStorage.clear();
         await supabase.auth.signOut({ scope: 'local' });
         if (mounted && !initialLoadComplete) {
           setSession(null);

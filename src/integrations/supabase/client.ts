@@ -160,21 +160,34 @@ export const supabase = createClient<Database>(
   // 初期セッション検証と自動クリーンアップ
   (async () => {
     try {
+      console.log('🔍 Checking session validity on startup...');
       const { data: { session } } = await supabase.auth.getSession();
       
       if (session?.access_token) {
         const isValid = validateToken(session.access_token);
         
         if (!isValid) {
-          console.warn('Invalid session detected on startup, clearing...');
+          console.warn('⚠️ Invalid session detected on startup, clearing...');
           await supabase.auth.signOut({ scope: 'local' });
-          safeStorage.clear();
+          localStorage.clear();
+          sessionStorage.clear();
+          console.log('🧹 Cleared invalid session');
         } else {
-          console.log('✓ Valid session confirmed on startup');
+          console.log('✅ Valid session confirmed on startup');
         }
+      } else {
+        console.log('ℹ️ No session found on startup');
       }
     } catch (error) {
-      console.error('Session validation on startup failed:', error);
+      console.error('❌ Session validation on startup failed:', error);
+      // エラーが発生した場合も念のためクリーンアップ
+      try {
+        await supabase.auth.signOut({ scope: 'local' });
+        localStorage.clear();
+        sessionStorage.clear();
+      } catch (cleanupError) {
+        console.error('Cleanup error:', cleanupError);
+      }
     }
   })();
 
