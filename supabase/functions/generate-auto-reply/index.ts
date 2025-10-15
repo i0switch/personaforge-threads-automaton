@@ -135,6 +135,8 @@ serve(async (req) => {
     // Get all Gemini API keys for the user
     async function getUserApiKey(userId: string, keyName: string): Promise<string | null> {
       try {
+        console.log(`  📥 Querying DB for user_id: ${userId}, key_name: ${keyName}`);
+        
         const { data: userApiKey, error: keyError } = await supabase
           .from('user_api_keys')
           .select('encrypted_key')
@@ -142,11 +144,16 @@ serve(async (req) => {
           .eq('key_name', keyName)
           .single();
 
-        if (keyError || !userApiKey?.encrypted_key) {
+        if (keyError) {
+          console.log(`  ⚠️ Query error for ${keyName}:`, keyError.message);
+        }
+        
+        if (!userApiKey?.encrypted_key) {
+          console.log(`  ⚠️ No encrypted_key found for ${keyName}`);
           return null;
         }
 
-        console.log('Found user personal Gemini API key, decrypting...');
+        console.log(`  🔓 Found ${keyName}, attempting decryption...`);
         
         // Decrypt the user's API key
         const encoder = new TextEncoder();
@@ -177,6 +184,7 @@ serve(async (req) => {
 
           return decoder.decode(decryptedData);
         } catch (_e) {
+          console.log(`  ⚠️ Current AES-GCM decryption failed for ${keyName}, trying legacy...`);
           // Fallback: legacy PBKDF2-derived AES-GCM
           try {
             const baseKey = await crypto.subtle.importKey(
@@ -206,12 +214,12 @@ serve(async (req) => {
             console.log('Legacy key decryption succeeded (PBKDF2 fallback).');
             return decoder.decode(decryptedData);
           } catch (e2) {
-            console.error('Failed to decrypt user API key with both methods:', e2);
+            console.error(`  ❌ Failed to decrypt ${keyName} with both methods:`, e2);
             return null;
           }
         }
       } catch (error) {
-        console.error('Error retrieving user API key:', error);
+        console.error(`  ❌ Error retrieving ${keyName}:`, error);
         return null;
       }
     }
@@ -219,15 +227,22 @@ serve(async (req) => {
     async function getAllGeminiApiKeys(userId: string): Promise<string[]> {
       const apiKeys: string[] = [];
       
+      console.log(`🔍 Fetching Gemini API keys for user: ${userId}`);
+      
       // Try all possible Gemini API keys (1-10)
       for (let i = 1; i <= 10; i++) {
         const keyName = i === 1 ? 'GEMINI_API_KEY' : `GEMINI_API_KEY_${i}`;
+        console.log(`  Trying key: ${keyName}`);
         const apiKey = await getUserApiKey(userId, keyName);
         if (apiKey) {
+          console.log(`  ✅ Found key: ${keyName}`);
           apiKeys.push(apiKey);
+        } else {
+          console.log(`  ❌ Not found: ${keyName}`);
         }
       }
       
+      console.log(`🔑 Total keys found: ${apiKeys.length}`);
       return apiKeys;
     }
 
