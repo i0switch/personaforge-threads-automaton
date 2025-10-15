@@ -55,3 +55,6 @@ verify_jwt = false
 
 [functions.send-password-reset]
 verify_jwt = false
+
+[functions.test-auto-post-generate]
+verify_jwt = true

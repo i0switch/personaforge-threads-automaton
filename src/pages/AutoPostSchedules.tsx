@@ -44,6 +44,8 @@ export default function AutoPostSchedules() {
   const [configs, setConfigs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [personaMap, setPersonaMap] = useState<Record<string, string>>({});
+  const [testGenerating, setTestGenerating] = useState<Record<string, boolean>>({});
+  const [testResults, setTestResults] = useState<Record<string, string>>({});
 
   const timeZone = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone, []);
 
@@ -175,6 +177,42 @@ export default function AutoPostSchedules() {
     return next.toISOString();
   };
 
+  const handleTestGenerate = async (configId: string) => {
+    const config = configs.find(c => c.id === configId);
+    if (!config) return;
+
+    setTestGenerating(prev => ({ ...prev, [configId]: true }));
+    setTestResults(prev => ({ ...prev, [configId]: '' }));
+
+    try {
+      const { data, error } = await supabase.functions.invoke('test-auto-post-generate', {
+        body: {
+          personaId: config.persona_id,
+          customPrompt: config.prompt_template,
+          contentPrefs: config.content_prefs
+        }
+      });
+
+      if (error) throw error;
+
+      if (data?.success && data?.content) {
+        setTestResults(prev => ({ ...prev, [configId]: data.content }));
+        toast({ title: 'テスト生成完了', description: '投稿内容を生成しました' });
+      } else {
+        throw new Error(data?.error || 'テスト生成に失敗しました');
+      }
+    } catch (error) {
+      console.error('Test generation error:', error);
+      toast({ 
+        title: 'エラー', 
+        description: error instanceof Error ? error.message : 'テスト生成に失敗しました', 
+        variant: 'destructive' 
+      });
+    } finally {
+      setTestGenerating(prev => ({ ...prev, [configId]: false }));
+    }
+  };
+
   if (loading) {
     return (<div className="min-h-screen bg-background p-6"><div className="max-w-5xl mx-auto">読み込み中...</div></div>);
   }
@@ -272,6 +310,27 @@ export default function AutoPostSchedules() {
                       <div>
                         <Label className="text-sm">カスタムプロンプト</Label>
                         <Textarea defaultValue={c.prompt_template || ''} onBlur={(e) => updateConfig(c.id, { prompt_template: e.target.value })} />
+                      </div>
+                      
+                      {/* テスト生成機能 */}
+                      <div className="border-t pt-4 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-sm font-medium">テスト生成</Label>
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            onClick={() => handleTestGenerate(c.id)}
+                            disabled={testGenerating[c.id]}
+                          >
+                            {testGenerating[c.id] ? '生成中...' : '現在の設定でテスト生成'}
+                          </Button>
+                        </div>
+                        {testResults[c.id] && (
+                          <div className="bg-muted p-3 rounded-md">
+                            <p className="text-sm text-muted-foreground mb-1">生成結果:</p>
+                            <p className="text-sm whitespace-pre-wrap">{testResults[c.id]}</p>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
