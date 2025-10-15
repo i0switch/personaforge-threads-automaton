@@ -34,10 +34,14 @@ async function checkRateLimit(
     }
 
     // レート制限記録を更新
-    await supabase.rpc('upsert_rate_limit', {
-      p_endpoint: endpoint,
-      p_identifier: identifier
-    }).catch((err: any) => console.error('Failed to update rate limit:', err));
+    try {
+      await supabase.rpc('upsert_rate_limit', {
+        p_endpoint: endpoint,
+        p_identifier: identifier
+      });
+    } catch (err) {
+      console.error('Failed to update rate limit:', err);
+    }
 
     return { allowed: true };
   } catch (error) {
