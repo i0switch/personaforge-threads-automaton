@@ -8,6 +8,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
+import { isWebSocketRestricted } from '@/utils/platform';
 
 interface AutoReply {
   id: string;
@@ -38,44 +39,79 @@ export const AutoRepliesList = () => {
       fetchPersonas();
       fetchReplies();
     }
-  }, [user, selectedPersona]);
+  }, [user]);
 
-  // リアルタイム更新の設定
+  useEffect(() => {
+    fetchReplies();
+  }, [selectedPersona]);
+
+  // リアルタイム監視の設定（Safari/WebKit対応）
   useEffect(() => {
     if (!user) return;
 
-    const channel = supabase
-      .channel('auto-replies-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'thread_replies',
-          filter: `user_id=eq.${user.id}`
-        },
-        () => {
-          fetchReplies();
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'activity_logs',
-          filter: `user_id=eq.${user.id}`
-        },
-        () => {
-          fetchReplies();
-        }
-      )
-      .subscribe();
+    const isRestricted = isWebSocketRestricted();
+    let channel: any = null;
+    let pollTimer: number | null = null;
+
+    if (isRestricted) {
+      console.warn('Safari/WebKit 環境のため、Realtime を無効化しポーリングにフォールバックします');
+      pollTimer = window.setInterval(fetchReplies, 10000);
+    } else {
+      console.log('Setting up realtime subscription for auto-replies');
+      channel = supabase
+        .channel('auto-replies-realtime')
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'thread_replies',
+            filter: `user_id=eq.${user.id}`
+          },
+          (payload) => {
+            console.log('New auto reply received via realtime:', payload);
+            fetchReplies();
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'thread_replies',
+            filter: `user_id=eq.${user.id}`
+          },
+          (payload) => {
+            console.log('Auto reply updated via realtime:', payload);
+            fetchReplies();
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'activity_logs',
+            filter: `user_id=eq.${user.id}`
+          },
+          (payload) => {
+            console.log('New activity log received via realtime:', payload);
+            fetchReplies();
+          }
+        )
+        .subscribe();
+    }
 
     return () => {
-      supabase.removeChannel(channel);
+      if (channel) {
+        console.log('Cleaning up auto-replies realtime subscription');
+        supabase.removeChannel(channel);
+      }
+      if (pollTimer) {
+        window.clearInterval(pollTimer);
+      }
     };
-  }, [user, selectedPersona]);
+  }, [user]);
 
   const fetchPersonas = async () => {
     try {
