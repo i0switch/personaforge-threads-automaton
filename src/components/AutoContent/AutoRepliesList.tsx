@@ -132,70 +132,52 @@ export const AutoRepliesList = () => {
     try {
       setLoading(true);
       
-      // まずthread_repliesを取得
+      // activity_logsから直接ai_auto_reply_sentのログを取得
       let query = supabase
-        .from('thread_replies')
+        .from('activity_logs')
         .select(`
           id,
-          reply_text,
-          reply_author_username,
-          reply_timestamp,
+          metadata,
+          description,
+          created_at,
           persona_id,
-          auto_reply_sent,
-          reply_id,
           personas!inner(name)
         `)
         .eq('user_id', user?.id)
-        .eq('auto_reply_sent', true)
-        .order('reply_timestamp', { ascending: false })
+        .eq('action_type', 'ai_auto_reply_sent')
+        .order('created_at', { ascending: false })
         .limit(100);
 
       if (selectedPersona !== 'all') {
         query = query.eq('persona_id', selectedPersona);
       }
 
-      const { data: repliesData, error: repliesError } = await query;
+      const { data: logsData, error: logsError } = await query;
 
-      if (repliesError) throw repliesError;
+      if (logsError) throw logsError;
 
-      if (!repliesData || repliesData.length === 0) {
+      if (!logsData || logsData.length === 0) {
         setReplies([]);
         return;
       }
 
-      // 一度にactivity_logsを取得（最適化）
-      const { data: logsData } = await supabase
-        .from('activity_logs')
-        .select('metadata, description, created_at')
-        .eq('user_id', user?.id)
-        .in('action_type', ['ai_auto_reply_sent', 'auto_reply_sent'])
-        .order('created_at', { ascending: false })
-        .limit(500);
-
-      // repliesとlogsをマッピング
-      const repliesWithAIResponse = repliesData.map(reply => {
-        const matchingLog = logsData?.find(log => {
-          const metadata = log.metadata as any;
-          return metadata?.reply_id === reply.reply_id || 
-                 metadata?.threads_reply_id === reply.reply_id ||
-                 metadata?.original_reply_id === reply.reply_id;
-        });
-
-        const metadata = matchingLog?.metadata as any;
+      // activity_logsのメタデータから自動返信情報を抽出
+      const repliesFromLogs = logsData.map(log => {
+        const metadata = log.metadata as any;
         
         return {
-          id: reply.id,
-          reply_text: reply.reply_text,
-          reply_author_username: reply.reply_author_username,
-          reply_timestamp: reply.reply_timestamp,
-          persona_id: reply.persona_id,
-          persona_name: (reply.personas as any)?.name || '不明',
-          auto_reply_sent: reply.auto_reply_sent,
-          ai_generated_response: metadata?.ai_response || metadata?.response_text || metadata?.auto_reply_text
+          id: log.id,
+          reply_text: metadata?.reply_text || metadata?.reply_to || '（内容なし）',
+          reply_author_username: metadata?.author || metadata?.reply_author || '不明',
+          reply_timestamp: log.created_at,
+          persona_id: log.persona_id,
+          persona_name: (log.personas as any)?.name || '不明',
+          auto_reply_sent: true,
+          ai_generated_response: metadata?.ai_response || metadata?.generated_reply || metadata?.response_text || metadata?.auto_reply_text
         };
       });
 
-      setReplies(repliesWithAIResponse);
+      setReplies(repliesFromLogs);
     } catch (error) {
       console.error('Error fetching replies:', error);
       toast({
