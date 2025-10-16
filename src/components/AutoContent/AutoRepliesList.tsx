@@ -40,6 +40,43 @@ export const AutoRepliesList = () => {
     }
   }, [user, selectedPersona]);
 
+  // リアルタイム更新の設定
+  useEffect(() => {
+    if (!user) return;
+
+    const channel = supabase
+      .channel('auto-replies-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'thread_replies',
+          filter: `user_id=eq.${user.id}`
+        },
+        () => {
+          fetchReplies();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'activity_logs',
+          filter: `user_id=eq.${user.id}`
+        },
+        () => {
+          fetchReplies();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user, selectedPersona]);
+
   const fetchPersonas = async () => {
     try {
       const { data, error } = await supabase
