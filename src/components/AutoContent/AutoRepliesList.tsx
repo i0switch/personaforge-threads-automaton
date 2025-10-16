@@ -161,14 +161,35 @@ export const AutoRepliesList = () => {
         return;
       }
 
-      // activity_logsのメタデータから自動返信情報を抽出
+      // reply_idを抽出してthread_repliesから詳細情報を取得
+      const replyIds = logsData
+        .map(log => (log.metadata as any)?.reply_id)
+        .filter(Boolean);
+
+      let threadRepliesMap = new Map();
+      
+      if (replyIds.length > 0) {
+        const { data: threadReplies } = await supabase
+          .from('thread_replies')
+          .select('reply_id, reply_text, reply_author_username')
+          .in('reply_id', replyIds);
+
+        if (threadReplies) {
+          threadReplies.forEach(reply => {
+            threadRepliesMap.set(reply.reply_id, reply);
+          });
+        }
+      }
+
+      // activity_logsとthread_repliesのデータを結合
       const repliesFromLogs = logsData.map(log => {
         const metadata = log.metadata as any;
+        const threadReply = threadRepliesMap.get(metadata?.reply_id);
         
         return {
           id: log.id,
-          reply_text: metadata?.reply_text || metadata?.reply_to || '（内容なし）',
-          reply_author_username: metadata?.author || metadata?.reply_author || '不明',
+          reply_text: threadReply?.reply_text || metadata?.reply_text || '（内容なし）',
+          reply_author_username: threadReply?.reply_author_username || metadata?.author || '不明',
           reply_timestamp: log.created_at,
           persona_id: log.persona_id,
           persona_name: (log.personas as any)?.name || '不明',
