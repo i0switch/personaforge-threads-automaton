@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Key, Edit, Plus, Trash2, AlertCircle } from "lucide-react";
+import { Key, Edit, Plus, Trash2, AlertCircle, TestTube, CheckCircle, XCircle, AlertTriangle } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -17,6 +17,8 @@ interface GeminiApiKey {
   isSet: boolean;
   value: string;
   isEditing: boolean;
+  testStatus?: 'ok' | 'quota_exceeded' | 'invalid_key' | 'error' | 'testing';
+  testMessage?: string;
 }
 
 export const ApiSettingsTab = () => {
@@ -165,7 +167,7 @@ export const ApiSettingsTab = () => {
 
       setGeminiApiKeys(prev => prev.map(key => 
         key.keyName === keyName 
-          ? { ...key, isSet: false, value: '', isEditing: false }
+          ? { ...key, isSet: false, value: '', isEditing: false, testStatus: undefined, testMessage: undefined }
           : key
       ));
 
@@ -178,6 +180,66 @@ export const ApiSettingsTab = () => {
       toast({
         title: "エラー",
         description: "APIキーの削除に失敗しました",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const testGeminiKey = async (keyName: string, keyId: string) => {
+    if (!user) return;
+
+    // テスト開始
+    setGeminiApiKeys(prev => prev.map(key => 
+      key.id === keyId 
+        ? { ...key, testStatus: 'testing', testMessage: 'テスト中...' }
+        : key
+    ));
+
+    try {
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError || !session) {
+        throw new Error('セッションの有効期限が切れています');
+      }
+
+      const { data, error } = await supabase.functions.invoke('test-gemini-api-key', {
+        body: { keyName },
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+
+      if (error) throw error;
+
+      setGeminiApiKeys(prev => prev.map(key => 
+        key.id === keyId 
+          ? { 
+              ...key, 
+              testStatus: data.status,
+              testMessage: data.message 
+            }
+          : key
+      ));
+
+      toast({
+        title: data.success ? "テスト成功" : "テスト結果",
+        description: data.message,
+        variant: data.success ? "default" : "destructive",
+      });
+    } catch (error) {
+      console.error('Error testing API key:', error);
+      setGeminiApiKeys(prev => prev.map(key => 
+        key.id === keyId 
+          ? { 
+              ...key, 
+              testStatus: 'error',
+              testMessage: error.message || 'テストに失敗しました' 
+            }
+          : key
+      ));
+      toast({
+        title: "エラー",
+        description: error.message || "テストに失敗しました",
         variant: "destructive",
       });
     }
@@ -208,6 +270,17 @@ export const ApiSettingsTab = () => {
               <div className="flex items-center justify-between">
                 <Label className="font-medium">{apiKey.displayName}</Label>
                 <div className="flex gap-2">
+                  {apiKey.isSet && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => testGeminiKey(apiKey.keyName, apiKey.id)}
+                      disabled={apiKey.testStatus === 'testing'}
+                    >
+                      <TestTube className="h-4 w-4 mr-1" />
+                      テスト
+                    </Button>
+                  )}
                   <Button
                     variant="outline"
                     size="sm"
@@ -245,12 +318,28 @@ export const ApiSettingsTab = () => {
                   </Button>
                 </div>
               ) : (
-                <Input
-                  type="password"
-                  value={apiKey.isSet ? '設定済み' : '未設定'}
-                  disabled
-                  className="bg-muted"
-                />
+                <>
+                  <Input
+                    type="password"
+                    value={apiKey.isSet ? '設定済み' : '未設定'}
+                    disabled
+                    className="bg-muted"
+                  />
+                  {apiKey.testStatus && (
+                    <Alert variant={apiKey.testStatus === 'ok' ? 'default' : 'destructive'}>
+                      <div className="flex items-center gap-2">
+                        {apiKey.testStatus === 'testing' && <TestTube className="h-4 w-4 animate-pulse" />}
+                        {apiKey.testStatus === 'ok' && <CheckCircle className="h-4 w-4 text-green-500" />}
+                        {apiKey.testStatus === 'quota_exceeded' && <AlertTriangle className="h-4 w-4 text-orange-500" />}
+                        {apiKey.testStatus === 'invalid_key' && <XCircle className="h-4 w-4 text-red-500" />}
+                        {apiKey.testStatus === 'error' && <XCircle className="h-4 w-4 text-red-500" />}
+                        <AlertDescription className="text-sm">
+                          {apiKey.testMessage}
+                        </AlertDescription>
+                      </div>
+                    </Alert>
+                  )}
+                </>
               )}
             </div>
           ))}
