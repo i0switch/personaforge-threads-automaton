@@ -20,7 +20,7 @@ serve(async (req) => {
   try {
     console.log('🔧 未処理リプライの再処理開始...');
 
-    // 未処理のリプライを取得（auto_reply_sent=false かつ該当ペルソナ）
+    // 未処理のリプライを取得（auto_reply_sent=false で自動返信が有効なペルソナ）
     const { data: unprocessedReplies } = await supabase
       .from('thread_replies')
       .select(`
@@ -35,9 +35,10 @@ serve(async (req) => {
         )
       `)
       .eq('auto_reply_sent', false)
-      .in('personas.name', ['令和ギャル占い師@レイカさん', '守護霊鑑定OL🦊みさき'])
-      .order('created_at', { ascending: false })
-      .limit(100); // 一度に100件まで処理
+      .eq('reply_status', 'pending')
+      .or('auto_reply_enabled.eq.true,ai_auto_reply_enabled.eq.true', { foreignTable: 'personas' })
+      .order('created_at', { ascending: true })
+      .limit(50); // 一度に50件まで処理（負荷軽減）
 
     if (!unprocessedReplies || unprocessedReplies.length === 0) {
       console.log('✅ 未処理リプライなし');
