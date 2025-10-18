@@ -4,6 +4,8 @@ import { toast } from '@/hooks/use-toast';
 export class AuthHandler {
   private static instance: AuthHandler;
   private isHandling403 = false;
+  private retryCount = 0;
+  private readonly MAX_RETRIES = 2;
 
   static getInstance(): AuthHandler {
     if (!AuthHandler.instance) {
@@ -57,32 +59,47 @@ export class AuthHandler {
     if (this.isHandling403) return;
     
     this.isHandling403 = true;
-    console.log('🔐 403エラーを検出しました。認証状態をクリアしています...');
+    this.retryCount++;
+    
+    console.log(`🔐 403エラーを検出しました (${this.retryCount}/${this.MAX_RETRIES})`);
 
     try {
+      // リトライ回数が上限に達した場合のみログアウト
+      if (this.retryCount > this.MAX_RETRIES) {
+        console.log('⚠️ リトライ上限に達しました。サインアウトします');
+        await this.forceSignOut();
+        return;
+      }
+
       // セッションの再取得を試行
       const { data: { session }, error } = await supabase.auth.getSession();
       
       if (error || !session) {
-        console.log('🔓 セッションが無効です。サインアウト処理を実行します');
-        await this.forceSignOut();
+        console.log('🔓 セッションが無効です。リトライします...');
+        // 即座にログアウトせず、少し待ってからリトライ
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        return;
+      }
+
+      // セッションが有効な場合、トークンリフレッシュを試行
+      const { error: refreshError } = await supabase.auth.refreshSession();
+      if (refreshError) {
+        console.log('🔄 トークンリフレッシュに失敗しました。リトライします...');
+        await new Promise(resolve => setTimeout(resolve, 1000));
       } else {
-        // セッションが有効な場合、トークンリフレッシュを試行
-        const { error: refreshError } = await supabase.auth.refreshSession();
-        if (refreshError) {
-          console.log('🔄 トークンリフレッシュに失敗しました。サインアウトします');
-          await this.forceSignOut();
-        } else {
-          console.log('✅ トークンリフレッシュが成功しました');
-          toast({
-            title: "認証更新",
-            description: "セッションが更新されました。",
-          });
-        }
+        console.log('✅ トークンリフレッシュが成功しました');
+        this.retryCount = 0; // 成功したらカウンターをリセット
+        toast({
+          title: "認証更新",
+          description: "セッションが更新されました。",
+        });
       }
     } catch (error) {
       console.error('認証エラーハンドリング中にエラーが発生:', error);
-      await this.forceSignOut();
+      // エラーが発生しても即座にログアウトせず、リトライする
+      if (this.retryCount > this.MAX_RETRIES) {
+        await this.forceSignOut();
+      }
     } finally {
       this.isHandling403 = false;
     }

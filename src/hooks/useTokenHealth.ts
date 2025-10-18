@@ -69,12 +69,8 @@ export const useTokenHealth = () => {
     return personaId;
   };
 
-  useEffect(() => {
-    console.log('🔄 useTokenHealth useEffect triggered, user:', user?.id);
-    if (user?.id) {
-      checkAllTokens();
-    }
-  }, [user?.id]);
+  // 自動チェックを無効化 - 手動呼び出しのみに変更
+  // ペルソナ更新時の不要な認証エラーを防ぐため
 
   return {
     tokenStatuses,
