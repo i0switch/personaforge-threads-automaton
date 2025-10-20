@@ -59,6 +59,8 @@ serve(async (req) => {
     console.log('🔧 未処理リプライの再処理開始...');
 
     // 未処理のリプライを取得（auto_reply_sent=false で自動返信が有効なペルソナ）
+    // pending または scheduled（scheduled_reply_atが過去）のリプライを取得
+    const now = new Date().toISOString();
     const { data: unprocessedReplies } = await supabase
       .from('thread_replies')
       .select(`
@@ -73,7 +75,7 @@ serve(async (req) => {
         )
       `)
       .eq('auto_reply_sent', false)
-      .eq('reply_status', 'pending')
+      .or(`reply_status.eq.pending,and(reply_status.eq.scheduled,scheduled_reply_at.lte.${now})`)
       .or('auto_reply_enabled.eq.true,ai_auto_reply_enabled.eq.true', { foreignTable: 'personas' })
       .order('created_at', { ascending: true })
       .limit(10); // 一度に10件まで処理（API制限対策で削減）
@@ -113,6 +115,15 @@ serve(async (req) => {
             })
             .eq('reply_id', reply.reply_id);
           continue; // 次のリプライへ
+        }
+
+        // scheduled状態から処理を再開する場合、pendingに戻す
+        if (reply.reply_status === 'scheduled') {
+          console.log(`🔄 遅延処理からの再開: ${reply.id}`);
+          await supabase
+            .from('thread_replies')
+            .update({ reply_status: 'pending' })
+            .eq('reply_id', reply.reply_id);
         }
 
         // Threads API制限対策: 各リプライ処理の間に10秒待機
