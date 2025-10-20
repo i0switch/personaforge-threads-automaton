@@ -87,16 +87,19 @@ async function getUserApiKey(userId: string, keyName: string): Promise<string | 
 }
 
 async function getAllGeminiApiKeys(userId: string): Promise<string[]> {
+  console.log('🔑 Fetching Gemini API keys for user:', userId);
   const apiKeys: string[] = [];
   
   for (let i = 1; i <= 10; i++) {
     const keyName = i === 1 ? 'GEMINI_API_KEY' : `GEMINI_API_KEY_${i}`;
     const apiKey = await getUserApiKey(userId, keyName);
     if (apiKey) {
+      console.log(`✅ Found API key: ${keyName}`);
       apiKeys.push(apiKey);
     }
   }
   
+  console.log(`📊 Total API keys found: ${apiKeys.length}`);
   return apiKeys;
 }
 
@@ -184,13 +187,18 @@ function buildPrompt(persona: any, customPrompt?: string, contentPrefs?: string)
 }
 
 serve(async (req) => {
+  console.log('🚀 test-auto-post-generate function invoked');
+  
   if (req.method === 'OPTIONS') {
+    console.log('📋 CORS preflight request');
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
+    console.log('🔐 Checking authorization...');
     const authHeader = req.headers.get('authorization');
     if (!authHeader) {
+      console.error('❌ Authorization header missing');
       throw new Error('Authorization header is required');
     }
 
@@ -198,16 +206,20 @@ serve(async (req) => {
     const { data: { user }, error: authError } = await supabase.auth.getUser(token);
     
     if (authError || !user) {
+      console.error('❌ Authentication failed:', authError);
       throw new Error('Invalid authentication token');
     }
+    console.log('✅ User authenticated:', user.id);
 
     const { personaId, customPrompt, contentPrefs } = await req.json();
+    console.log('📝 Request params:', { personaId, hasCustomPrompt: !!customPrompt, hasContentPrefs: !!contentPrefs });
 
     if (!personaId) {
+      console.error('❌ personaId missing');
       throw new Error('personaId is required');
     }
 
-    console.log(`Test generating post for persona ${personaId}`);
+    console.log(`🎭 Fetching persona ${personaId} for user ${user.id}`);
 
     // Get persona details
     const { data: persona, error: personaError } = await supabase
@@ -218,18 +230,20 @@ serve(async (req) => {
       .single();
 
     if (personaError || !persona) {
+      console.error('❌ Persona fetch failed:', personaError);
       throw new Error('Persona not found or access denied');
     }
-
-    console.log(`Using persona: ${persona.name}`);
+    console.log(`✅ Persona found: ${persona.name}`);
 
     // Build prompt
+    console.log('📝 Building prompt...');
     const prompt = buildPrompt(persona, customPrompt, contentPrefs);
+    console.log('✅ Prompt built, length:', prompt.length);
     
     // Generate content
+    console.log('🤖 Starting Gemini API generation...');
     const generatedContent = await generateWithGeminiRotation(prompt, user.id);
-
-    console.log(`Successfully generated test post`);
+    console.log('✅ Generation successful, content length:', generatedContent.length);
 
     return new Response(
       JSON.stringify({ 

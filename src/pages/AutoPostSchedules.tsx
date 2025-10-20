@@ -185,6 +185,7 @@ export default function AutoPostSchedules() {
     setTestResults(prev => ({ ...prev, [configId]: '' }));
 
     try {
+      console.log('🚀 Invoking test-auto-post-generate for config:', configId);
       const { data, error } = await supabase.functions.invoke('test-auto-post-generate', {
         body: {
           personaId: config.persona_id,
@@ -193,23 +194,33 @@ export default function AutoPostSchedules() {
         }
       });
 
+      console.log('📦 Response received:', { data, error });
+
       // エラー詳細をログ出力
       if (error) {
-        console.error('Edge function invoke error:', error);
-        throw new Error(`エッジファンクションエラー: ${JSON.stringify(error)}`);
+        console.error('❌ Edge function invoke error:', error);
+        console.error('Error details:', {
+          message: error.message,
+          context: error.context,
+          details: JSON.stringify(error)
+        });
+        throw new Error(`エッジファンクションエラー: ${error.message || JSON.stringify(error)}`);
       }
 
       if (data?.success && data?.content) {
+        console.log('✅ Test generation successful');
         setTestResults(prev => ({ ...prev, [configId]: data.content }));
         toast({ title: 'テスト生成完了', description: '投稿内容を生成しました' });
       } else if (data?.error) {
+        console.error('❌ Function returned error:', data.error);
         // エッジファンクションからのエラーメッセージを表示
         throw new Error(data.error);
       } else {
+        console.error('❌ Unexpected response format:', data);
         throw new Error('テスト生成に失敗しました（不明なエラー）');
       }
     } catch (error) {
-      console.error('Test generation error:', error);
+      console.error('💥 Test generation error:', error);
       const errorMessage = error instanceof Error ? error.message : 'テスト生成に失敗しました';
       
       // Gemini API キー未設定の場合は設定ページへのリンクを表示
