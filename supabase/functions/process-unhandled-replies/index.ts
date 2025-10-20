@@ -38,7 +38,7 @@ serve(async (req) => {
       .eq('reply_status', 'pending')
       .or('auto_reply_enabled.eq.true,ai_auto_reply_enabled.eq.true', { foreignTable: 'personas' })
       .order('created_at', { ascending: true })
-      .limit(50); // 一度に50件まで処理（負荷軽減）
+      .limit(10); // 一度に10件まで処理（API制限対策で削減）
 
     if (!unprocessedReplies || unprocessedReplies.length === 0) {
       console.log('✅ 未処理リプライなし');
@@ -61,6 +61,12 @@ serve(async (req) => {
       try {
         const persona = reply.personas;
         console.log(`\n🔄 処理中: ${reply.id} - "${reply.reply_text}" (Persona: ${persona.name})`);
+
+        // Threads API制限対策: 各リプライ処理の間に1秒待機
+        if (processedCount > 0) {
+          console.log('⏳ API制限対策: 1秒待機中...');
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
 
         processedCount++;
 
