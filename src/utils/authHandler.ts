@@ -5,7 +5,9 @@ export class AuthHandler {
   private static instance: AuthHandler;
   private isHandling403 = false;
   private retryCount = 0;
+  private lastRetryTime = 0;
   private readonly MAX_RETRIES = 2;
+  private readonly RETRY_WINDOW_MS = 60000; // 1分以内のリトライのみカウント
 
   static getInstance(): AuthHandler {
     if (!AuthHandler.instance) {
@@ -59,9 +61,17 @@ export class AuthHandler {
     if (this.isHandling403) return;
     
     this.isHandling403 = true;
+    
+    // タイムウィンドウ外なら���トライカウントをリセット
+    const now = Date.now();
+    if (now - this.lastRetryTime > this.RETRY_WINDOW_MS) {
+      console.log('⏰ リトライウィンドウ外のため、カウントをリセット');
+      this.retryCount = 0;
+    }
+    this.lastRetryTime = now;
     this.retryCount++;
     
-    console.log(`🔐 403エラーを検出しました (${this.retryCount}/${this.MAX_RETRIES})`);
+    console.log(`🔐 403エラーを検出しました (${this.retryCount}/${this.MAX_RETRIES}, ウィンドウ: ${this.RETRY_WINDOW_MS}ms)`);
 
     try {
       // リトライ回数が上限に達した場合のみログアウト

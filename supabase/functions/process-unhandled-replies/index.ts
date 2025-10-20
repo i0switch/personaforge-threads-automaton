@@ -283,9 +283,9 @@ async function sendThreadsReply(persona: any, replyToId: string, responseText: s
     const containerData = await containerResponse.json();
     console.log(`✅ コンテナ作成成功: ${containerData.id}`);
 
-    // コンテナが準備されるまで待機（Threads APIの制約）
-    console.log('⏳ コンテナ準備を待機中...');
-    await new Promise(resolve => setTimeout(resolve, 2000)); // 2秒待機
+    // コンテナが準備されるまで待機（Threads APIの制約とレート制限対策）
+    console.log('⏳ コンテナ準備を待機中（5秒）...');
+    await new Promise(resolve => setTimeout(resolve, 5000)); // 5秒待機（API制限対策）
 
     // Step 2: コンテナを公開
     const publishResponse = await fetch('https://graph.threads.net/v1.0/me/threads_publish', {
@@ -302,6 +302,18 @@ async function sendThreadsReply(persona: any, replyToId: string, responseText: s
     if (!publishResponse.ok) {
       const errorText = await publishResponse.text();
       console.error('❌ Threads 投稿公開失敗:', errorText);
+      
+      // エラー詳細を解析
+      try {
+        const errorData = JSON.parse(errorText);
+        if (errorData?.error?.error_subcode === 2207051) {
+          console.error('🚫 Threads APIアクションブロック: アカウント制限またはスパム防止による拒否');
+          console.error('💡 対策: 投稿頻度を下げる、異なるコンテンツを投稿する、時間をおいて再試行する');
+        }
+      } catch (parseError) {
+        console.error('⚠️ エラー詳細の解析失敗:', parseError);
+      }
+      
       return false;
     }
 
