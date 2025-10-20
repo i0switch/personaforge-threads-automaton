@@ -65,6 +65,7 @@ serve(async (req) => {
       .from('thread_replies')
       .select(`
         *,
+        ai_response,
         personas!inner (
           id,
           name,
@@ -163,29 +164,51 @@ serve(async (req) => {
         // AI自動返信をチェック（定型文が送信されなかった場合のみ）
         if (!replySent && persona.ai_auto_reply_enabled) {
           try {
-            const autoReplyResult = await supabase.functions.invoke('threads-auto-reply', {
-              body: {
-                postContent: 'Original post content',
-                replyContent: reply.reply_text,
-                replyId: reply.reply_id,
-                personaId: persona.id,
-                userId: persona.user_id
+            // 既にAI返信が生成済みかチェック
+            if (reply.ai_response) {
+              console.log(`📤 保存済みのAI返信を送信: "${reply.ai_response}"`);
+              // 既に生成済みの返信を使って送信
+              const sendResult = await sendThreadsReply(persona, reply.reply_id, reply.ai_response);
+              
+              if (sendResult) {
+                console.log(`✅ 保存済みAI返信送信成功: ${reply.id}`);
+                replySent = true;
+              } else {
+                console.error(`❌ 保存済みAI返信送信失敗: ${reply.id}`);
+                await supabase
+                  .from('thread_replies')
+                  .update({ 
+                    reply_status: 'failed',
+                    auto_reply_sent: false
+                  })
+                  .eq('reply_id', reply.reply_id);
               }
-            });
-
-            if (autoReplyResult.error) {
-              console.error(`❌ AI自動返信呼び出しエラー:`, autoReplyResult.error);
-              // エラー時はステータスを更新
-              await supabase
-                .from('thread_replies')
-                .update({ 
-                  reply_status: 'failed',
-                  auto_reply_sent: false // リトライ可能にする
-                })
-                .eq('reply_id', reply.reply_id);
             } else {
-              console.log(`✅ AI自動返信呼び出し成功: ${reply.id}`);
-              replySent = true;
+              // AI返信が未生成の場合は新規生成
+              console.log(`🤖 AI返信を新規生成: ${reply.id}`);
+              const autoReplyResult = await supabase.functions.invoke('threads-auto-reply', {
+                body: {
+                  postContent: 'Original post content',
+                  replyContent: reply.reply_text,
+                  replyId: reply.reply_id,
+                  personaId: persona.id,
+                  userId: persona.user_id
+                }
+              });
+
+              if (autoReplyResult.error) {
+                console.error(`❌ AI自動返信呼び出しエラー:`, autoReplyResult.error);
+                await supabase
+                  .from('thread_replies')
+                  .update({ 
+                    reply_status: 'failed',
+                    auto_reply_sent: false
+                  })
+                  .eq('reply_id', reply.reply_id);
+              } else {
+                console.log(`✅ AI自動返信呼び出し成功: ${reply.id}`);
+                replySent = true;
+              }
             }
           } catch (error) {
             console.error(`❌ AI自動返信処理エラー:`, error);
