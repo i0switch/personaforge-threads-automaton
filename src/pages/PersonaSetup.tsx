@@ -83,136 +83,7 @@ const PersonaSetup = () => {
     }
 
     try {
-      // 🔄 最初に必ずセッションをリフレッシュして最新のトークンを取得
-      console.log('🔄 Refreshing authentication session...');
-      
-      // 完全なセッションリフレッシュ
-      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
-      
-      if (refreshError || !refreshData.session || !refreshData.session.access_token) {
-        console.error('❌ Session refresh failed:', refreshError);
-        
-        // 完全なクリーンアップ
-        localStorage.clear();
-        sessionStorage.clear();
-        await supabase.auth.signOut({ scope: 'local' });
-        
-        toast({
-          title: "認証エラー",
-          description: "セッションの更新に失敗しました。再ログインしてください。",
-          variant: "destructive",
-        });
-        
-        setTimeout(() => {
-          window.location.href = '/auth';
-        }, 1500);
-        
-        throw new Error('セッションの更新に失敗しました。');
-      }
-
-      const session = refreshData.session;
-      console.log('✅ Session refreshed successfully, access_token length:', session.access_token.length);
-
-      // 🔍 トークンの徹底的な検証
-      console.log('🔍 Validating token structure...');
-      let tokenPayload: any;
-      try {
-        const parts = session.access_token.split('.');
-        
-        if (parts.length !== 3) {
-          console.error('❌ Invalid JWT structure: expected 3 parts, got', parts.length);
-          throw new Error('Invalid JWT structure');
-        }
-        
-        try {
-          tokenPayload = JSON.parse(atob(parts[1]));
-        } catch (decodeError) {
-          console.error('❌ Failed to decode JWT payload:', decodeError);
-          throw new Error('Failed to decode JWT');
-        }
-
-        console.log('📋 Token payload:', {
-          sub: tokenPayload.sub ? `✅ present (${tokenPayload.sub})` : '❌ MISSING',
-          exp: tokenPayload.exp ? new Date(tokenPayload.exp * 1000).toISOString() : '❌ MISSING',
-          iat: tokenPayload.iat ? new Date(tokenPayload.iat * 1000).toISOString() : 'N/A',
-          role: tokenPayload.role || 'N/A'
-        });
-
-        // subクレームの厳格なチェック
-        if (!tokenPayload.sub || tokenPayload.sub.trim() === '') {
-          console.error('❌ Token missing or empty sub claim');
-          throw new Error('Token missing sub claim');
-        }
-
-        // 有効期限チェック
-        if (tokenPayload.exp) {
-          const expTime = tokenPayload.exp * 1000;
-          const now = Date.now();
-          if (expTime < now) {
-            console.error('❌ Token expired:', new Date(expTime).toISOString(), 'vs now:', new Date(now).toISOString());
-            throw new Error('Token expired');
-          }
-          console.log('✅ Token expiry valid:', new Date(expTime).toISOString());
-        }
-
-        console.log('✅ Token validation passed');
-      } catch (e) {
-        console.error('❌ Token validation failed:', e);
-        
-        // 完全なクリーンアップ
-        localStorage.clear();
-        sessionStorage.clear();
-        await supabase.auth.signOut({ scope: 'local' });
-        
-        toast({
-          title: "認証トークンエラー",
-          description: "認証トークンが無効です。再ログインしてください。",
-          variant: "destructive",
-        });
-        
-        setTimeout(() => {
-          window.location.href = '/auth';
-        }, 1500);
-        
-        throw new Error('認証トークンが無効です。');
-      }
-
-      // 🧪 auth.uid()が正しく動作するか確認
-      console.log('🧪 Testing auth.uid() validity...');
-      const { data: testData, error: testError } = await supabase
-        .from('profiles')
-        .select('user_id')
-        .eq('user_id', user.id)
-        .limit(1);
-
-      if (testError) {
-        console.error('❌ Auth UID test failed:', testError);
-        console.error('Error details:', {
-          code: testError.code,
-          message: testError.message,
-          details: testError.details,
-          hint: testError.hint
-        });
-        
-        // 完全なクリーンアップ
-        localStorage.clear();
-        sessionStorage.clear();
-        await supabase.auth.signOut({ scope: 'local' });
-        
-        toast({
-          title: "認証状態エラー",
-          description: "認証状態が無効です。再ログインしてください。",
-          variant: "destructive",
-        });
-        
-        setTimeout(() => {
-          window.location.href = '/auth';
-        }, 1500);
-        
-        throw new Error('認証状態が無効です。');
-      }
-
-      console.log('✅ Auth UID test passed, proceeding with save...');
+      console.log('🔄 ペルソナ保存処理開始...');
 
       // 新規作成時のペルソナ上限チェック（最新の情報で再確認）
       if (!editingPersona) {
@@ -265,12 +136,6 @@ const PersonaSetup = () => {
         user_id: user.id
       };
 
-      // セッション確認とリフレッシュ（2回目確認）
-      const { data: { session: finalSession } } = await supabase.auth.getSession();
-      if (!finalSession) {
-        throw new Error('最終認証チェックに失敗しました');
-      }
-
       // threads_app_secretが入力されている場合のみ暗号化して保存
       if (formData.threads_app_secret?.trim() && formData.threads_app_secret.trim() !== "" && formData.threads_app_secret !== "***設定済み***") {
         console.log("Encrypting threads_app_secret for persona:", editingPersona?.id || 'new');
@@ -279,10 +144,7 @@ const PersonaSetup = () => {
           body: {
             keyName: `threads_app_secret_${editingPersona?.id || `new_${Date.now()}`}`,
             keyValue: formData.threads_app_secret
-          },
-          headers: {
-            Authorization: `Bearer ${finalSession.access_token}`,
-          },
+          }
         });
 
         if (response.error) {
@@ -313,12 +175,6 @@ const PersonaSetup = () => {
           description: "ペルソナが更新されました。",
         });
       } else {
-        // セッション確認してからINSERT実行
-        const { data: { session: currentSession } } = await supabase.auth.getSession();
-        if (!currentSession) {
-          throw new Error('認証セッションが無効です。ログインし直してください。');
-        }
-
         const { data: insertedData, error } = await supabase
           .from("personas")
           .insert([personaData])
@@ -375,16 +231,6 @@ const PersonaSetup = () => {
       await refetchLimit();
     } catch (error) {
       console.error("Error saving persona:", error);
-      
-      // 認証エラーの場合は自動的にログアウトしてログインページにリダイレクト
-      if (error instanceof Error && 
-          (error.message.includes('再ログインしてください') || 
-           error.message.includes('認証トークン') ||
-           error.message.includes('認証状態が無効'))) {
-        setTimeout(() => {
-          window.location.href = '/auth';
-        }, 2000);
-      }
       
       toast({
         title: "エラー",

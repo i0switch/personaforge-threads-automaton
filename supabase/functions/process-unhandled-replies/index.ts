@@ -283,6 +283,10 @@ async function sendThreadsReply(persona: any, replyToId: string, responseText: s
     const containerData = await containerResponse.json();
     console.log(`✅ コンテナ作成成功: ${containerData.id}`);
 
+    // コンテナが準備されるまで待機（Threads APIの制約）
+    console.log('⏳ コンテナ準備を待機中...');
+    await new Promise(resolve => setTimeout(resolve, 2000)); // 2秒待機
+
     // Step 2: コンテナを公開
     const publishResponse = await fetch('https://graph.threads.net/v1.0/me/threads_publish', {
       method: 'POST',
