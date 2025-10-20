@@ -193,21 +193,44 @@ export default function AutoPostSchedules() {
         }
       });
 
-      if (error) throw error;
+      // エラー詳細をログ出力
+      if (error) {
+        console.error('Edge function invoke error:', error);
+        throw new Error(`エッジファンクションエラー: ${JSON.stringify(error)}`);
+      }
 
       if (data?.success && data?.content) {
         setTestResults(prev => ({ ...prev, [configId]: data.content }));
         toast({ title: 'テスト生成完了', description: '投稿内容を生成しました' });
+      } else if (data?.error) {
+        // エッジファンクションからのエラーメッセージを表示
+        throw new Error(data.error);
       } else {
-        throw new Error(data?.error || 'テスト生成に失敗しました');
+        throw new Error('テスト生成に失敗しました（不明なエラー）');
       }
     } catch (error) {
       console.error('Test generation error:', error);
-      toast({ 
-        title: 'エラー', 
-        description: error instanceof Error ? error.message : 'テスト生成に失敗しました', 
-        variant: 'destructive' 
-      });
+      const errorMessage = error instanceof Error ? error.message : 'テスト生成に失敗しました';
+      
+      // Gemini API キー未設定の場合は設定ページへのリンクを表示
+      if (errorMessage.includes('Gemini API key is not configured')) {
+        toast({ 
+          title: 'Gemini APIキーが未設定', 
+          description: '設定画面でGemini APIキーを登録してください', 
+          variant: 'destructive',
+          action: (
+            <Button variant="outline" size="sm" onClick={() => navigate('/settings')}>
+              設定へ
+            </Button>
+          )
+        });
+      } else {
+        toast({ 
+          title: 'テスト生成エラー', 
+          description: errorMessage, 
+          variant: 'destructive' 
+        });
+      }
     } finally {
       setTestGenerating(prev => ({ ...prev, [configId]: false }));
     }
