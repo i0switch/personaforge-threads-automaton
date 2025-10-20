@@ -12,6 +12,44 @@ const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+// レート制限設定
+const RATE_LIMITS = {
+  MAX_REPLIES_PER_PERSONA_PER_HOUR: 15, // 1時間あたり最大15件のリプライ
+  REPLY_DELAY_SECONDS: 10, // リプライ間隔10秒
+  RETRY_DELAY_MINUTES: 60 // 制限時の再試行まで60分
+};
+
+// ペルソナごとのリプライレート制限をチェック
+async function checkPersonaReplyRateLimit(personaId: string): Promise<{ allowed: boolean; count: number; nextRetryAt?: Date }> {
+  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+  
+  // 過去1時間のリプライ数をカウント（reply_status='sent'のもののみ）
+  const { data: recentReplies, error } = await supabase
+    .from('thread_replies')
+    .select('id')
+    .eq('persona_id', personaId)
+    .eq('reply_status', 'sent')
+    .gte('created_at', oneHourAgo.toISOString());
+  
+  if (error) {
+    console.error('❌ レート制限チェック失敗:', error);
+    return { allowed: false, count: 0 };
+  }
+  
+  const count = recentReplies?.length || 0;
+  const allowed = count < RATE_LIMITS.MAX_REPLIES_PER_PERSONA_PER_HOUR;
+  
+  if (!allowed) {
+    // 制限に達した場合、次回再試行時刻を設定
+    const nextRetryAt = new Date(Date.now() + RATE_LIMITS.RETRY_DELAY_MINUTES * 60 * 1000);
+    console.log(`⚠️ レート制限到達: Persona ${personaId} - ${count}/${RATE_LIMITS.MAX_REPLIES_PER_PERSONA_PER_HOUR} (次回: ${nextRetryAt.toISOString()})`);
+    return { allowed: false, count, nextRetryAt };
+  }
+  
+  console.log(`✅ レート制限内: Persona ${personaId} - ${count}/${RATE_LIMITS.MAX_REPLIES_PER_PERSONA_PER_HOUR}`);
+  return { allowed: true, count };
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -62,10 +100,25 @@ serve(async (req) => {
         const persona = reply.personas;
         console.log(`\n🔄 処理中: ${reply.id} - "${reply.reply_text}" (Persona: ${persona.name})`);
 
-        // Threads API制限対策: 各リプライ処理の間に1秒待機
+        // 🔍 レート制限チェック（既存処理に影響を与えない追加機能）
+        const rateLimitCheck = await checkPersonaReplyRateLimit(persona.id);
+        if (!rateLimitCheck.allowed) {
+          console.log(`⏸️ レート制限により遅延処理: ${reply.id}`);
+          // 制限に達した場合、scheduled_reply_atを設定して遅延処理
+          await supabase
+            .from('thread_replies')
+            .update({ 
+              scheduled_reply_at: rateLimitCheck.nextRetryAt?.toISOString(),
+              reply_status: 'scheduled' // 遅延処理用の新ステータス
+            })
+            .eq('reply_id', reply.reply_id);
+          continue; // 次のリプライへ
+        }
+
+        // Threads API制限対策: 各リプライ処理の間に10秒待機
         if (processedCount > 0) {
-          console.log('⏳ API制限対策: 1秒待機中...');
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          console.log(`⏳ API制限対策: ${RATE_LIMITS.REPLY_DELAY_SECONDS}秒待機中...`);
+          await new Promise(resolve => setTimeout(resolve, RATE_LIMITS.REPLY_DELAY_SECONDS * 1000));
         }
 
         processedCount++;
