@@ -595,6 +595,20 @@ async function sendThreadsReply(persona: any, replyToId: string, responseText: s
           console.error('🚫 Threads APIアクションブロック: アカウント制限またはスパム防止による拒否');
           console.error('💡 対策: 投稿頻度を下げる、異なるコンテンツを投稿する、時間をおいて再試行する');
           errorDetails.spam_detection = true;
+          
+          // ⚠️ NEW: ペルソナのレート制限状態を記録
+          const estimatedLiftTime = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24時間後を推定
+          await supabase
+            .from('personas')
+            .update({
+              is_rate_limited: true,
+              rate_limit_detected_at: new Date().toISOString(),
+              rate_limit_reason: errorDetails.error.error_user_msg || 'スパム検出により一時的に制限されています',
+              rate_limit_until: estimatedLiftTime.toISOString()
+            })
+            .eq('id', persona.id);
+          
+          console.log(`⚠️ ペルソナ ${persona.name} のレート制限を記録しました`);
         }
       } catch (parseError) {
         console.error('⚠️ エラー詳細の解析失敗:', parseError);
@@ -606,6 +620,19 @@ async function sendThreadsReply(persona: any, replyToId: string, responseText: s
 
     const publishData = await publishResponse.json();
     console.log(`🎉 返信送信成功: ${publishData.id}`);
+    
+    // ✅ NEW: 成功時、レート制限が解除された可能性があるのでフラグをクリア
+    await supabase
+      .from('personas')
+      .update({
+        is_rate_limited: false,
+        rate_limit_detected_at: null,
+        rate_limit_reason: null,
+        rate_limit_until: null
+      })
+      .eq('id', persona.id)
+      .eq('is_rate_limited', true); // 制限中の場合のみ更新
+    
     return { success: true };
 
   } catch (error) {

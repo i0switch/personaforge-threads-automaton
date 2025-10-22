@@ -292,8 +292,12 @@ export type Database = {
           expertise: string[] | null
           id: string
           is_active: boolean
+          is_rate_limited: boolean | null
           name: string
           personality: string | null
+          rate_limit_detected_at: string | null
+          rate_limit_reason: string | null
+          rate_limit_until: string | null
           threads_access_token: string | null
           threads_app_id: string | null
           threads_app_secret: string | null
@@ -315,8 +319,12 @@ export type Database = {
           expertise?: string[] | null
           id?: string
           is_active?: boolean
+          is_rate_limited?: boolean | null
           name: string
           personality?: string | null
+          rate_limit_detected_at?: string | null
+          rate_limit_reason?: string | null
+          rate_limit_until?: string | null
           threads_access_token?: string | null
           threads_app_id?: string | null
           threads_app_secret?: string | null
@@ -338,8 +346,12 @@ export type Database = {
           expertise?: string[] | null
           id?: string
           is_active?: boolean
+          is_rate_limited?: boolean | null
           name?: string
           personality?: string | null
+          rate_limit_detected_at?: string | null
+          rate_limit_reason?: string | null
+          rate_limit_until?: string | null
           threads_access_token?: string | null
           threads_app_id?: string | null
           threads_app_secret?: string | null
