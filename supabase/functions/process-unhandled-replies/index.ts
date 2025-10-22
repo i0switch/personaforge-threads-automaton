@@ -148,9 +148,10 @@ serve(async (req) => {
     // ステップ2: リトライ可能な失敗リプライを追加
     const retryableReplies = await getRetryableFailedReplies();
 
-    // 未処理のリプライを取得（auto_reply_sent=false で自動返信が有効なペルソナ）
-    // pending, scheduled, completed（scheduled_reply_atが過去）のリプライを処理
-    // CRITICAL: completedでもscheduled_reply_atが過去なら送信対象
+    // 未処理のリプライを取得
+    // pending: auto_reply_sent=false のみ
+    // scheduled: scheduled_reply_atが過去なら auto_reply_sent に関係なく取得
+    // completed: scheduled_reply_atが過去かつ auto_reply_sent=false のみ
     const now = new Date().toISOString();
     const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
     
@@ -168,11 +169,10 @@ serve(async (req) => {
           threads_access_token
         )
       `)
-      .eq('auto_reply_sent', false)
-      .or(`reply_status.eq.pending,and(reply_status.eq.scheduled,scheduled_reply_at.lte.${now}),and(reply_status.eq.completed,scheduled_reply_at.lte.${now})`)
-      .gte('created_at', twoHoursAgo) // 直近2時間以内のリプライに限定
+      .or(`and(reply_status.eq.pending,auto_reply_sent.eq.false),and(reply_status.eq.scheduled,scheduled_reply_at.lte.${now}),and(reply_status.eq.completed,auto_reply_sent.eq.false,scheduled_reply_at.lte.${now})`)
+      .gte('created_at', twoHoursAgo)
       .order('created_at', { ascending: true })
-      .limit(50); // 処理件数を増やして未処理を減らす
+      .limit(50);
 
     if (fetchError) {
       console.error('❌ リプライ取得エラー:', fetchError);
@@ -252,24 +252,23 @@ serve(async (req) => {
 
         processedCount++;
 
-        // 🔒 処理開始前に即座にステータスを更新（楽観的ロック）
-        // scheduled, pending, completed 状態から直接 processing に移行
+        // 🔒 処理開始時にステータスを'processing'に更新（楽観的ロック）
+        // scheduled状態からの処理: auto_reply_sentに関係なくロック可能
+        // その他の状態: auto_reply_sent=falseのみロック可能
         const { error: lockError } = await supabase
           .from('thread_replies')
           .update({ 
-            auto_reply_sent: true,
             reply_status: 'processing'
           })
           .eq('reply_id', reply.reply_id)
-          .eq('auto_reply_sent', false)  // 既に処理済みでないことを確認
-          .in('reply_status', ['pending', 'scheduled', 'completed']);  // これらの状態からのみロック可能
+          .in('reply_status', ['pending', 'scheduled', 'completed']);
         
         if (lockError) {
-          console.error(`❌ リプライロック失敗（既に処理中の可能性）: ${reply.reply_id}`, lockError);
-          continue; // 既に他の処理が走っている可能性があるのでスキップ
+          console.error(`❌ リプライロック失敗: ${reply.reply_id}`, lockError);
+          continue;
         }
         
-        console.log(`🔒 ロック成功: ${reply.id} (元の状態: ${reply.reply_status})`)
+        console.log(`🔒 ロック成功: ${reply.id} (${reply.reply_status} → processing, auto_reply_sent=${reply.auto_reply_sent})`)
         
         let replySent = false;
 
@@ -385,9 +384,14 @@ serve(async (req) => {
           console.log(`ℹ️ 自動返信無効のためスキップ: ${reply.id}`);
           await supabase
             .from('thread_replies')
-            .update({ reply_status: 'pending' })
+            .update({ 
+              reply_status: 'pending',
+              auto_reply_sent: false  // 処理されなかったのでfalse
+            })
             .eq('reply_id', reply.reply_id);
         }
+        
+        // 送信失敗の場合はエラーハンドリングで処理されているのでここでは何もしない
         
         if (replySent) {
           successCount++;
