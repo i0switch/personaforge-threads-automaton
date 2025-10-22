@@ -732,6 +732,31 @@ async function sendThreadsReply(persona: any, replyToId: string, responseText: s
     if (!publishResponse.ok) {
       const errorText = await publishResponse.text();
       console.error('❌ Threads 投稿公開失敗:', errorText);
+      
+      // レート制限エラーを検出
+      try {
+        const errorData = JSON.parse(errorText);
+        if (errorData.error?.error_subcode === 2207051) {
+          console.warn('🚨 スパム検出/レート制限を検出 - ペルソナを制限状態に設定');
+          
+          const rateLimitUntil = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24時間後
+          
+          await supabase
+            .from('personas')
+            .update({
+              is_rate_limited: true,
+              rate_limit_detected_at: new Date().toISOString(),
+              rate_limit_reason: `スパム検出: ${errorData.error?.error_user_msg || 'アクティビティが制限されました'}`,
+              rate_limit_until: rateLimitUntil.toISOString()
+            })
+            .eq('id', persona.id);
+          
+          console.log(`✅ ペルソナ ${persona.name} をレート制限状態に設定しました`);
+        }
+      } catch (parseError) {
+        console.error('エラーレスポンスのパース失敗:', parseError);
+      }
+      
       return false;
     }
 
