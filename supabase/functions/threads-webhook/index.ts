@@ -590,20 +590,14 @@ async function processAIAutoReply(persona: any, reply: any): Promise<{ sent: boo
       }
     }
 
-    const { data: aiResponse, error: aiError } = await supabase.functions.invoke('generate-auto-reply', {
+    // threads-auto-reply関数を呼び出して、AI返信生成とスケジューリングをすべて委譲
+    const { data: aiResponse, error: aiError } = await supabase.functions.invoke('threads-auto-reply', {
       body: {
         postContent: originalPostContent,
         replyContent: reply.text,
         replyId: reply.id,
-        persona: {
-          id: persona.id,
-          name: persona.name,
-          user_id: persona.user_id,
-          age: persona.age,
-          personality: persona.personality,
-          tone_of_voice: persona.tone_of_voice,
-          expertise: persona.expertise
-        }
+        personaId: persona.id,
+        userId: persona.user_id
       }
     });
 
@@ -612,64 +606,13 @@ async function processAIAutoReply(persona: any, reply: any): Promise<{ sent: boo
       return { sent: false };
     }
 
-    if (!aiResponse?.success || !aiResponse?.reply) {
-      console.error(`❌ AI返信生成失敗:`, aiResponse);
+    if (!aiResponse?.success) {
+      console.error(`❌ AI返信処理失敗:`, aiResponse);
       return { sent: false };
     }
 
-    console.log(`✅ AI返信生成成功: "${aiResponse.reply}"`);
-
-    // 遅延時間を確認（ペルソナのデフォルト遅延時間）
-    const delayMinutes = persona.auto_reply_delay_minutes || 0;
-    
-    if (delayMinutes > 0) {
-      console.log(`⏰ AI返信を${delayMinutes}分後にスケジュール - reply: ${reply.id}`);
-      
-      // スケジュール時刻を計算
-      const scheduledTime = new Date(Date.now() + delayMinutes * 60 * 1000);
-      
-      // thread_repliesのscheduled_reply_atとai_responseを更新
-      await supabase
-        .from('thread_replies')
-        .update({ 
-          scheduled_reply_at: scheduledTime.toISOString(),
-          reply_status: 'scheduled',  // 遅延送信のためscheduledステータスを使用
-          ai_response: aiResponse.reply  // AI生成済みの返信を保存
-        })
-        .eq('reply_id', reply.id);
-      
-      // アクティビティログを記録
-      await logActivity(persona.user_id, persona.id, 'ai_auto_reply_scheduled',
-        `AI自動返信をスケジュール: "${aiResponse.reply.substring(0, 50)}..." (${delayMinutes}分後)`, {
-          reply_id: reply.id,
-          response: aiResponse.reply,
-          scheduled_for: scheduledTime.toISOString(),
-          delay_minutes: delayMinutes
-        });
-
-      console.log(`✅ AI返信スケジュール成功 - ${delayMinutes}分後: ${scheduledTime.toISOString()}`);
-      return { sent: true, method: 'ai_scheduled' };
-    } else {
-      // 遅延時間が0分の場合は即座に送信
-      console.log(`📤 AI返信を即座に送信 - reply: ${reply.id}`);
-      const success = await sendThreadsReply(persona, reply.id, aiResponse.reply);
-      
-      if (success) {
-        console.log(`🎉 AI自動返信投稿成功: "${aiResponse.reply}"`);
-        
-        // アクティビティログを記録
-        await logActivity(persona.user_id, persona.id, 'ai_auto_reply_sent',
-          `AI自動返信を送信: "${aiResponse.reply.substring(0, 50)}..."`, {
-            reply_id: reply.id,
-            ai_response: aiResponse.reply
-          });
-
-        return { sent: true, method: 'ai' };
-      } else {
-        console.error(`❌ AI自動返信投稿失敗`);
-        return { sent: false };
-      }
-    }
+    console.log(`✅ AI返信処理成功: ${aiResponse.scheduled ? 'スケジュール' : '即時送信'}`);
+    return { sent: true, method: aiResponse.scheduled ? 'ai_scheduled' : 'ai' };
 
   } catch (error) {
     console.error(`❌ AI自動返信処理エラー:`, error);

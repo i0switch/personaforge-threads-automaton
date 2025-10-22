@@ -86,12 +86,13 @@ ${replyContent}`;
       // スケジュール時刻を計算
       const scheduledTime = new Date(Date.now() + delayMinutes * 60 * 1000);
       
-      // thread_repliesのscheduled_reply_atを更新
+      // thread_repliesのscheduled_reply_at、ai_response、reply_statusを更新
       const { error: updateError } = await supabase
         .from('thread_replies')
         .update({ 
           scheduled_reply_at: scheduledTime.toISOString(),
-          reply_status: 'scheduled'
+          reply_status: 'scheduled',
+          ai_response: aiReplyText  // AI生成済みの返信を保存（必須）
         })
         .eq('reply_id', replyId);
       

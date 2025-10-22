@@ -293,6 +293,16 @@ serve(async (req) => {
               
               if (sendResult.success) {
                 console.log(`✅ 保存済みAI返信送信成功: ${reply.id}`);
+                
+                // 送信成功時にステータスを'sent'に更新
+                await supabase
+                  .from('thread_replies')
+                  .update({ 
+                    reply_status: 'sent',
+                    auto_reply_sent: true
+                  })
+                  .eq('reply_id', reply.reply_id);
+                
                 replySent = true;
               } else {
                 console.error(`❌ 保存済みAI返信送信失敗: ${reply.id}`);
@@ -472,7 +482,10 @@ async function processTemplateAutoReply(persona: any, reply: any): Promise<{ sen
             // 送信成功時にステータスを更新
             await supabase
               .from('thread_replies')
-              .update({ reply_status: 'sent' })
+              .update({ 
+                reply_status: 'sent',
+                auto_reply_sent: true
+              })
               .eq('reply_id', reply.reply_id);
             
             // アクティビティログを記録
