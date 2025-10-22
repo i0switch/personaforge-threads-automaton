@@ -977,6 +977,7 @@ export type Database = {
       }
       thread_replies: {
         Row: {
+          ai_response: string | null
           auto_reply_sent: boolean | null
           created_at: string
           id: string
@@ -993,6 +994,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          ai_response?: string | null
           auto_reply_sent?: boolean | null
           created_at?: string
           id?: string
@@ -1009,6 +1011,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          ai_response?: string | null
           auto_reply_sent?: boolean | null
           created_at?: string
           id?: string

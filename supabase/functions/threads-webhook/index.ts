@@ -493,10 +493,11 @@ async function processTemplateAutoReply(persona: any, reply: any): Promise<{ sen
             // スケジュール時刻を計算
             const scheduledTime = new Date(Date.now() + delayMinutes * 60 * 1000);
             
-            // thread_repliesのscheduled_reply_atを更新
+            // thread_repliesのscheduled_reply_atとai_response（定型文）を保存
             await supabase
               .from('thread_replies')
               .update({ 
+                ai_response: setting.response_template,  // 定型文を保存
                 scheduled_reply_at: scheduledTime.toISOString(),
                 reply_status: 'pending'  // 'scheduled'ではなく'pending'を使用
               })
