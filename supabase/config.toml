@@ -58,3 +58,6 @@ verify_jwt = false
 
 [functions.test-auto-post-generate]
 verify_jwt = true
+
+[functions.detect-rate-limited-personas]
+verify_jwt = false
