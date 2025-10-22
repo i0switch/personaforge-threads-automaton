@@ -51,12 +51,13 @@ async function checkPersonaReplyRateLimit(personaId: string): Promise<{ allowed:
 }
 
 // 古いprocessing状態をクリーンアップ（10分以上経過したもの）
+// CRITICAL: auto_reply_sentの状態に関わらずクリーンアップ
 async function cleanupStuckProcessing(): Promise<number> {
   const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
   
   const { data: stuckReplies, error: fetchError } = await supabase
     .from('thread_replies')
-    .select('id, reply_text, persona_id')
+    .select('id, reply_text, persona_id, auto_reply_sent')
     .eq('reply_status', 'processing')
     .lt('updated_at', tenMinutesAgo);
   
@@ -64,22 +65,26 @@ async function cleanupStuckProcessing(): Promise<number> {
     return 0;
   }
   
-  // failedに変更
+  console.log(`⚠️ ${stuckReplies.length}件のスタックしたprocessing状態を発見（10分以上経過）`);
+  
+  // failedに変更（auto_reply_sentは既存の状態を維持）
   const { error: updateError } = await supabase
     .from('thread_replies')
     .update({ 
       reply_status: 'failed',
-      auto_reply_sent: false,
       error_details: { 
         error: 'Processing timeout',
-        message: 'Reply stuck in processing state for more than 10 minutes'
+        message: 'Reply stuck in processing state for more than 10 minutes',
+        cleanup_timestamp: new Date().toISOString()
       }
     })
     .eq('reply_status', 'processing')
     .lt('updated_at', tenMinutesAgo);
   
   if (!updateError) {
-    console.log(`🔧 ${stuckReplies.length}件のスタックしたprocessing状態をクリーンアップ`);
+    console.log(`🔧 ${stuckReplies.length}件のスタックしたprocessing状態をクリーンアップ完了`);
+  } else {
+    console.error(`❌ クリーンアップエラー:`, updateError);
   }
   
   return stuckReplies.length;
@@ -353,7 +358,21 @@ serve(async (req) => {
                   .eq('reply_id', reply.reply_id);
                   
                 console.log(`🔄 リトライ記録: ${newRetryCount}/${maxRetries}回目 - reply: ${reply.id}`);
+              } else {
+                console.log(`✅ AI自動返信呼び出し成功: ${reply.id}`);
+                replySent = true;
               }
+            }
+          } catch (error) {
+            console.error(`❌ AI自動返信処理エラー:`, error);
+            await supabase
+              .from('thread_replies')
+              .update({ 
+                reply_status: 'failed',
+                auto_reply_sent: false
+              })
+              .eq('reply_id', reply.reply_id);
+          }
         }
 
         // 処理されなかった場合（自動返信無効など）
