@@ -501,7 +501,7 @@ async function processTemplateAutoReply(persona: any, reply: any): Promise<{ sen
               .update({ 
                 ai_response: setting.response_template,  // 定型文を保存
                 scheduled_reply_at: scheduledTime.toISOString(),
-                reply_status: 'pending'  // 'scheduled'ではなく'pending'を使用
+                reply_status: 'scheduled'  // 遅延送信のためscheduledステータスを使用
               })
               .eq('reply_id', reply.id);
             
@@ -633,7 +633,7 @@ async function processAIAutoReply(persona: any, reply: any): Promise<{ sent: boo
         .from('thread_replies')
         .update({ 
           scheduled_reply_at: scheduledTime.toISOString(),
-          reply_status: 'pending',  // 'scheduled'ではなく'pending'を使用
+          reply_status: 'scheduled',  // 遅延送信のためscheduledステータスを使用
           ai_response: aiResponse.reply  // AI生成済みの返信を保存
         })
         .eq('reply_id', reply.id);
