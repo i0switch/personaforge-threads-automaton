@@ -331,9 +331,14 @@ async function processReply(persona: any, reply: any): Promise<boolean> {
       if (persona.auto_reply_enabled) {
         const templateResult = await processTemplateAutoReply(persona, reply);
         if (templateResult.sent) {
-          console.log(`✅ 定型文自動返信成功 - reply: ${reply.id}`);
-          // 返信が送信された場合、auto_reply_sentフラグを更新
-          await updateAutoReplySentFlag(reply.id, true);
+          // スケジュールされた場合（template_scheduled）は、auto_reply_sentを更新しない
+          // 即時送信された場合（template）のみ、auto_reply_sentフラグを更新
+          if (templateResult.method === 'template_scheduled') {
+            console.log(`⏰ 定型文自動返信スケジュール成功 - reply: ${reply.id} (送信時刻待ち)`);
+          } else {
+            console.log(`✅ 定型文自動返信即時送信成功 - reply: ${reply.id}`);
+            await updateAutoReplySentFlag(reply.id, true);
+          }
           return true;
         }
       }
@@ -342,9 +347,14 @@ async function processReply(persona: any, reply: any): Promise<boolean> {
       if (persona.ai_auto_reply_enabled) {
         const aiResult = await processAIAutoReply(persona, reply);
         if (aiResult.sent) {
-          console.log(`✅ AI自動返信成功 - reply: ${reply.id}`);
-          // 返信が送信された場合、auto_reply_sentフラグを更新
-          await updateAutoReplySentFlag(reply.id, true);
+          // スケジュールされた場合（ai_scheduled）は、auto_reply_sentを更新しない
+          // 即時送信された場合（ai）のみ、auto_reply_sentフラグを更新
+          if (aiResult.method === 'ai_scheduled') {
+            console.log(`⏰ AI自動返信スケジュール成功 - reply: ${reply.id} (送信時刻待ち)`);
+          } else {
+            console.log(`✅ AI自動返信即時送信成功 - reply: ${reply.id}`);
+            await updateAutoReplySentFlag(reply.id, true);
+          }
           return true;
         }
       }
