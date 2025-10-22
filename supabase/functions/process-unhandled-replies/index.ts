@@ -59,8 +59,8 @@ serve(async (req) => {
     console.log('🔧 未処理リプライの再処理開始...');
 
     // 未処理のリプライを取得（auto_reply_sent=false で自動返信が有効なペルソナ）
-    // pending または scheduled（scheduled_reply_atが過去）のリプライを取得
-    // 直近2時間以内のリプライに限定して処理速度を向上
+    // pending, scheduled, completed（scheduled_reply_atが過去）のリプライを処理
+    // CRITICAL: completedでもscheduled_reply_atが過去なら送信対象
     const now = new Date().toISOString();
     const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
     
@@ -79,7 +79,7 @@ serve(async (req) => {
         )
       `)
       .eq('auto_reply_sent', false)
-      .or(`reply_status.eq.pending,and(reply_status.eq.scheduled,scheduled_reply_at.lte.${now})`)
+      .or(`reply_status.eq.pending,and(reply_status.eq.scheduled,scheduled_reply_at.lte.${now}),and(reply_status.eq.completed,scheduled_reply_at.lte.${now})`)
       .gte('created_at', twoHoursAgo) // 直近2時間以内のリプライに限定
       .order('created_at', { ascending: true })
       .limit(50); // 処理件数を増やして未処理を減らす
@@ -146,9 +146,9 @@ serve(async (req) => {
           continue; // 次のリプライへ
         }
 
-        // scheduled状態から処理を再開する場合、pendingに戻す
-        if (reply.reply_status === 'scheduled') {
-          console.log(`🔄 遅延処理からの再開: ${reply.id}`);
+        // scheduled または completed 状態から処理を再開する場合、pendingに戻す
+        if (reply.reply_status === 'scheduled' || reply.reply_status === 'completed') {
+          console.log(`🔄 遅延処理からの再開: ${reply.id} (status: ${reply.reply_status})`);
           await supabase
             .from('thread_replies')
             .update({ reply_status: 'pending' })
