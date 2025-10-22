@@ -64,3 +64,6 @@ verify_jwt = false
 
 [functions.fix-stuck-ai-replies]
 verify_jwt = false
+
+[functions.reset-stuck-ai-replies]
+verify_jwt = false
