@@ -61,7 +61,7 @@ serve(async (req) => {
     // 未処理のリプライを取得（auto_reply_sent=false で自動返信が有効なペルソナ）
     // pending または scheduled（scheduled_reply_atが過去）のリプライを取得
     const now = new Date().toISOString();
-    const { data: unprocessedReplies } = await supabase
+    const { data: unprocessedReplies, error: fetchError } = await supabase
       .from('thread_replies')
       .select(`
         *,
@@ -77,11 +77,23 @@ serve(async (req) => {
       `)
       .eq('auto_reply_sent', false)
       .or(`reply_status.eq.pending,and(reply_status.eq.scheduled,scheduled_reply_at.lte.${now})`)
-      .or('auto_reply_enabled.eq.true,ai_auto_reply_enabled.eq.true', { foreignTable: 'personas' })
       .order('created_at', { ascending: true })
-      .limit(10); // 一度に10件まで処理（API制限対策で削減）
+      .limit(50); // 処理件数を増やして未処理を減らす
 
-    if (!unprocessedReplies || unprocessedReplies.length === 0) {
+    if (fetchError) {
+      console.error('❌ リプライ取得エラー:', fetchError);
+      throw fetchError;
+    }
+
+    // ペルソナの自動返信設定でフィルタリング
+    const filteredReplies = (unprocessedReplies || []).filter(reply => {
+      const persona = reply.personas;
+      return persona && (persona.auto_reply_enabled === true || persona.ai_auto_reply_enabled === true);
+    });
+
+    console.log(`📋 取得件数: ${unprocessedReplies?.length || 0}, フィルタ後: ${filteredReplies.length}`);
+
+    if (!filteredReplies || filteredReplies.length === 0) {
       console.log('✅ 未処理リプライなし');
       return new Response(JSON.stringify({ 
         success: true, 
@@ -93,12 +105,12 @@ serve(async (req) => {
       });
     }
 
-    console.log(`📋 処理対象リプライ数: ${unprocessedReplies.length}`);
+    console.log(`📋 処理対象リプライ数: ${filteredReplies.length}`);
 
     let processedCount = 0;
     let successCount = 0;
 
-    for (const reply of unprocessedReplies) {
+    for (const reply of filteredReplies) {
       try {
         const persona = reply.personas;
         console.log(`\n🔄 処理中: ${reply.id} - "${reply.reply_text}" (Persona: ${persona.name})`);

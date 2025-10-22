@@ -186,7 +186,9 @@ serve(async (req) => {
       });
     }
 
-    console.log(`✅ ペルソナ取得成功: ${persona.name}, 自動返信: ${persona.auto_reply_enabled}`);
+    console.log(`✅ ペルソナ取得成功: ${persona.name}`);
+    console.log(`   - 定型文返信: ${persona.auto_reply_enabled ? 'ON' : 'OFF'}`);
+    console.log(`   - AI自動返信: ${persona.ai_auto_reply_enabled ? 'ON' : 'OFF'}`);
 
     // Webhookペイロードを解析（POSTリクエストの場合のみ）
     let rawPayload;
