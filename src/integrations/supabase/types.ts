@@ -980,7 +980,10 @@ export type Database = {
           ai_response: string | null
           auto_reply_sent: boolean | null
           created_at: string
+          error_details: Json | null
           id: string
+          last_retry_at: string | null
+          max_retries: number | null
           original_post_id: string
           persona_id: string | null
           reply_author_id: string
@@ -989,6 +992,7 @@ export type Database = {
           reply_status: string | null
           reply_text: string
           reply_timestamp: string
+          retry_count: number | null
           scheduled_reply_at: string | null
           updated_at: string
           user_id: string
@@ -997,7 +1001,10 @@ export type Database = {
           ai_response?: string | null
           auto_reply_sent?: boolean | null
           created_at?: string
+          error_details?: Json | null
           id?: string
+          last_retry_at?: string | null
+          max_retries?: number | null
           original_post_id: string
           persona_id?: string | null
           reply_author_id: string
@@ -1006,6 +1013,7 @@ export type Database = {
           reply_status?: string | null
           reply_text: string
           reply_timestamp: string
+          retry_count?: number | null
           scheduled_reply_at?: string | null
           updated_at?: string
           user_id: string
@@ -1014,7 +1022,10 @@ export type Database = {
           ai_response?: string | null
           auto_reply_sent?: boolean | null
           created_at?: string
+          error_details?: Json | null
           id?: string
+          last_retry_at?: string | null
+          max_retries?: number | null
           original_post_id?: string
           persona_id?: string | null
           reply_author_id?: string
@@ -1023,6 +1034,7 @@ export type Database = {
           reply_status?: string | null
           reply_text?: string
           reply_timestamp?: string
+          retry_count?: number | null
           scheduled_reply_at?: string | null
           updated_at?: string
           user_id?: string

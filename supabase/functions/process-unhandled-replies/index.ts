@@ -50,6 +50,85 @@ async function checkPersonaReplyRateLimit(personaId: string): Promise<{ allowed:
   return { allowed: true, count };
 }
 
+// 古いprocessing状態をクリーンアップ（10分以上経過したもの）
+async function cleanupStuckProcessing(): Promise<number> {
+  const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+  
+  const { data: stuckReplies, error: fetchError } = await supabase
+    .from('thread_replies')
+    .select('id, reply_text, persona_id')
+    .eq('reply_status', 'processing')
+    .lt('updated_at', tenMinutesAgo);
+  
+  if (fetchError || !stuckReplies || stuckReplies.length === 0) {
+    return 0;
+  }
+  
+  // failedに変更
+  const { error: updateError } = await supabase
+    .from('thread_replies')
+    .update({ 
+      reply_status: 'failed',
+      auto_reply_sent: false,
+      error_details: { 
+        error: 'Processing timeout',
+        message: 'Reply stuck in processing state for more than 10 minutes'
+      }
+    })
+    .eq('reply_status', 'processing')
+    .lt('updated_at', tenMinutesAgo);
+  
+  if (!updateError) {
+    console.log(`🔧 ${stuckReplies.length}件のスタックしたprocessing状態をクリーンアップ`);
+  }
+  
+  return stuckReplies.length;
+}
+
+// リトライ可能な失敗リプライを取得（指数バックオフ）
+async function getRetryableFailedReplies(): Promise<any[]> {
+  const now = Date.now();
+  
+  const { data: failedReplies, error } = await supabase
+    .from('thread_replies')
+    .select(`
+      *,
+      personas!inner (
+        id,
+        name,
+        user_id,
+        auto_reply_enabled,
+        ai_auto_reply_enabled,
+        threads_access_token
+      )
+    `)
+    .eq('reply_status', 'failed')
+    .eq('auto_reply_sent', false)
+    .lt('retry_count', supabase.rpc('COALESCE(max_retries, 3)'))
+    .gte('created_at', new Date(now - 24 * 60 * 60 * 1000).toISOString()); // 24時間以内
+  
+  if (error || !failedReplies) {
+    return [];
+  }
+  
+  // 指数バックオフでリトライ時刻をチェック（2^retry_count * 5分）
+  const retryable = failedReplies.filter(reply => {
+    if (!reply.last_retry_at) return true; // 初回リトライ
+    
+    const retryCount = reply.retry_count || 0;
+    const backoffMinutes = Math.pow(2, retryCount) * 5; // 5分, 10分, 20分, 40分...
+    const nextRetryTime = new Date(reply.last_retry_at).getTime() + backoffMinutes * 60 * 1000;
+    
+    return now >= nextRetryTime;
+  });
+  
+  if (retryable.length > 0) {
+    console.log(`🔄 リトライ可能な失敗リプライ: ${retryable.length}件`);
+  }
+  
+  return retryable;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -57,6 +136,12 @@ serve(async (req) => {
 
   try {
     console.log('🔧 未処理リプライの再処理開始...');
+    
+    // ステップ1: 古いprocessing状態をクリーンアップ
+    await cleanupStuckProcessing();
+    
+    // ステップ2: リトライ可能な失敗リプライを追加
+    const retryableReplies = await getRetryableFailedReplies();
 
     // 未処理のリプライを取得（auto_reply_sent=false で自動返信が有効なペルソナ）
     // pending, scheduled, completed（scheduled_reply_atが過去）のリプライを処理
@@ -89,8 +174,16 @@ serve(async (req) => {
       throw fetchError;
     }
 
+    // ステップ3: リトライリプライと未処理リプライを統合
+    const allReplies = [...(unprocessedReplies || []), ...retryableReplies];
+    
+    // 重複を削除（同じreply_idのものは1つだけ）
+    const uniqueReplies = Array.from(
+      new Map(allReplies.map(r => [r.reply_id, r])).values()
+    );
+
     // ペルソナの自動返信設定でフィルタリング
-    const filteredReplies = (unprocessedReplies || []).filter(reply => {
+    const filteredReplies = uniqueReplies.filter(reply => {
       const persona = reply.personas;
       
       // デバッグ: personaオブジェクトの構造を確認
@@ -107,7 +200,7 @@ serve(async (req) => {
       return hasAutoReply || hasAIReply;
     });
 
-    console.log(`📋 取得件数: ${unprocessedReplies?.length || 0}, フィルタ後: ${filteredReplies.length}`);
+    console.log(`📋 取得件数: ${unprocessedReplies?.length || 0}, リトライ: ${retryableReplies.length}, フィルタ後: ${filteredReplies.length}`);
 
     if (!filteredReplies || filteredReplies.length === 0) {
       console.log('✅ 未処理リプライなし');
@@ -198,18 +291,31 @@ serve(async (req) => {
               // 既に生成済みの返信を使って送信
               const sendResult = await sendThreadsReply(persona, reply.reply_id, reply.ai_response);
               
-              if (sendResult) {
+              if (sendResult.success) {
                 console.log(`✅ 保存済みAI返信送信成功: ${reply.id}`);
                 replySent = true;
               } else {
                 console.error(`❌ 保存済みAI返信送信失敗: ${reply.id}`);
+                // リトライカウントを更新
+                const newRetryCount = (reply.retry_count || 0) + 1;
+                const maxRetries = reply.max_retries || 3;
+                
                 await supabase
                   .from('thread_replies')
                   .update({ 
-                    reply_status: 'failed',
-                    auto_reply_sent: false
+                    reply_status: newRetryCount >= maxRetries ? 'failed' : 'failed',
+                    auto_reply_sent: false,
+                    retry_count: newRetryCount,
+                    last_retry_at: new Date().toISOString(),
+                    error_details: {
+                      ...sendResult.errorDetails,
+                      retry_count: newRetryCount,
+                      timestamp: new Date().toISOString()
+                    }
                   })
                   .eq('reply_id', reply.reply_id);
+                  
+                console.log(`🔄 リトライ記録: ${newRetryCount}/${maxRetries}回目 - reply: ${reply.id}`);
               }
             } else {
               // AI返信が未生成の場合は新規生成
@@ -226,28 +332,28 @@ serve(async (req) => {
 
               if (autoReplyResult.error) {
                 console.error(`❌ AI自動返信呼び出しエラー:`, autoReplyResult.error);
+                // リトライカウントを更新
+                const newRetryCount = (reply.retry_count || 0) + 1;
+                const maxRetries = reply.max_retries || 3;
+                
                 await supabase
                   .from('thread_replies')
                   .update({ 
-                    reply_status: 'failed',
-                    auto_reply_sent: false
+                    reply_status: newRetryCount >= maxRetries ? 'failed' : 'failed',
+                    auto_reply_sent: false,
+                    retry_count: newRetryCount,
+                    last_retry_at: new Date().toISOString(),
+                    error_details: {
+                      error: 'AI Reply Generation Failed',
+                      message: autoReplyResult.error.message || 'Unknown error',
+                      retry_count: newRetryCount,
+                      timestamp: new Date().toISOString()
+                    }
                   })
                   .eq('reply_id', reply.reply_id);
-              } else {
-                console.log(`✅ AI自動返信呼び出し成功: ${reply.id}`);
-                replySent = true;
+                  
+                console.log(`🔄 リトライ記録: ${newRetryCount}/${maxRetries}回目 - reply: ${reply.id}`);
               }
-            }
-          } catch (error) {
-            console.error(`❌ AI自動返信処理エラー:`, error);
-            await supabase
-              .from('thread_replies')
-              .update({ 
-                reply_status: 'failed',
-                auto_reply_sent: false
-              })
-              .eq('reply_id', reply.reply_id);
-          }
         }
 
         // 処理されなかった場合（自動返信無効など）
@@ -265,14 +371,28 @@ serve(async (req) => {
 
       } catch (error) {
         console.error(`❌ リプライ処理エラー ${reply.id}:`, error);
-        // エラー時はロックを解除
+        // リトライカウントを更新
+        const newRetryCount = (reply.retry_count || 0) + 1;
+        const maxRetries = reply.max_retries || 3;
+        
+        // エラー時はロックを解除＋リトライ情報を記録
         await supabase
           .from('thread_replies')
           .update({ 
-            reply_status: 'failed',
-            auto_reply_sent: false
+            reply_status: newRetryCount >= maxRetries ? 'failed' : 'failed',
+            auto_reply_sent: false,
+            retry_count: newRetryCount,
+            last_retry_at: new Date().toISOString(),
+            error_details: {
+              error: error instanceof Error ? error.name : 'Unknown Error',
+              message: error instanceof Error ? error.message : String(error),
+              retry_count: newRetryCount,
+              timestamp: new Date().toISOString()
+            }
           })
           .eq('reply_id', reply.reply_id);
+          
+        console.log(`🔄 エラー記録: ${newRetryCount}/${maxRetries}回目 - reply: ${reply.id}`);
       }
     }
 
@@ -331,9 +451,9 @@ async function processTemplateAutoReply(persona: any, reply: any): Promise<{ sen
         
         try {
           // 定型文返信を送信
-          const success = await sendThreadsReply(persona, reply.reply_id, setting.response_template);
+          const sendResult = await sendThreadsReply(persona, reply.reply_id, setting.response_template);
           
-          if (success) {
+          if (sendResult.success) {
             console.log(`✅ 定型文返信送信成功`);
             // 送信成功時にステータスを更新
             await supabase
@@ -352,10 +472,23 @@ async function processTemplateAutoReply(persona: any, reply: any): Promise<{ sen
             return { sent: true, method: 'template' };
           } else {
             console.error(`❌ 定型文返信送信失敗`);
-            // 送信失敗時はステータスを更新
+            // 送信失敗時はリトライ情報を記録
+            const newRetryCount = (reply.retry_count || 0) + 1;
+            const maxRetries = reply.max_retries || 3;
+            
             await supabase
               .from('thread_replies')
-              .update({ reply_status: 'failed' })
+              .update({ 
+                reply_status: newRetryCount >= maxRetries ? 'failed' : 'failed',
+                retry_count: newRetryCount,
+                last_retry_at: new Date().toISOString(),
+                error_details: {
+                  ...sendResult.errorDetails,
+                  reply_type: 'template',
+                  retry_count: newRetryCount,
+                  timestamp: new Date().toISOString()
+                }
+              })
               .eq('reply_id', reply.reply_id);
           }
         } catch (error) {
@@ -369,8 +502,8 @@ async function processTemplateAutoReply(persona: any, reply: any): Promise<{ sen
   return { sent: false };
 }
 
-// Threads返信を送信
-async function sendThreadsReply(persona: any, replyToId: string, responseText: string): Promise<boolean> {
+// Threads返信を送信（エラー詳細も返す）
+async function sendThreadsReply(persona: any, replyToId: string, responseText: string): Promise<{ success: boolean; errorDetails?: any }> {
   try {
     console.log(`📤 Threads返信送信開始: "${responseText}" (Reply to: ${replyToId})`);
 
@@ -378,7 +511,10 @@ async function sendThreadsReply(persona: any, replyToId: string, responseText: s
     const accessToken = await getAccessToken(persona);
     if (!accessToken) {
       console.error('❌ アクセストークン取得失敗');
-      return false;
+      return { 
+        success: false, 
+        errorDetails: { error: 'Token Error', message: 'Failed to retrieve access token' }
+      };
     }
 
     // Step 1: コンテナを作成
@@ -398,7 +534,15 @@ async function sendThreadsReply(persona: any, replyToId: string, responseText: s
     if (!containerResponse.ok) {
       const errorText = await containerResponse.text();
       console.error('❌ Threads コンテナ作成失敗:', errorText);
-      return false;
+      
+      let errorDetails;
+      try {
+        errorDetails = JSON.parse(errorText);
+      } catch {
+        errorDetails = { error: 'Container Error', message: errorText };
+      }
+      
+      return { success: false, errorDetails };
     }
 
     const containerData = await containerResponse.json();
@@ -424,27 +568,36 @@ async function sendThreadsReply(persona: any, replyToId: string, responseText: s
       const errorText = await publishResponse.text();
       console.error('❌ Threads 投稿公開失敗:', errorText);
       
+      let errorDetails;
       // エラー詳細を解析
       try {
-        const errorData = JSON.parse(errorText);
-        if (errorData?.error?.error_subcode === 2207051) {
+        errorDetails = JSON.parse(errorText);
+        if (errorDetails?.error?.error_subcode === 2207051) {
           console.error('🚫 Threads APIアクションブロック: アカウント制限またはスパム防止による拒否');
           console.error('💡 対策: 投稿頻度を下げる、異なるコンテンツを投稿する、時間をおいて再試行する');
+          errorDetails.spam_detection = true;
         }
       } catch (parseError) {
         console.error('⚠️ エラー詳細の解析失敗:', parseError);
+        errorDetails = { error: 'Publish Error', message: errorText };
       }
       
-      return false;
+      return { success: false, errorDetails };
     }
 
     const publishData = await publishResponse.json();
     console.log(`🎉 返信送信成功: ${publishData.id}`);
-    return true;
+    return { success: true };
 
   } catch (error) {
     console.error('❌ Threads返信送信エラー:', error);
-    return false;
+    return { 
+      success: false, 
+      errorDetails: { 
+        error: error instanceof Error ? error.name : 'Unknown Error',
+        message: error instanceof Error ? error.message : String(error)
+      }
+    };
   }
 }
 
