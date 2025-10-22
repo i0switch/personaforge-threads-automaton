@@ -244,15 +244,6 @@ serve(async (req) => {
           continue; // 次のリプライへ
         }
 
-        // scheduled または completed 状態から処理を再開する場合、pendingに戻す
-        if (reply.reply_status === 'scheduled' || reply.reply_status === 'completed') {
-          console.log(`🔄 遅延処理からの再開: ${reply.id} (status: ${reply.reply_status})`);
-          await supabase
-            .from('thread_replies')
-            .update({ reply_status: 'pending' })
-            .eq('reply_id', reply.reply_id);
-        }
-
         // Threads API制限対策: 各リプライ処理の間に10秒待機
         if (processedCount > 0) {
           console.log(`⏳ API制限対策: ${RATE_LIMITS.REPLY_DELAY_SECONDS}秒待機中...`);
@@ -262,6 +253,7 @@ serve(async (req) => {
         processedCount++;
 
         // 🔒 処理開始前に即座にステータスを更新（楽観的ロック）
+        // scheduled, pending, completed 状態から直接 processing に移行
         const { error: lockError } = await supabase
           .from('thread_replies')
           .update({ 
@@ -269,12 +261,15 @@ serve(async (req) => {
             reply_status: 'processing'
           })
           .eq('reply_id', reply.reply_id)
-          .eq('auto_reply_sent', false); // 既に処理済みでないことを確認
+          .eq('auto_reply_sent', false)  // 既に処理済みでないことを確認
+          .in('reply_status', ['pending', 'scheduled', 'completed']);  // これらの状態からのみロック可能
         
         if (lockError) {
           console.error(`❌ リプライロック失敗（既に処理中の可能性）: ${reply.reply_id}`, lockError);
           continue; // 既に他の処理が走っている可能性があるのでスキップ
         }
+        
+        console.log(`🔒 ロック成功: ${reply.id} (元の状態: ${reply.reply_status})`)
         
         let replySent = false;
 
