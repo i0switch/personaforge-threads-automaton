@@ -152,6 +152,72 @@ const RateLimitTest = () => {
     }
   };
 
+  const fixStuckAIReplies = async () => {
+    setDetecting(true);
+    try {
+      // auto_reply_sent=true かつ reply_status=failed のリプライを修復
+      const { data: stuckReplies, error: fetchError } = await supabase
+        .from('thread_replies')
+        .select(`
+          id,
+          reply_id,
+          reply_status,
+          auto_reply_sent,
+          personas (
+            id,
+            name,
+            ai_auto_reply_enabled
+          )
+        `)
+        .eq('auto_reply_sent', true)
+        .in('reply_status', ['failed', 'processing'])
+        .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
+
+      if (fetchError) throw fetchError;
+
+      let fixedCount = 0;
+      const fixedList = [];
+
+      for (const reply of stuckReplies || []) {
+        const persona = reply.personas as any;
+        
+        if (persona?.ai_auto_reply_enabled) {
+          const { error: updateError } = await supabase
+            .from('thread_replies')
+            .update({
+              auto_reply_sent: false,
+              reply_status: 'pending'
+            })
+            .eq('id', reply.id);
+
+          if (!updateError) {
+            fixedCount++;
+            fixedList.push(persona.name);
+          }
+        }
+      }
+
+      toast({
+        title: "修復完了",
+        description: `${fixedCount}件のスタックしたリプライを修復しました`,
+      });
+
+      setDetectionResult({
+        fixed_count: fixedCount,
+        fixed_personas: fixedList,
+        total_stuck: stuckReplies?.length || 0
+      });
+    } catch (error: any) {
+      toast({
+        title: "エラー",
+        description: error.message,
+        variant: "destructive"
+      });
+    } finally {
+      setDetecting(false);
+    }
+  };
+
   return (
     <div className="container mx-auto p-8">
       <Card>
@@ -164,14 +230,35 @@ const RateLimitTest = () => {
         <CardContent className="space-y-6">
           <Alert>
             <AlertCircle className="h-4 w-4" />
-            <AlertTitle>AI自動返信の問題について</AlertTitle>
-            <AlertDescription>
-              複数のペルソナでThreads APIのスパム検出により返信がブロックされています。
-              「レート制限検出」ボタンで過去24時間の失敗リプライから自動検出します。
+            <AlertTitle>🚨 AI自動返信の致命的な問題</AlertTitle>
+            <AlertDescription className="space-y-2">
+              <p className="font-semibold text-destructive">
+                複数のペルソナでAI自動返信が完全に停止しています！
+              </p>
+              <p className="text-sm">
+                原因: 送信失敗時に`auto_reply_sent`フラグがリセットされず、
+                スタック状態になっています。以下のボタンで即座に修復してください。
+              </p>
             </AlertDescription>
           </Alert>
 
           <div className="space-y-4">
+            <div className="bg-destructive/10 p-4 rounded-lg space-y-3">
+              <h3 className="font-bold text-lg">🔧 緊急修復</h3>
+              <p className="text-sm">
+                過去24時間でスタックしたAI返信リプライを修復します
+              </p>
+              <Button 
+                onClick={fixStuckAIReplies}
+                disabled={detecting}
+                className="w-full"
+                size="lg"
+                variant="destructive"
+              >
+                {detecting ? "修復中..." : "⚠️ スタックしたAI返信を修復"}
+              </Button>
+            </div>
+
             <div>
               <Button 
                 onClick={detectRateLimitedPersonas}
