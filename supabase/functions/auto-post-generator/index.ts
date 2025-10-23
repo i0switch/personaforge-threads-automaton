@@ -228,7 +228,27 @@ async function generateWithGemini(prompt: string, apiKey: string): Promise<strin
   return text.trim();
 }
 
-function buildPrompt(persona: any, customPrompt?: string, contentPrefs?: string) {
+function getTimeOfDay(scheduledTime?: string): string {
+  if (!scheduledTime) return '';
+  
+  const date = new Date(scheduledTime);
+  const hour = date.getUTCHours();
+  
+  // JST時間に変換（UTC+9）
+  const jstHour = (hour + 9) % 24;
+  
+  if (jstHour >= 5 && jstHour < 11) {
+    return '朝';
+  } else if (jstHour >= 11 && jstHour < 15) {
+    return '昼';
+  } else if (jstHour >= 15 && jstHour < 19) {
+    return '夕方';
+  } else {
+    return '夜';
+  }
+}
+
+function buildPrompt(persona: any, customPrompt?: string, contentPrefs?: string, scheduledTime?: string) {
   const personaInfo = [
     `ペルソナ名: ${persona?.name || '未設定'}`,
     persona?.tone_of_voice ? `口調: ${persona.tone_of_voice}` : undefined,
@@ -236,15 +256,19 @@ function buildPrompt(persona: any, customPrompt?: string, contentPrefs?: string)
     persona?.personality ? `性格: ${persona.personality}` : undefined,
   ].filter(Boolean).join('\n');
 
+  const timeOfDay = getTimeOfDay(scheduledTime);
+  const timeContext = timeOfDay ? `この投稿は「${timeOfDay}」に投稿されます。投稿内容は投稿時間帯に適した内容にしてください。` : '';
+
   return `あなたは指定されたペルソナになりきってThreads用の短文投稿を1件だけ出力します。\n` +
          `出力はテキスト本文のみ。絵文字やハッシュタグの使用は内容に応じて自然に。\n` +
          `--- ペルソナ情報 ---\n${personaInfo}\n` +
+         (timeContext ? `--- 投稿時間帯 ---\n${timeContext}\n` : '') +
          (contentPrefs ? `--- 投稿方針 ---\n${contentPrefs}\n` : '') +
          (customPrompt ? `--- カスタムプロンプト ---\n${customPrompt}\n` : '') +
          `--- 出力ルール ---\n- 280文字程度以内\n- 攻撃的・不適切表現は禁止\n- 改行2回以内\n- 出力はテキスト本文のみ`;
 }
 
-function buildRandomPrompt(persona: any) {
+function buildRandomPrompt(persona: any, scheduledTime?: string) {
   const personaInfo = [
     `ペルソナ名: ${persona?.name || '未設定'}`,
     persona?.tone_of_voice ? `口調: ${persona.tone_of_voice}` : undefined,
@@ -264,11 +288,15 @@ function buildRandomPrompt(persona: any) {
   ];
 
   const selectedTopic = randomTopics[Math.floor(Math.random() * randomTopics.length)];
+  
+  const timeOfDay = getTimeOfDay(scheduledTime);
+  const timeContext = timeOfDay ? `この投稿は「${timeOfDay}」に投稿されます。投稿内容は投稿時間帯に適した内容にしてください。` : '';
 
   return `あなたは指定されたペルソナになりきってThreads用の短文投稿を1件だけ出力します。\n` +
          `今回のテーマ: ${selectedTopic}\n` +
          `出力はテキスト本文のみ。絵文字やハッシュタグの使用は内容に応じて自然に。\n` +
          `--- ペルソナ情報 ---\n${personaInfo}\n` +
+         (timeContext ? `--- 投稿時間帯 ---\n${timeContext}\n` : '') +
          `--- 投稿方針 ---\n` +
          `- このペルソナらしい自然な投稿内容にする\n` +
          `- テーマに沿いつつも、個性を活かした内容にする\n` +
@@ -446,7 +474,7 @@ serve(async (req) => {
         }
 
         // APIキー解決とコンテンツ生成（制限付きローテーション）
-        const prompt = buildPrompt(persona, cfg.prompt_template, cfg.content_prefs);
+        const prompt = buildPrompt(persona, cfg.prompt_template, cfg.content_prefs, cfg.next_run_at);
         const content = await generateWithGeminiRotation(prompt, cfg.user_id);
 
         console.log(`📝 Creating scheduled post for persona ${persona.name} at ${cfg.next_run_at}`);
@@ -794,7 +822,7 @@ serve(async (req) => {
 
 
           // ランダムポスト用のプロンプト生成（独自ロジック）
-          const prompt = buildRandomPrompt(persona);
+          const prompt = buildRandomPrompt(persona, targetTime.toISOString());
           const content = await generateWithGeminiRotation(prompt, persona.user_id);
 
           // postsへ作成（予約投稿）
