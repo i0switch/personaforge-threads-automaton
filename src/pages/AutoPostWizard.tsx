@@ -112,13 +112,23 @@ export default function AutoPostWizard() {
 
   const computeNextRun = (hhmm: string) => {
     const [hh, mm] = hhmm.split(':').map(Number);
-    const now = new Date();
-    const next = new Date();
-    next.setHours(hh, mm, 0, 0);
-    if (next.getTime() <= now.getTime()) {
-      next.setDate(next.getDate() + 1);
+    
+    // JST（UTC+9）での現在時刻を取得
+    const nowUTC = new Date();
+    const nowJST = new Date(nowUTC.getTime() + 9 * 60 * 60 * 1000);
+    
+    // JST での次回実行時刻を計算
+    const nextJST = new Date(nowJST);
+    nextJST.setUTCHours(hh, mm, 0, 0);
+    
+    // 既に過ぎていたら翌日に
+    if (nextJST.getTime() <= nowJST.getTime()) {
+      nextJST.setUTCDate(nextJST.getUTCDate() + 1);
     }
-    return next.toISOString();
+    
+    // JST時刻をUTCに変換して返す
+    const nextUTC = new Date(nextJST.getTime() - 9 * 60 * 60 * 1000);
+    return nextUTC.toISOString();
   };
 
   // 複数時間設定の次回実行時刻を計算

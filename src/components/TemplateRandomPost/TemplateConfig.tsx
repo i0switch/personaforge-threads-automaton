@@ -102,23 +102,34 @@ export function TemplateConfigComponent() {
   const calculateNextRun = (times: string[], timezone: string = 'UTC'): string => {
     if (!times || times.length === 0) return new Date().toISOString();
     
-    const now = new Date();
-    const nowInTz = new Date(now.toLocaleString('en-US', { timeZone: timezone }));
-    const currentTime = nowInTz.toTimeString().split(' ')[0].slice(0, 8);
+    // JST（UTC+9）での現在時刻を取得
+    const nowUTC = new Date();
+    const nowJST = new Date(nowUTC.getTime() + 9 * 60 * 60 * 1000);
+    const currentTime = nowJST.toISOString().split('T')[1].slice(0, 8); // HH:mm:ss
     
-    // Find next slot today
-    const nextSlot = times.find(t => t > currentTime);
+    // 今日の残り時間をチェック（JST基準）
+    const sortedTimes = times.sort();
+    const nextSlot = sortedTimes.find(t => t > currentTime);
     
     if (nextSlot) {
+      // 今日の次のスロット
       const [h, m, s] = nextSlot.split(':').map(Number);
-      nowInTz.setHours(h, m, s || 0, 0);
-      return nowInTz.toISOString();
+      const nextJST = new Date(nowJST);
+      nextJST.setUTCHours(h, m, s || 0, 0);
+      
+      // JST時刻をUTCに変換して返す
+      const nextUTC = new Date(nextJST.getTime() - 9 * 60 * 60 * 1000);
+      return nextUTC.toISOString();
     } else {
-      // Tomorrow's first slot
-      nowInTz.setDate(nowInTz.getDate() + 1);
-      const [h, m, s] = times[0].split(':').map(Number);
-      nowInTz.setHours(h, m, s || 0, 0);
-      return nowInTz.toISOString();
+      // 明日の最初のスロット
+      const [h, m, s] = sortedTimes[0].split(':').map(Number);
+      const tomorrowJST = new Date(nowJST);
+      tomorrowJST.setUTCDate(tomorrowJST.getUTCDate() + 1);
+      tomorrowJST.setUTCHours(h, m, s || 0, 0);
+      
+      // JST時刻をUTCに変換して返す
+      const tomorrowUTC = new Date(tomorrowJST.getTime() - 9 * 60 * 60 * 1000);
+      return tomorrowUTC.toISOString();
     }
   };
 

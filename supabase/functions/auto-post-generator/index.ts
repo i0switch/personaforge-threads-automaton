@@ -322,8 +322,24 @@ function calculateRandomNextRun(randomTimes: string[], timezone: string = 'UTC')
     nextRun.setDate(nextRun.getDate() + 1); // 明日
     nextRun.setUTCHours(hours, minutes, seconds, 0);
     return nextRun.toISOString();
+  } else if (timezone === 'Asia/Tokyo') {
+    // JST（Asia/Tokyo）の場合の正しい計算
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Tokyo',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
+    
+    const tomorrowJST = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    const localDateStr = formatter.format(tomorrowJST);
+    const timeStr = randomTime.length === 8 ? randomTime : `${randomTime}:00`;
+    
+    // JSTの日時文字列を作成してUTCに変換
+    const jstDateTime = new Date(`${localDateStr}T${timeStr}+09:00`);
+    return jstDateTime.toISOString();
   } else {
-    // Asia/Tokyo等のタイムゾーン対応
+    // その他のタイムゾーン対応
     const formatter = new Intl.DateTimeFormat('en-CA', {
       timeZone: timezone,
       year: 'numeric',
@@ -333,9 +349,10 @@ function calculateRandomNextRun(randomTimes: string[], timezone: string = 'UTC')
     
     const tomorrowLocal = new Date(now.getTime() + 24 * 60 * 60 * 1000);
     const localDateString = formatter.format(tomorrowLocal);
+    const timeStr = randomTime.length === 8 ? randomTime : `${randomTime}:00`;
     
     // ローカル時間で次回実行時刻を作成し、UTCに変換
-    const localDateTime = new Date(`${localDateString}T${randomTime}`);
+    const localDateTime = new Date(`${localDateString}T${timeStr}`);
     const utcOffset = getTimezoneOffset(timezone);
     const utcTime = new Date(localDateTime.getTime() - utcOffset * 60 * 1000);
     
@@ -573,10 +590,39 @@ serve(async (req) => {
             
             // タイムゾーンを考慮して翌日の最初の時間を設定
             if (cfg.timezone && cfg.timezone !== 'UTC') {
-              // タイムゾーンを考慮した計算
-              const localNextDay = new Date(nextDay.toLocaleString("en-US", {timeZone: cfg.timezone}));
-              localNextDay.setHours(hours, minutes, 0, 0);
-              nextRunAt = localNextDay.toISOString();
+              // JST（UTC+9）の場合の正しい計算
+              if (cfg.timezone === 'Asia/Tokyo') {
+                // JST での翌日の日付文字列を取得
+                const formatter = new Intl.DateTimeFormat('en-CA', {
+                  timeZone: 'Asia/Tokyo',
+                  year: 'numeric',
+                  month: '2-digit',
+                  day: '2-digit'
+                });
+                const tomorrowJST = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+                const localDateStr = formatter.format(tomorrowJST);
+                const timeStr = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`;
+                
+                // JSTの日時文字列を作成してUTCに変換
+                const jstDateTime = new Date(`${localDateStr}T${timeStr}+09:00`);
+                nextRunAt = jstDateTime.toISOString();
+              } else {
+                // その他のタイムゾーンの場合はgetTimezoneOffsetを使用
+                const formatter = new Intl.DateTimeFormat('en-CA', {
+                  timeZone: cfg.timezone,
+                  year: 'numeric',
+                  month: '2-digit',
+                  day: '2-digit'
+                });
+                const tomorrowLocal = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+                const localDateStr = formatter.format(tomorrowLocal);
+                const timeStr = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`;
+                
+                const localDateTime = new Date(`${localDateStr}T${timeStr}`);
+                const utcOffset = getTimezoneOffset(cfg.timezone);
+                const utcTime = new Date(localDateTime.getTime() - utcOffset * 60 * 1000);
+                nextRunAt = utcTime.toISOString();
+              }
             } else {
               nextDay.setHours(hours, minutes, 0, 0);
               nextRunAt = nextDay.toISOString();
@@ -1133,14 +1179,17 @@ serve(async (req) => {
           // Find next slot today
           const nextSlot = nextSlots.find((s: string) => s > currentTime);
           if (nextSlot) {
-            // Create date in the specified timezone
-            const [h, m, s] = nextSlot.split(':').map(Number);
-            const nextRunDate = new Date(todayDate + 'T' + nextSlot);
-            
-            // Convert to UTC by adjusting for timezone offset
-            const utcOffset = getTimezoneOffset(tz);
-            const utcTime = new Date(nextRunDate.getTime() - utcOffset * 60 * 1000);
-            nextRunAt = utcTime.toISOString();
+            // JST（Asia/Tokyo）の場合は正しくUTCに変換
+            if (tz === 'Asia/Tokyo') {
+              const jstDateTime = new Date(`${todayDate}T${nextSlot}+09:00`);
+              nextRunAt = jstDateTime.toISOString();
+            } else {
+              // その他のタイムゾーン用の処理
+              const nextRunDate = new Date(todayDate + 'T' + nextSlot);
+              const utcOffset = getTimezoneOffset(tz);
+              const utcTime = new Date(nextRunDate.getTime() - utcOffset * 60 * 1000);
+              nextRunAt = utcTime.toISOString();
+            }
             
             console.log(`📅 Next slot: ${nextSlot} in ${tz} = ${nextRunAt} UTC`);
           } else {
@@ -1148,13 +1197,16 @@ serve(async (req) => {
             const tomorrow = new Date(localNow);
             tomorrow.setDate(tomorrow.getDate() + 1);
             const tomorrowStr = tomorrow.toISOString().split('T')[0];
-            const [h, m, s] = (templateCfg.random_times[0] as string).split(':').map(Number);
-            const tomorrowSlot = new Date(tomorrowStr + 'T' + templateCfg.random_times[0]);
             
-            // Convert to UTC
-            const utcOffset = getTimezoneOffset(tz);
-            const utcTime = new Date(tomorrowSlot.getTime() - utcOffset * 60 * 1000);
-            nextRunAt = utcTime.toISOString();
+            if (tz === 'Asia/Tokyo') {
+              const jstDateTime = new Date(`${tomorrowStr}T${templateCfg.random_times[0]}+09:00`);
+              nextRunAt = jstDateTime.toISOString();
+            } else {
+              const tomorrowSlot = new Date(tomorrowStr + 'T' + templateCfg.random_times[0]);
+              const utcOffset = getTimezoneOffset(tz);
+              const utcTime = new Date(tomorrowSlot.getTime() - utcOffset * 60 * 1000);
+              nextRunAt = utcTime.toISOString();
+            }
             
             console.log(`📅 All today's slots done, next: tomorrow ${templateCfg.random_times[0]} = ${nextRunAt} UTC`);
           }
@@ -1163,13 +1215,16 @@ serve(async (req) => {
           const tomorrow = new Date(localNow);
           tomorrow.setDate(tomorrow.getDate() + 1);
           const tomorrowStr = tomorrow.toISOString().split('T')[0];
-          const [h, m, s] = (templateCfg.random_times[0] as string).split(':').map(Number);
-          const tomorrowSlot = new Date(tomorrowStr + 'T' + templateCfg.random_times[0]);
           
-          // Convert to UTC
-          const utcOffset = getTimezoneOffset(tz);
-          const utcTime = new Date(tomorrowSlot.getTime() - utcOffset * 60 * 1000);
-          nextRunAt = utcTime.toISOString();
+          if (tz === 'Asia/Tokyo') {
+            const jstDateTime = new Date(`${tomorrowStr}T${templateCfg.random_times[0]}+09:00`);
+            nextRunAt = jstDateTime.toISOString();
+          } else {
+            const tomorrowSlot = new Date(tomorrowStr + 'T' + templateCfg.random_times[0]);
+            const utcOffset = getTimezoneOffset(tz);
+            const utcTime = new Date(tomorrowSlot.getTime() - utcOffset * 60 * 1000);
+            nextRunAt = utcTime.toISOString();
+          }
           
           console.log(`📅 All slots posted, next: tomorrow ${templateCfg.random_times[0]} = ${nextRunAt} UTC`);
         }

@@ -128,9 +128,13 @@ export const EditPostDialog = ({ post, onSave, saving }: EditPostDialogProps) =>
       return;
     }
 
-    const combinedDateTime = new Date(scheduledDate);
-    combinedDateTime.setHours(parseInt(scheduledHour), parseInt(scheduledMinute), 0, 0);
-    const scheduledFor = combinedDateTime.toISOString();
+    // JST（UTC+9）で日時を組み合わせ
+    const dateStr = scheduledDate; // YYYY-MM-DD形式
+    const timeStr = `${scheduledHour.padStart(2, '0')}:${scheduledMinute.padStart(2, '0')}:00`;
+    
+    // JST日時文字列を作成し、UTCに変換
+    const jstDateTime = new Date(`${dateStr}T${timeStr}+09:00`);
+    const scheduledFor = jstDateTime.toISOString();
 
     const updates: Partial<Post> = {
       content,
