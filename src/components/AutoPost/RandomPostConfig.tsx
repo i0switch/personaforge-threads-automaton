@@ -79,27 +79,35 @@ export function RandomPostConfig() {
   const calculateNextRun = (times: string[], timezone: string = 'UTC'): string => {
     if (times.length === 0) return new Date().toISOString();
 
-    const now = new Date();
-    const today = new Date();
+    // JST（UTC+9）での現在時刻を取得
+    const nowUTC = new Date();
+    const nowJST = new Date(nowUTC.getTime() + 9 * 60 * 60 * 1000);
     
-    // 今日の残り時間をチェック
-    for (const time of times.sort()) {
+    // 今日の残り時間をチェック（JST基準）
+    const sortedTimes = times.sort();
+    for (const time of sortedTimes) {
       const [hours, minutes] = time.split(':').map(Number);
-      const scheduledTime = new Date();
-      scheduledTime.setHours(hours, minutes, 0, 0);
       
-      if (scheduledTime > now) {
-        return scheduledTime.toISOString();
+      // JST での予定時刻を計算
+      const scheduledJST = new Date(nowJST);
+      scheduledJST.setUTCHours(hours, minutes, 0, 0);
+      
+      if (scheduledJST > nowJST) {
+        // JST時刻をUTCに変換して返す
+        const scheduledUTC = new Date(scheduledJST.getTime() - 9 * 60 * 60 * 1000);
+        return scheduledUTC.toISOString();
       }
     }
     
     // 今日の時間がすべて過ぎた場合は明日の最初の時間
-    const [hours, minutes] = times[0].split(':').map(Number);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    tomorrow.setHours(hours, minutes, 0, 0);
+    const [hours, minutes] = sortedTimes[0].split(':').map(Number);
+    const tomorrowJST = new Date(nowJST);
+    tomorrowJST.setUTCDate(tomorrowJST.getUTCDate() + 1);
+    tomorrowJST.setUTCHours(hours, minutes, 0, 0);
     
-    return tomorrow.toISOString();
+    // JST時刻をUTCに変換して返す
+    const tomorrowUTC = new Date(tomorrowJST.getTime() - 9 * 60 * 60 * 1000);
+    return tomorrowUTC.toISOString();
   };
 
   const togglePersonaConfig = async (persona: Persona) => {
