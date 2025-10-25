@@ -109,7 +109,7 @@ serve(async (req) => {
     if (!bypassTimeCheck && post.auto_schedule && post.persona_id) {
       console.log('🕐 Checking if current time matches persona scheduled settings...');
 
-      // Determine persona timezone from configs (fallback to UTC)
+      // Determine persona timezone from configs (fallback to Asia/Tokyo)
       // We fetch both configs first
       const { data: autoConfig } = await supabase
         .from('auto_post_configs')
@@ -125,7 +125,7 @@ serve(async (req) => {
         .eq('is_active', true)
         .single();
 
-      const timezone = autoConfig?.timezone || randomConfig?.timezone || 'UTC';
+      const timezone = autoConfig?.timezone || randomConfig?.timezone || 'Asia/Tokyo';
 
       // Helpers for timezone-aware comparisons and scheduling
       const getTzHM = (zone: string) => {

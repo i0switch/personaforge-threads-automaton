@@ -304,7 +304,7 @@ function buildRandomPrompt(persona: any, scheduledTime?: string) {
          `--- 出力ルール ---\n- 280文字程度以内\n- 攻撃的・不適切表現は禁止\n- 改行2回以内\n- 出力はテキスト本文のみ`;
 }
 
-function calculateRandomNextRun(randomTimes: string[], timezone: string = 'UTC'): string {
+function calculateRandomNextRun(randomTimes: string[], timezone: string = 'Asia/Tokyo'): string {
   if (!randomTimes || randomTimes.length === 0) {
     // デフォルト時間（9時、12時、18時）から選択
     const defaultTimes = ['09:00:00', '12:00:00', '18:00:00'];
@@ -317,12 +317,7 @@ function calculateRandomNextRun(randomTimes: string[], timezone: string = 'UTC')
   const [hours, minutes, seconds = 0] = randomTime.split(':').map(Number);
   
   // タイムゾーン考慮した次回実行時刻の計算
-  if (timezone === 'UTC') {
-    const nextRun = new Date();
-    nextRun.setDate(nextRun.getDate() + 1); // 明日
-    nextRun.setUTCHours(hours, minutes, seconds, 0);
-    return nextRun.toISOString();
-  } else if (timezone === 'Asia/Tokyo') {
+  if (timezone === 'Asia/Tokyo') {
     // JST（Asia/Tokyo）の場合の正しい計算
     const formatter = new Intl.DateTimeFormat('en-CA', {
       timeZone: 'Asia/Tokyo',
@@ -577,7 +572,7 @@ serve(async (req) => {
             .rpc('calculate_next_multi_time_run', {
               p_current_time: now.toISOString(), // 現在時刻を使用
               time_slots: cfg.post_times,
-              timezone_name: cfg.timezone || 'UTC'
+              timezone_name: cfg.timezone || 'Asia/Tokyo'
             });
           
           if (calcErr) {
@@ -589,7 +584,7 @@ serve(async (req) => {
             const [hours, minutes] = firstTime.split(':').map(Number);
             
             // タイムゾーンを考慮して翌日の最初の時間を設定
-            if (cfg.timezone && cfg.timezone !== 'UTC') {
+            if (cfg.timezone === 'Asia/Tokyo') {
               // JST（UTC+9）の場合の正しい計算
               if (cfg.timezone === 'Asia/Tokyo') {
                 // JST での翌日の日付文字列を取得
@@ -637,7 +632,7 @@ serve(async (req) => {
           const { data: nextTimeCalculated, error: calcErr } = await supabase
             .rpc('calculate_timezone_aware_next_run', {
               current_schedule_time: cfg.next_run_at,
-              timezone_name: cfg.timezone || 'UTC'
+              timezone_name: cfg.timezone || 'Asia/Tokyo'
             });
             
           if (calcErr) {
@@ -780,7 +775,7 @@ serve(async (req) => {
 
         // 今日の日付を取得（設定のタイムゾーンで）
         const today = new Date().toLocaleDateString('en-CA', { 
-          timeZone: randomCfg.timezone || 'UTC' 
+          timeZone: randomCfg.timezone || 'Asia/Tokyo'
         });
         
         console.log(`📅 DEBUG: Today date: ${today}, last_posted_date: ${randomCfg.last_posted_date}`);
@@ -812,7 +807,7 @@ serve(async (req) => {
 
         // 🚨 CRITICAL FIX: タイムゾーンでの現在時刻を取得（HH:mm:ss形式）
         const nowInTz = new Date().toLocaleTimeString('en-US', {
-          timeZone: randomCfg.timezone || 'UTC',
+          timeZone: randomCfg.timezone || 'Asia/Tokyo',
           hour12: false,
           hour: '2-digit',
           minute: '2-digit',
@@ -928,7 +923,7 @@ serve(async (req) => {
             
             // 🚨 CRITICAL: 全スロット処理済み、またはスキップ含めて処理済みの場合は必ず次回実行時刻を更新
             if (allSlotsPosted || postedTimesToday.length >= randomTimes.length) {
-              const nextRunAt = calculateRandomNextRun(randomTimes, randomCfg.timezone || 'UTC');
+              const nextRunAt = calculateRandomNextRun(randomTimes, randomCfg.timezone || 'Asia/Tokyo');
               updateData.next_run_at = nextRunAt;
               console.log(`📅 All slots processed for persona ${persona.name}, next run: ${nextRunAt}`);
             } else {
@@ -938,10 +933,10 @@ serve(async (req) => {
                 // 次の未処理スロットの時刻を計算
                 const nextSlot = remainingSlots[0];
                 const [hours, minutes] = nextSlot.split(':').map(Number);
-                const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: randomCfg.timezone || 'UTC' });
+                const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: randomCfg.timezone || 'Asia/Tokyo' });
                 const nextSlotTime = new Date(`${todayStr}T${nextSlot}`);
                 
-                if (randomCfg.timezone !== 'UTC') {
+                if (randomCfg.timezone === 'Asia/Tokyo') {
                   const utcOffset = getTimezoneOffset(randomCfg.timezone);
                   nextSlotTime.setTime(nextSlotTime.getTime() - utcOffset * 60 * 1000);
                 }
@@ -1046,7 +1041,7 @@ serve(async (req) => {
         }
         
         // Timezone-aware processing
-        const tz = templateCfg.timezone || 'UTC';
+        const tz = templateCfg.timezone || 'Asia/Tokyo';
         const nowInTz = new Date().toLocaleString('en-US', { timeZone: tz });
         const localNow = new Date(nowInTz);
         const currentTime = localNow.toTimeString().split(' ')[0].slice(0, 8); // HH:MM:SS
