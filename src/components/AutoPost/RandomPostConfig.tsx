@@ -180,7 +180,7 @@ export function RandomPostConfig() {
             is_active: true,
             random_times: defaultTimes.map(t => t + ':00'),
             next_run_at: nextRunAt,
-            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
+            timezone: 'Asia/Tokyo' // 日本標準時に固定
           })
           .select()
           .single();

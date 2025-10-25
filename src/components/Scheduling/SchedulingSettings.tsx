@@ -103,14 +103,14 @@ export const SchedulingSettings = () => {
     
     setSaving(true);
     try {
-      const settingsData = {
-        user_id: user.id,
-        optimal_hours: settings.optimal_hours,
-        timezone: settings.timezone,
-        auto_schedule_enabled: settings.auto_schedule_enabled,
-        queue_limit: settings.queue_limit,
-        retry_enabled: settings.retry_enabled,
-      };
+    const settingsData = {
+      user_id: user.id,
+      optimal_hours: settings.optimal_hours,
+      timezone: 'Asia/Tokyo', // 日本標準時に固定
+      auto_schedule_enabled: settings.auto_schedule_enabled,
+      queue_limit: settings.queue_limit,
+      retry_enabled: settings.retry_enabled,
+    };
 
       console.log("Saving settings:", settingsData);
 
@@ -210,21 +210,13 @@ export const SchedulingSettings = () => {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="timezone">タイムゾーン</Label>
-          <Select
-            value={settings.timezone}
-            onValueChange={(value) => setSettings(prev => ({ ...prev, timezone: value }))}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="Asia/Tokyo">Asia/Tokyo (JST)</SelectItem>
-              <SelectItem value="UTC">UTC</SelectItem>
-              <SelectItem value="America/New_York">America/New_York (EST)</SelectItem>
-              <SelectItem value="Europe/London">Europe/London (GMT)</SelectItem>
-            </SelectContent>
-          </Select>
+          <Label>タイムゾーン</Label>
+          <div className="p-3 bg-muted rounded-md">
+            <p className="text-sm font-medium">日本標準時（JST / Asia/Tokyo）</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              すべての時刻は日本標準時で管理されます
+            </p>
+          </div>
         </div>
 
         <div className="space-y-2">

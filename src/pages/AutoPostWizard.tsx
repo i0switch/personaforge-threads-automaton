@@ -108,7 +108,8 @@ export default function AutoPostWizard() {
     load();
   }, [user]);
 
-  const timeZone = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone, []);
+  // 日本標準時に固定
+  const timeZone = 'Asia/Tokyo';
 
   const computeNextRun = (hhmm: string) => {
     const [hh, mm] = hhmm.split(':').map(Number);

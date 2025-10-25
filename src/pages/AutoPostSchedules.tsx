@@ -47,7 +47,8 @@ export default function AutoPostSchedules() {
   const [testGenerating, setTestGenerating] = useState<Record<string, boolean>>({});
   const [testResults, setTestResults] = useState<Record<string, string>>({});
 
-  const timeZone = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone, []);
+  // 日本標準時に固定
+  const timeZone = 'Asia/Tokyo';
 
   useEffect(() => {
     document.title = "設定済みスケジュール編集 | Threads-Genius AI";
