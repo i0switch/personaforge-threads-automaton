@@ -1224,18 +1224,15 @@ export type Database = {
     }
     Functions: {
       admin_reschedule_all_failed_posts: {
-        Args: Record<PropertyKey, never>
+        Args: never
         Returns: {
           persona_name: string
           rescheduled_count: number
         }[]
       }
-      archive_old_activity_logs: {
-        Args: Record<PropertyKey, never>
-        Returns: undefined
-      }
+      archive_old_activity_logs: { Args: never; Returns: undefined }
       audit_security_functions: {
-        Args: Record<PropertyKey, never>
+        Args: never
         Returns: {
           function_name: string
           recommendation: string
@@ -1247,14 +1244,8 @@ export type Database = {
         Args: { request_headers: Json }
         Returns: boolean
       }
-      auto_fix_queue_integrity: {
-        Args: Record<PropertyKey, never>
-        Returns: undefined
-      }
-      auto_fix_stuck_processing: {
-        Args: Record<PropertyKey, never>
-        Returns: undefined
-      }
+      auto_fix_queue_integrity: { Args: never; Returns: undefined }
+      auto_fix_stuck_processing: { Args: never; Returns: undefined }
       calculate_next_multi_time_run: {
         Args: {
           p_current_time: string
@@ -1272,16 +1263,13 @@ export type Database = {
         Returns: boolean
       }
       check_admin_cron_access: {
-        Args: Record<PropertyKey, never>
+        Args: never
         Returns: {
           access_granted: boolean
           message: string
         }[]
       }
-      check_login_attempts: {
-        Args: { user_email: string }
-        Returns: boolean
-      }
+      check_login_attempts: { Args: { user_email: string }; Returns: boolean }
       check_persona_limit: {
         Args: { user_id_param: string }
         Returns: {
@@ -1294,10 +1282,7 @@ export type Database = {
         Args: { p_persona_id: string }
         Returns: undefined
       }
-      cleanup_old_rate_limits: {
-        Args: Record<PropertyKey, never>
-        Returns: undefined
-      }
+      cleanup_old_rate_limits: { Args: never; Returns: undefined }
       cleanup_persona_schedules: {
         Args: { p_persona_id: string }
         Returns: undefined
@@ -1314,14 +1299,8 @@ export type Database = {
         Args: { encrypted_token: string }
         Returns: string
       }
-      encrypt_access_token: {
-        Args: { token: string }
-        Returns: string
-      }
-      encrypt_access_token_safe: {
-        Args: { token: string }
-        Returns: string
-      }
+      encrypt_access_token: { Args: { token: string }; Returns: string }
+      encrypt_access_token_safe: { Args: { token: string }; Returns: string }
       generate_log_checksum: {
         Args: {
           p_action_type: string
@@ -1332,7 +1311,7 @@ export type Database = {
         Returns: string
       }
       generate_security_report: {
-        Args: Record<PropertyKey, never>
+        Args: never
         Returns: {
           category: string
           item: string
@@ -1342,16 +1321,22 @@ export type Database = {
         }[]
       }
       get_cron_job_status: {
-        Args: Record<PropertyKey, never>
+        Args: never
         Returns: {
           active: boolean | null
           jobid: number | null
           jobname: string | null
           schedule: string | null
         }[]
+        SetofOptions: {
+          from: "*"
+          to: "cron_job_status"
+          isOneToOne: false
+          isSetofReturn: true
+        }
       }
       get_duplicate_queue_items: {
-        Args: Record<PropertyKey, never>
+        Args: never
         Returns: {
           duplicate_count: number
           post_id: string
@@ -1401,7 +1386,7 @@ export type Database = {
         }[]
       }
       get_security_recommendations: {
-        Args: Record<PropertyKey, never>
+        Args: never
         Returns: {
           description: string
           issue_type: string
@@ -1410,7 +1395,7 @@ export type Database = {
         }[]
       }
       get_system_status: {
-        Args: Record<PropertyKey, never>
+        Args: never
         Returns: {
           component: string
           details: Json
@@ -1431,14 +1416,14 @@ export type Database = {
         }[]
       }
       get_user_emails_for_admin: {
-        Args: Record<PropertyKey, never>
+        Args: never
         Returns: {
           email: string
           user_id: string
         }[]
       }
       get_user_stats: {
-        Args: Record<PropertyKey, never>
+        Args: never
         Returns: {
           active_subscriptions: number
           approved_users: number
@@ -1453,10 +1438,7 @@ export type Database = {
         }
         Returns: boolean
       }
-      is_admin: {
-        Args: { _user_id: string }
-        Returns: boolean
-      }
+      is_admin: { Args: { _user_id: string }; Returns: boolean }
       log_policy_violation: {
         Args: {
           operation: string
@@ -1480,7 +1462,7 @@ export type Database = {
         Returns: undefined
       }
       pause_tokenless_persona_configs: {
-        Args: Record<PropertyKey, never>
+        Args: never
         Returns: {
           had_auto_post: boolean
           had_random_post: boolean
@@ -1491,20 +1473,14 @@ export type Database = {
         Args: { p_persona_id: string }
         Returns: number
       }
-      sync_queue_with_post_status: {
-        Args: Record<PropertyKey, never>
-        Returns: undefined
-      }
+      sync_queue_with_post_status: { Args: never; Returns: undefined }
       upsert_rate_limit: {
         Args: { p_endpoint: string; p_identifier: string }
         Returns: undefined
       }
-      validate_password_strength: {
-        Args: { password: string }
-        Returns: Json
-      }
+      validate_password_strength: { Args: { password: string }; Returns: Json }
       verify_manual_reservations_protected: {
-        Args: Record<PropertyKey, never>
+        Args: never
         Returns: {
           auto_scheduled_count: number
           manual_scheduled_count: number
