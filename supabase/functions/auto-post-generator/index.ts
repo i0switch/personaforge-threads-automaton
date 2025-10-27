@@ -311,48 +311,49 @@ function calculateRandomNextRun(randomTimes: string[], timezone: string = 'Asia/
     randomTimes = defaultTimes;
   }
 
-  // 現在時刻をタイムゾーンに合わせて取得
-  const now = new Date();
-  const randomTime = randomTimes[Math.floor(Math.random() * randomTimes.length)];
-  const [hours, minutes, seconds = 0] = randomTime.split(':').map(Number);
+  const nowUTC = new Date();
   
-  // タイムゾーン考慮した次回実行時刻の計算
-  if (timezone === 'Asia/Tokyo') {
-    // JST（Asia/Tokyo）の場合の正しい計算
-    const formatter = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Asia/Tokyo',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit'
-    });
-    
-    const tomorrowJST = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-    const localDateStr = formatter.format(tomorrowJST);
-    const timeStr = randomTime.length === 8 ? randomTime : `${randomTime}:00`;
-    
-    // JSTの日時文字列を作成してUTCに変換
-    const jstDateTime = new Date(`${localDateStr}T${timeStr}+09:00`);
+  // 現在のタイムゾーンでの日付と時刻を取得
+  const jstDateStr = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(nowUTC);
+  
+  const jstTimeStr = new Intl.DateTimeFormat('en-GB', {
+    timeZone: timezone,
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  }).format(nowUTC);
+  
+  // ランダムに時刻を選択
+  const randomTime = randomTimes[Math.floor(Math.random() * randomTimes.length)];
+  const timeStr = randomTime.length === 8 ? randomTime : `${randomTime}:00`;
+  
+  // 今日の指定時刻がまだ来ていないかチェック
+  if (timeStr > jstTimeStr) {
+    // 今日の指定時刻（JST）をUTCに変換
+    const jstDateTime = new Date(`${jstDateStr}T${timeStr}+09:00`);
+    console.log(`✅ Next run scheduled for today: ${jstDateTime.toISOString()} (JST: ${jstDateStr} ${timeStr})`);
     return jstDateTime.toISOString();
-  } else {
-    // その他のタイムゾーン対応
-    const formatter = new Intl.DateTimeFormat('en-CA', {
-      timeZone: timezone,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit'
-    });
-    
-    const tomorrowLocal = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-    const localDateString = formatter.format(tomorrowLocal);
-    const timeStr = randomTime.length === 8 ? randomTime : `${randomTime}:00`;
-    
-    // ローカル時間で次回実行時刻を作成し、UTCに変換
-    const localDateTime = new Date(`${localDateString}T${timeStr}`);
-    const utcOffset = getTimezoneOffset(timezone);
-    const utcTime = new Date(localDateTime.getTime() - utcOffset * 60 * 1000);
-    
-    return utcTime.toISOString();
   }
+  
+  // 今日の時刻が過ぎている場合は、翌日の指定時刻を設定
+  const tomorrow = new Date(nowUTC.getTime() + 24 * 60 * 60 * 1000);
+  const tomorrowJstDateStr = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(tomorrow);
+  
+  // 翌日の指定時刻（JST）をUTCに変換
+  const tomorrowJstDateTime = new Date(`${tomorrowJstDateStr}T${timeStr}+09:00`);
+  console.log(`✅ Next run scheduled for tomorrow: ${tomorrowJstDateTime.toISOString()} (JST: ${tomorrowJstDateStr} ${timeStr})`);
+  return tomorrowJstDateTime.toISOString();
 }
 
 // タイムゾーンオフセットを取得する関数
@@ -932,17 +933,24 @@ serve(async (req) => {
               if (remainingSlots.length > 0) {
                 // 次の未処理スロットの時刻を計算
                 const nextSlot = remainingSlots[0];
-                const [hours, minutes] = nextSlot.split(':').map(Number);
-                const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: randomCfg.timezone || 'Asia/Tokyo' });
-                const nextSlotTime = new Date(`${todayStr}T${nextSlot}`);
+                const nowUTC = new Date();
                 
-                if (randomCfg.timezone === 'Asia/Tokyo') {
-                  const utcOffset = getTimezoneOffset(randomCfg.timezone);
-                  nextSlotTime.setTime(nextSlotTime.getTime() - utcOffset * 60 * 1000);
-                }
+                // 現在のJST日付を取得
+                const jstDateStr = new Intl.DateTimeFormat('en-CA', {
+                  timeZone: randomCfg.timezone || 'Asia/Tokyo',
+                  year: 'numeric',
+                  month: '2-digit',
+                  day: '2-digit'
+                }).format(nowUTC);
                 
-                updateData.next_run_at = nextSlotTime.toISOString();
-                console.log(`📅 Next slot for persona ${persona.name}: ${nextSlot} (${updateData.next_run_at})`);
+                // 次のスロット時刻（フォーマット確認）
+                const timeStr = nextSlot.length === 8 ? nextSlot : `${nextSlot}:00`;
+                
+                // JSTの日時をISO 8601形式でUTCに変換
+                const jstDateTime = new Date(`${jstDateStr}T${timeStr}+09:00`);
+                
+                updateData.next_run_at = jstDateTime.toISOString();
+                console.log(`📅 Next slot for persona ${persona.name}: ${nextSlot} JST -> UTC: ${updateData.next_run_at}`);
               }
             }
             
