@@ -99,37 +99,50 @@ export function TemplateConfigComponent() {
     return configs.get(personaId) || null;
   };
 
-  const calculateNextRun = (times: string[], timezone: string = 'UTC'): string => {
+  const calculateNextRun = (times: string[], timezone: string = 'Asia/Tokyo'): string => {
     if (!times || times.length === 0) return new Date().toISOString();
     
-    // JST（UTC+9）での現在時刻を取得
+    // 現在のUTC時刻
     const nowUTC = new Date();
-    const nowJST = new Date(nowUTC.getTime() + 9 * 60 * 60 * 1000);
-    const currentTime = nowJST.toISOString().split('T')[1].slice(0, 8); // HH:mm:ss
     
-    // 今日の残り時間をチェック（JST基準）
+    // タイムゾーンでの現在時刻（HH:MM:SS形式）
+    const currentTime = new Intl.DateTimeFormat('en-GB', {
+      timeZone: timezone,
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    }).format(nowUTC);
+    
+    // タイムゾーンでの現在の日付（YYYY-MM-DD形式）
+    const currentDateStr = new Intl.DateTimeFormat('en-CA', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(nowUTC);
+    
+    // 今日の残り時間をチェック（タイムゾーン基準）
     const sortedTimes = times.sort();
     const nextSlot = sortedTimes.find(t => t > currentTime);
     
     if (nextSlot) {
-      // 今日の次のスロット
-      const [h, m, s] = nextSlot.split(':').map(Number);
-      const nextJST = new Date(nowJST);
-      nextJST.setUTCHours(h, m, s || 0, 0);
-      
-      // JST時刻をUTCに変換して返す
-      const nextUTC = new Date(nextJST.getTime() - 9 * 60 * 60 * 1000);
-      return nextUTC.toISOString();
+      // 今日の次のスロット - JST日時をISO 8601形式でUTCに変換
+      const jstDateTime = new Date(`${currentDateStr}T${nextSlot}+09:00`);
+      return jstDateTime.toISOString();
     } else {
       // 明日の最初のスロット
-      const [h, m, s] = sortedTimes[0].split(':').map(Number);
-      const tomorrowJST = new Date(nowJST);
-      tomorrowJST.setUTCDate(tomorrowJST.getUTCDate() + 1);
-      tomorrowJST.setUTCHours(h, m, s || 0, 0);
+      const tomorrow = new Date(nowUTC.getTime() + 24 * 60 * 60 * 1000);
+      const tomorrowDateStr = new Intl.DateTimeFormat('en-CA', {
+        timeZone: timezone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }).format(tomorrow);
       
-      // JST時刻をUTCに変換して返す
-      const tomorrowUTC = new Date(tomorrowJST.getTime() - 9 * 60 * 60 * 1000);
-      return tomorrowUTC.toISOString();
+      // JST日時をISO 8601形式でUTCに変換
+      const tomorrowJstDateTime = new Date(`${tomorrowDateStr}T${sortedTimes[0]}+09:00`);
+      return tomorrowJstDateTime.toISOString();
     }
   };
 
@@ -162,9 +175,8 @@ export function TemplateConfigComponent() {
         });
       } else {
         // Create new config with defaults
-        const userTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
         const defaultTimes = ['10:00:00', '14:00:00', '18:00:00'];
-        const nextRunAt = calculateNextRun(defaultTimes, userTz);
+        const nextRunAt = calculateNextRun(defaultTimes, 'Asia/Tokyo');
         
         const { data, error } = await supabase
           .from('template_random_post_configs')
@@ -174,7 +186,7 @@ export function TemplateConfigComponent() {
             is_active: true,
             random_times: defaultTimes,
             templates: [] as any,
-            timezone: userTz,
+            timezone: 'Asia/Tokyo',
             next_run_at: nextRunAt,
             posted_times_today: [] as any,
           })

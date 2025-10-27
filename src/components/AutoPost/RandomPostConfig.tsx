@@ -76,38 +76,56 @@ export function RandomPostConfig() {
     return configs.find(c => c.persona_id === personaId) || null;
   };
 
-  const calculateNextRun = (times: string[], timezone: string = 'UTC'): string => {
+  const calculateNextRun = (times: string[], timezone: string = 'Asia/Tokyo'): string => {
     if (times.length === 0) return new Date().toISOString();
 
-    // JST（UTC+9）での現在時刻を取得
+    // 現在のUTC時刻
     const nowUTC = new Date();
-    const nowJST = new Date(nowUTC.getTime() + 9 * 60 * 60 * 1000);
     
-    // 今日の残り時間をチェック（JST基準）
+    // JSTでの現在の日付を取得（YYYY-MM-DD形式）
+    const jstDateStr = new Intl.DateTimeFormat('en-CA', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(nowUTC);
+    
+    // JSTでの現在時刻（HH:MM:SS形式）
+    const jstTimeStr = new Intl.DateTimeFormat('en-GB', {
+      timeZone: timezone,
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    }).format(nowUTC);
+    
+    // 今日の残り時間をチェック（タイムゾーン基準）
     const sortedTimes = times.sort();
     for (const time of sortedTimes) {
       const [hours, minutes] = time.split(':').map(Number);
+      const targetTimeStr = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`;
       
-      // JST での予定時刻を計算
-      const scheduledJST = new Date(nowJST);
-      scheduledJST.setUTCHours(hours, minutes, 0, 0);
-      
-      if (scheduledJST > nowJST) {
-        // JST時刻をUTCに変換して返す
-        const scheduledUTC = new Date(scheduledJST.getTime() - 9 * 60 * 60 * 1000);
-        return scheduledUTC.toISOString();
+      if (targetTimeStr > jstTimeStr) {
+        // JST日時をISO 8601形式でUTCに変換
+        const jstDateTime = new Date(`${jstDateStr}T${targetTimeStr}+09:00`);
+        return jstDateTime.toISOString();
       }
     }
     
     // 今日の時間がすべて過ぎた場合は明日の最初の時間
     const [hours, minutes] = sortedTimes[0].split(':').map(Number);
-    const tomorrowJST = new Date(nowJST);
-    tomorrowJST.setUTCDate(tomorrowJST.getUTCDate() + 1);
-    tomorrowJST.setUTCHours(hours, minutes, 0, 0);
+    const tomorrow = new Date(nowUTC.getTime() + 24 * 60 * 60 * 1000);
+    const tomorrowJstDateStr = new Intl.DateTimeFormat('en-CA', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(tomorrow);
+    const timeStr = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`;
     
-    // JST時刻をUTCに変換して返す
-    const tomorrowUTC = new Date(tomorrowJST.getTime() - 9 * 60 * 60 * 1000);
-    return tomorrowUTC.toISOString();
+    // JST日時をISO 8601形式でUTCに変換
+    const tomorrowJstDateTime = new Date(`${tomorrowJstDateStr}T${timeStr}+09:00`);
+    return tomorrowJstDateTime.toISOString();
   };
 
   const togglePersonaConfig = async (persona: Persona) => {

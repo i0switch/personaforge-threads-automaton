@@ -114,22 +114,45 @@ export default function AutoPostWizard() {
   const computeNextRun = (hhmm: string) => {
     const [hh, mm] = hhmm.split(':').map(Number);
     
-    // JST（UTC+9）での現在時刻を取得
+    // 現在のUTC時刻
     const nowUTC = new Date();
-    const nowJST = new Date(nowUTC.getTime() + 9 * 60 * 60 * 1000);
     
-    // JST での次回実行時刻を計算
-    const nextJST = new Date(nowJST);
-    nextJST.setUTCHours(hh, mm, 0, 0);
+    // JSTでの現在の日付を取得（YYYY-MM-DD形式）
+    const jstDateStr = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Tokyo',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(nowUTC);
     
-    // 既に過ぎていたら翌日に
-    if (nextJST.getTime() <= nowJST.getTime()) {
-      nextJST.setUTCDate(nextJST.getUTCDate() + 1);
+    // JSTでの現在時刻（HH:MM:SS形式）
+    const jstTimeStr = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Tokyo',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    }).format(nowUTC);
+    
+    // 設定時刻のJST表現
+    const targetTimeStr = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:00`;
+    
+    // 今日の設定時刻がまだ未来かチェック
+    let targetDateStr = jstDateStr;
+    if (targetTimeStr <= jstTimeStr) {
+      // 既に過ぎているので翌日に
+      const tomorrow = new Date(nowUTC.getTime() + 24 * 60 * 60 * 1000);
+      targetDateStr = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Tokyo',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }).format(tomorrow);
     }
     
-    // JST時刻をUTCに変換して返す
-    const nextUTC = new Date(nextJST.getTime() - 9 * 60 * 60 * 1000);
-    return nextUTC.toISOString();
+    // JST日時をISO 8601形式でUTCに変換
+    const jstDateTime = new Date(`${targetDateStr}T${targetTimeStr}+09:00`);
+    return jstDateTime.toISOString();
   };
 
   // 複数時間設定の次回実行時刻を計算
