@@ -308,7 +308,7 @@ export function RandomPostConfig() {
                     <p className="text-sm text-muted-foreground">
                       {config ? (
                         isActive ? 
-                          `アクティブ - 次回: ${config.next_run_at ? new Date(config.next_run_at).toLocaleString() : '未設定'}` :
+                          `アクティブ - 次回 (JST): ${config.next_run_at ? new Date(config.next_run_at).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '未設定'}` :
                           'ランダムポスト無効'
                       ) : (
                         'ランダムポスト未設定'

@@ -107,7 +107,7 @@ export const RateLimitNotification = () => {
             
             <div className="flex items-center gap-2 text-sm">
               <Clock className="h-4 w-4" />
-              <span>検出時刻: {new Date(persona.rate_limit_detected_at).toLocaleString('ja-JP')}</span>
+              <span>検出時刻 (JST): {new Date(persona.rate_limit_detected_at).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })}</span>
             </div>
             
             <div className="bg-orange-100 p-3 rounded-md">

@@ -224,7 +224,7 @@ export const SecurityActivityLogs = () => {
                         {log.user_id.substring(0, 8)}...
                       </TableCell>
                       <TableCell>
-                        {new Date(log.created_at).toLocaleString('ja-JP')}
+                        {new Date(log.created_at).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })}
                       </TableCell>
                     </TableRow>
                   ))}

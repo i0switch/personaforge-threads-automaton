@@ -170,20 +170,19 @@ export default function AutoPostSchedules() {
   const computeNextRun = (hhmm: string, currentNext: string) => {
     const [hh, mm] = hhmm.split(':').map(Number);
     
-    // JST（UTC+9）での現在時刻を取得
-    const nowUTC = new Date();
-    const nowJST = new Date(nowUTC.getTime() + 9 * 60 * 60 * 1000);
+    // 現在のJST時刻を取得
+    const nowJST = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Tokyo' }));
     
-    // JST での次回実行時刻を計算
+    // 次回実行時刻をJSTで設定
     const nextJST = new Date(nowJST);
-    nextJST.setUTCHours(hh, mm, 0, 0);
+    nextJST.setHours(hh, mm, 0, 0);
     
     // 既に過ぎていたら翌日に
-    if (nextJST.getTime() <= nowJST.getTime()) {
-      nextJST.setUTCDate(nextJST.getUTCDate() + 1);
+    if (nextJST <= nowJST) {
+      nextJST.setDate(nextJST.getDate() + 1);
     }
     
-    // JST時刻をUTCに変換して返す
+    // JSTをUTCに変換して返す（JST = UTC+9）
     const nextUTC = new Date(nextJST.getTime() - 9 * 60 * 60 * 1000);
     return nextUTC.toISOString();
   };
@@ -299,7 +298,9 @@ export default function AutoPostSchedules() {
                     {/* ヘッダー情報 */}
                     <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                       <div className="space-y-1">
-                        <div className="text-sm text-muted-foreground">次回: {new Date(c.next_run_at).toLocaleString()}</div>
+                        <div className="text-sm text-muted-foreground">
+                          次回実行 (JST): {new Date(c.next_run_at).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                        </div>
                         <div className="text-sm">ペルソナ: {personaMap[c.persona_id as string] || '未設定'}</div>
                         <div className="text-sm">
                           モード: {c.multi_time_enabled ? `複数時間（${c.post_times?.length || 0}個）` : '単一時間'}

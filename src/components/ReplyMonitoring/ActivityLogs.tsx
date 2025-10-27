@@ -119,7 +119,7 @@ export const ActivityLogs = () => {
                 {(logs ?? []).map((log) => (
                   <TableRow key={log.id}>
                     <TableCell className="text-sm">
-                      {new Date(log.created_at).toLocaleString()}
+                      {new Date(log.created_at).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })}
                     </TableCell>
                     <TableCell>
                       {log.personas?.name || '-'}

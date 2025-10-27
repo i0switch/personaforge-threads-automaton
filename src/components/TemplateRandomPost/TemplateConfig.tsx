@@ -531,7 +531,7 @@ export function TemplateConfigComponent() {
                 {/* 次回実行時刻 */}
                 {config.next_run_at && (
                   <div className="text-sm text-gray-600">
-                    次回実行: {new Date(config.next_run_at).toLocaleString('ja-JP')}
+                    次回実行 (JST): {new Date(config.next_run_at).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
                   </div>
                 )}
               </CardContent>

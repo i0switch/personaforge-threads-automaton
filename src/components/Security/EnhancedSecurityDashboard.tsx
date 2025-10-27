@@ -141,7 +141,7 @@ export const EnhancedSecurityDashboard = () => {
   };
 
   const formatEventTime = (timestamp: string) => {
-    return new Date(timestamp).toLocaleString('ja-JP');
+    return new Date(timestamp).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' });
   };
 
   if (loading) {

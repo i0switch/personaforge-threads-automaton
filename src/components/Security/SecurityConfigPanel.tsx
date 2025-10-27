@@ -207,7 +207,7 @@ export const SecurityConfigPanel = () => {
           <Alert>
             <Clock className="h-4 w-4" />
             <AlertDescription>
-              次回自動スキャン: {nextScanTime.toLocaleString('ja-JP')}
+              次回自動スキャン (JST): {nextScanTime.toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })}
             </AlertDescription>
           </Alert>
         )}

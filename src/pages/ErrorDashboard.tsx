@@ -364,7 +364,7 @@ const ErrorDashboard = () => {
                       </Badge>
                       <div className="flex items-center gap-1 text-sm text-gray-500">
                         <Clock className="h-4 w-4" />
-                        {new Date(error.created_at).toLocaleString()}
+                        {new Date(error.created_at).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })}
                       </div>
                     </div>
                   </div>

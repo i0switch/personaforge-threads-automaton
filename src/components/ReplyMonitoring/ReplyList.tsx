@@ -104,7 +104,7 @@ export const ReplyList = () => {
                             <Badge variant="secondary">自動返信済み</Badge>
                           )}
                           <span className="text-sm text-gray-500">
-                            {new Date(reply.reply_timestamp).toLocaleString()}
+                            {new Date(reply.reply_timestamp).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })}
                           </span>
                         </div>
                       </div>

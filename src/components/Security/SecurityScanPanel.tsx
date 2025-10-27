@@ -153,7 +153,7 @@ export const SecurityScanPanel = () => {
               </div>
 
               <p className="text-xs text-muted-foreground">
-                最終スキャン: {new Date(scanResult.lastScan).toLocaleString('ja-JP')}
+                最終スキャン (JST): {new Date(scanResult.lastScan).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })}
               </p>
             </div>
           )}

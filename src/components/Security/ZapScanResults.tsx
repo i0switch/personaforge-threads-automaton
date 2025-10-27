@@ -152,7 +152,7 @@ export const ZapScanResults = () => {
                               </ul>
                             </div>
                             <div className="flex items-center gap-4 text-sm">
-                              <span><strong>検出日時:</strong> {new Date(alert.detected_at).toLocaleString('ja-JP')}</span>
+                              <span><strong>検出日時 (JST):</strong> {new Date(alert.detected_at).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })}</span>
                               <Badge className={getRiskColor(alert.riskLevel)}>
                                 {alert.riskLevel}リスク
                               </Badge>

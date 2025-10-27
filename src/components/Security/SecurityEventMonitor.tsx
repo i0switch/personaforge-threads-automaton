@@ -211,7 +211,7 @@ export const SecurityEventMonitor = () => {
                   </TableCell>
                   <TableCell>{event.ip_address || '-'}</TableCell>
                   <TableCell>
-                    {new Date(event.created_at).toLocaleString('ja-JP')}
+                    {new Date(event.created_at).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })}
                   </TableCell>
                 </TableRow>
               ))}
