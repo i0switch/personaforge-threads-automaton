@@ -85,6 +85,16 @@ const Index = () => {
       disabled: !isApproved || !isActive
     },
     {
+      title: "手動投稿登録",
+      description: "日時を指定して手動で予約投稿を作成",
+      icon: Edit,
+      path: "/manual-post",
+      color: "from-sky-600 to-blue-700",
+      bgGradient: "from-sky-50 to-blue-50",
+      borderColor: "border-sky-200",
+      disabled: !isApproved || !isActive
+    },
+    {
       title: "投稿作成",
       description: "AIを使って魅力的な投稿を生成",
       icon: MessageSquare,
