@@ -18,7 +18,7 @@ interface Persona {
 
 interface Template {
   text: string;
-  image_url?: string;
+  image_urls?: string[];
 }
 
 interface TemplatePostBox {
@@ -327,7 +327,7 @@ export function TemplateConfigComponent() {
   const addTemplate = (boxId: string) => {
     setEditingTemplates(prev => ({
       ...prev,
-      [boxId]: [...(prev[boxId] || []), { text: "", image_url: undefined }]
+      [boxId]: [...(prev[boxId] || []), { text: "", image_urls: [] }]
     }));
   };
 
@@ -350,6 +350,12 @@ export function TemplateConfigComponent() {
   const handleImageUpload = async (boxId: string, index: number, file: File) => {
     if (!user) return;
 
+    const currentImages = editingTemplates[boxId]?.[index]?.image_urls || [];
+    if (currentImages.length >= 2) {
+      toast.error("画像は2つまでアップロードできます");
+      return;
+    }
+
     try {
       const fileExt = file.name.split('.').pop();
       const fileName = `${user.id}/${boxId}/${Date.now()}.${fileExt}`;
@@ -364,12 +370,32 @@ export function TemplateConfigComponent() {
         .from('post-images')
         .getPublicUrl(fileName);
 
-      updateTemplate(boxId, index, 'image_url', publicUrl);
+      setEditingTemplates(prev => {
+        const templates = [...(prev[boxId] || [])];
+        templates[index] = {
+          ...templates[index],
+          image_urls: [...currentImages, publicUrl]
+        };
+        return { ...prev, [boxId]: templates };
+      });
+
       toast.success("画像をアップロードしました");
     } catch (error: any) {
       console.error("画像アップロードエラー:", error);
       toast.error("画像のアップロードに失敗しました");
     }
+  };
+
+  const removeImage = (boxId: string, templateIndex: number, imageIndex: number) => {
+    setEditingTemplates(prev => {
+      const templates = [...(prev[boxId] || [])];
+      const currentImages = templates[templateIndex].image_urls || [];
+      templates[templateIndex] = {
+        ...templates[templateIndex],
+        image_urls: currentImages.filter((_, i) => i !== imageIndex)
+      };
+      return { ...prev, [boxId]: templates };
+    });
   };
 
   const saveTemplates = async (boxId: string) => {
@@ -582,12 +608,27 @@ export function TemplateConfigComponent() {
                                       </Button>
                                     </div>
                                     
-                                    {template.image_url && (
-                                      <img 
-                                        src={template.image_url} 
-                                        alt="画像" 
-                                        className="max-w-[200px] rounded border"
-                                      />
+                                    {template.image_urls && template.image_urls.length > 0 && (
+                                      <div className="flex gap-2 flex-wrap">
+                                        {template.image_urls.map((url, imgIndex) => (
+                                          <div key={imgIndex} className="relative group">
+                                            <img 
+                                              src={url} 
+                                              alt={`画像${imgIndex + 1}`}
+                                              className="max-w-[150px] rounded border"
+                                            />
+                                            <Button
+                                              size="sm"
+                                              variant="destructive"
+                                              className="absolute top-1 right-1 h-6 w-6 p-0 opacity-0 group-hover:opacity-100"
+                                              onClick={() => removeImage(box.id, index, imgIndex)}
+                                              disabled={!box.is_active}
+                                            >
+                                              <Trash2 className="h-3 w-3" />
+                                            </Button>
+                                          </div>
+                                        ))}
+                                      </div>
                                     )}
                                     
                                     <Button
@@ -603,10 +644,10 @@ export function TemplateConfigComponent() {
                                         };
                                         input.click();
                                       }}
-                                      disabled={!box.is_active}
+                                      disabled={!box.is_active || (template.image_urls?.length || 0) >= 2}
                                     >
                                       <Upload className="h-3 w-3 mr-1" />
-                                      画像
+                                      画像追加 ({template.image_urls?.length || 0}/2)
                                     </Button>
                                   </div>
                                 ))}
