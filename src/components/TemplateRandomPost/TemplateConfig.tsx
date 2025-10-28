@@ -2,12 +2,13 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
-import { useToast } from "@/hooks/use-toast";
-import { Loader2, Plus, Trash2, Save } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { toast } from "sonner";
+import { Trash2, Upload, Plus, Save, Box } from "lucide-react";
 import { MultiTimeSelector } from "@/components/AutoPost/MultiTimeSelector";
 
 interface Persona {
@@ -20,9 +21,10 @@ interface Template {
   image_url?: string;
 }
 
-interface TemplateConfig {
+interface TemplatePostBox {
   id: string;
   persona_id: string;
+  box_name: string;
   is_active: boolean;
   random_times: string[];
   templates: Template[];
@@ -32,11 +34,12 @@ interface TemplateConfig {
 
 export function TemplateConfigComponent() {
   const { user } = useAuth();
-  const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [personas, setPersonas] = useState<Persona[]>([]);
-  const [configs, setConfigs] = useState<Map<string, TemplateConfig>>(new Map());
-  const [processingPersonas, setProcessingPersonas] = useState<Set<string>>(new Set());
+  const [boxes, setBoxes] = useState<Record<string, TemplatePostBox[]>>({});
+  const [editingTemplates, setEditingTemplates] = useState<Record<string, Template[]>>({});
+  const [editingBoxNames, setEditingBoxNames] = useState<Record<string, string>>({});
+  const [processing, setProcessing] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (user) {
@@ -45,512 +48,591 @@ export function TemplateConfigComponent() {
   }, [user]);
 
   const loadData = async () => {
+    if (!user) return;
+    
+    setLoading(true);
     try {
-      setLoading(true);
-
-      // ペルソナを取得
       const { data: personasData, error: personasError } = await supabase
-        .from('personas')
-        .select('id, name')
-        .eq('user_id', user!.id)
-        .eq('is_active', true)
-        .order('name');
+        .from("personas")
+        .select("id, name")
+        .eq("user_id", user.id)
+        .eq("is_active", true)
+        .order("created_at", { ascending: true });
 
       if (personasError) throw personasError;
-      setPersonas(personasData || []);
 
-      // 設定を取得
-      const { data: configsData, error: configsError } = await supabase
-        .from('template_random_post_configs')
-        .select('*')
-        .eq('user_id', user!.id);
+      if (!personasData || personasData.length === 0) {
+        setPersonas([]);
+        setLoading(false);
+        return;
+      }
 
-      if (configsError) throw configsError;
+      setPersonas(personasData);
 
-      const configMap = new Map<string, TemplateConfig>();
-      (configsData || []).forEach((config) => {
-        // Parse templates from jsonb to Template[]
-        const parsedTemplates = Array.isArray(config.templates) 
-          ? (config.templates as any[]).map(t => ({
-              text: typeof t === 'string' ? t : t.text || '',
-              image_url: typeof t === 'string' ? undefined : t.image_url
-            }))
-          : [];
-        
-        configMap.set(config.persona_id, {
-          ...config,
-          templates: parsedTemplates
+      const { data: boxesData, error: boxesError } = await supabase
+        .from("template_post_boxes")
+        .select("*")
+        .eq("user_id", user.id)
+        .in("persona_id", personasData.map(p => p.id))
+        .order("created_at", { ascending: true });
+
+      if (boxesError) throw boxesError;
+
+      const boxesMap: Record<string, TemplatePostBox[]> = {};
+      personasData.forEach(persona => {
+        boxesMap[persona.id] = [];
+      });
+      
+      boxesData?.forEach(box => {
+        if (!boxesMap[box.persona_id]) {
+          boxesMap[box.persona_id] = [];
+        }
+        boxesMap[box.persona_id].push({
+          id: box.id,
+          persona_id: box.persona_id,
+          box_name: box.box_name,
+          is_active: box.is_active,
+          random_times: box.random_times || [],
+          templates: (box.templates as unknown as Template[]) || [],
+          timezone: box.timezone || "Asia/Tokyo",
+          next_run_at: box.next_run_at
         });
       });
-      setConfigs(configMap);
-    } catch (error: any) {
-      console.error('Error loading data:', error);
-      toast({
-        title: "エラー",
-        description: "データの読み込みに失敗しました",
-        variant: "destructive",
+
+      setBoxes(boxesMap);
+      
+      const initialEditingTemplates: Record<string, Template[]> = {};
+      boxesData?.forEach(box => {
+        initialEditingTemplates[box.id] = (box.templates as unknown as Template[]) || [];
       });
+      setEditingTemplates(initialEditingTemplates);
+    } catch (error: any) {
+      console.error("データ読み込みエラー:", error);
+      toast.error("データの読み込みに失敗しました");
     } finally {
       setLoading(false);
     }
   };
 
-  const getConfigForPersona = (personaId: string): TemplateConfig | null => {
-    return configs.get(personaId) || null;
+  const getBoxesForPersona = (personaId: string): TemplatePostBox[] => {
+    return boxes[personaId] || [];
   };
 
   const calculateNextRun = (times: string[], timezone: string = 'Asia/Tokyo'): string => {
-    if (!times || times.length === 0) return new Date().toISOString();
+    if (times.length === 0) return new Date().toISOString();
     
-    // 現在のUTC時刻
-    const nowUTC = new Date();
+    const now = new Date();
+    const jstNow = new Date(now.toLocaleString('en-US', { timeZone: timezone }));
+    const currentTime = jstNow.getHours() * 60 + jstNow.getMinutes();
     
-    // タイムゾーンでの現在時刻（HH:MM:SS形式）
-    const currentTime = new Intl.DateTimeFormat('en-GB', {
-      timeZone: timezone,
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false
-    }).format(nowUTC);
+    const sortedTimes = times.map(t => {
+      const [hours, minutes] = t.split(':').map(Number);
+      return hours * 60 + minutes;
+    }).sort((a, b) => a - b);
     
-    // タイムゾーンでの現在の日付（YYYY-MM-DD形式）
-    const currentDateStr = new Intl.DateTimeFormat('en-CA', {
-      timeZone: timezone,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit'
-    }).format(nowUTC);
+    const nextTime = sortedTimes.find(t => t > currentTime);
+    const targetMinutes = nextTime !== undefined ? nextTime : sortedTimes[0];
     
-    // 今日の残り時間をチェック（タイムゾーン基準）
-    const sortedTimes = times.sort();
-    const nextSlot = sortedTimes.find(t => t > currentTime);
-    
-    if (nextSlot) {
-      // 今日の次のスロット - JST日時をISO 8601形式でUTCに変換
-      const jstDateTime = new Date(`${currentDateStr}T${nextSlot}+09:00`);
-      return jstDateTime.toISOString();
-    } else {
-      // 明日の最初のスロット
-      const tomorrow = new Date(nowUTC.getTime() + 24 * 60 * 60 * 1000);
-      const tomorrowDateStr = new Intl.DateTimeFormat('en-CA', {
-        timeZone: timezone,
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit'
-      }).format(tomorrow);
-      
-      // JST日時をISO 8601形式でUTCに変換
-      const tomorrowJstDateTime = new Date(`${tomorrowDateStr}T${sortedTimes[0]}+09:00`);
-      return tomorrowJstDateTime.toISOString();
+    const targetDate = new Date(jstNow);
+    if (nextTime === undefined) {
+      targetDate.setDate(targetDate.getDate() + 1);
     }
+    targetDate.setHours(Math.floor(targetMinutes / 60));
+    targetDate.setMinutes(targetMinutes % 60);
+    targetDate.setSeconds(0);
+    targetDate.setMilliseconds(0);
+    
+    return targetDate.toISOString();
   };
 
-  const togglePersonaConfig = async (persona: Persona) => {
+  const addNewBox = async (personaId: string) => {
+    if (!user) return;
+    
+    setProcessing(prev => ({ ...prev, [personaId]: true }));
     try {
-      setProcessingPersonas(prev => new Set(prev).add(persona.id));
+      const newBoxName = `箱${(boxes[personaId]?.length || 0) + 1}`;
       
-      const existingConfig = getConfigForPersona(persona.id);
-      
-      if (existingConfig) {
-        // Toggle existing config
-        const newIsActive = !existingConfig.is_active;
-        
-        const { error } = await supabase
-          .from('template_random_post_configs')
-          .update({ 
-            is_active: newIsActive,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', existingConfig.id);
-        
-        if (error) throw error;
-        
-        const updatedConfig = { ...existingConfig, is_active: newIsActive };
-        setConfigs(prev => new Map(prev).set(persona.id, updatedConfig));
-        
-        toast({
-          title: newIsActive ? "有効化しました" : "無効化しました",
-          description: `${persona.name}のテンプレートランダムポストを${newIsActive ? '有効' : '無効'}にしました`,
-        });
-      } else {
-        // Create new config with defaults
-        const defaultTimes = ['10:00:00', '14:00:00', '18:00:00'];
-        const nextRunAt = calculateNextRun(defaultTimes, 'Asia/Tokyo');
-        
-        const { data, error } = await supabase
-          .from('template_random_post_configs')
-          .insert({
-            user_id: user!.id,
-            persona_id: persona.id,
-            is_active: true,
-            random_times: defaultTimes,
-            templates: [] as any,
-            timezone: 'Asia/Tokyo',
-            next_run_at: nextRunAt,
-            posted_times_today: [] as any,
-          })
-          .select()
-          .single();
-        
-        if (error) throw error;
-        
-        setConfigs(prev => new Map(prev).set(persona.id, {
-          ...data,
-          templates: []
-        }));
-        
-        toast({
-          title: "設定を作成しました",
-          description: `${persona.name}のテンプレートランダムポスト設定を作成しました`,
-        });
-      }
-      
-      await loadData();
+      const { data, error } = await supabase
+        .from("template_post_boxes")
+        .insert({
+          user_id: user.id,
+          persona_id: personaId,
+          box_name: newBoxName,
+          is_active: false,
+          random_times: [],
+          templates: [],
+          timezone: "Asia/Tokyo"
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      const newBox: TemplatePostBox = {
+        id: data.id,
+        persona_id: data.persona_id,
+        box_name: data.box_name,
+        is_active: data.is_active,
+        random_times: data.random_times || [],
+        templates: (data.templates as unknown as Template[]) || [],
+        timezone: data.timezone || "Asia/Tokyo",
+        next_run_at: data.next_run_at
+      };
+
+      setBoxes(prev => ({
+        ...prev,
+        [personaId]: [...(prev[personaId] || []), newBox]
+      }));
+
+      toast.success(`新しい箱「${newBoxName}」を作成しました`);
     } catch (error: any) {
-      console.error('Error toggling config:', error);
-      toast({
-        title: "エラー",
-        description: error.message || "設定の切り替えに失敗しました",
-        variant: "destructive",
-      });
+      console.error("箱作成エラー:", error);
+      toast.error("箱の作成に失敗しました");
     } finally {
-      setProcessingPersonas(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(persona.id);
-        return newSet;
-      });
+      setProcessing(prev => ({ ...prev, [personaId]: false }));
     }
   };
 
-  const updateRandomTimes = async (personaId: string, newTimes: string[]) => {
+  const toggleBoxActive = async (box: TemplatePostBox) => {
+    if (!user) return;
+    
+    setProcessing(prev => ({ ...prev, [box.id]: true }));
     try {
-      const config = getConfigForPersona(personaId);
-      if (!config) return;
-      
-      const nextRunAt = calculateNextRun(newTimes, config.timezone);
-      
+      const newActiveState = !box.is_active;
+
       const { error } = await supabase
-        .from('template_random_post_configs')
-        .update({
+        .from("template_post_boxes")
+        .update({ 
+          is_active: newActiveState,
+          updated_at: new Date().toISOString()
+        })
+        .eq("id", box.id);
+
+      if (error) throw error;
+
+      setBoxes(prev => ({
+        ...prev,
+        [box.persona_id]: prev[box.persona_id].map(b =>
+          b.id === box.id ? { ...b, is_active: newActiveState } : b
+        )
+      }));
+
+      toast.success(newActiveState ? "箱を有効にしました" : "箱を無効にしました");
+    } catch (error: any) {
+      console.error("箱の切り替えエラー:", error);
+      toast.error("箱の切り替えに失敗しました");
+    } finally {
+      setProcessing(prev => ({ ...prev, [box.id]: false }));
+    }
+  };
+
+  const deleteBox = async (box: TemplatePostBox) => {
+    if (!user) return;
+    if (!confirm(`箱「${box.box_name}」を削除してもよろしいですか？`)) return;
+    
+    setProcessing(prev => ({ ...prev, [box.id]: true }));
+    try {
+      const { error } = await supabase
+        .from("template_post_boxes")
+        .delete()
+        .eq("id", box.id);
+
+      if (error) throw error;
+
+      setBoxes(prev => ({
+        ...prev,
+        [box.persona_id]: prev[box.persona_id].filter(b => b.id !== box.id)
+      }));
+
+      toast.success("箱を削除しました");
+    } catch (error: any) {
+      console.error("箱削除エラー:", error);
+      toast.error("箱の削除に失敗しました");
+    } finally {
+      setProcessing(prev => ({ ...prev, [box.id]: false }));
+    }
+  };
+
+  const updateBoxName = async (boxId: string, newName: string) => {
+    if (!user || !newName.trim()) return;
+    
+    try {
+      const { error } = await supabase
+        .from("template_post_boxes")
+        .update({ 
+          box_name: newName.trim(),
+          updated_at: new Date().toISOString()
+        })
+        .eq("id", boxId);
+
+      if (error) throw error;
+
+      setBoxes(prev => {
+        const updated = { ...prev };
+        Object.keys(updated).forEach(personaId => {
+          updated[personaId] = updated[personaId].map(box =>
+            box.id === boxId ? { ...box, box_name: newName.trim() } : box
+          );
+        });
+        return updated;
+      });
+
+      setEditingBoxNames(prev => {
+        const updated = { ...prev };
+        delete updated[boxId];
+        return updated;
+      });
+
+      toast.success("箱の名前を更新しました");
+    } catch (error: any) {
+      console.error("箱名更新エラー:", error);
+      toast.error("箱の名前の更新に失敗しました");
+    }
+  };
+
+  const updateRandomTimes = async (boxId: string, newTimes: string[]) => {
+    if (!user) return;
+    
+    try {
+      const nextRunAt = calculateNextRun(newTimes, "Asia/Tokyo");
+
+      const { error } = await supabase
+        .from("template_post_boxes")
+        .update({ 
           random_times: newTimes,
           next_run_at: nextRunAt,
           updated_at: new Date().toISOString()
         })
-        .eq('id', config.id);
-      
+        .eq("id", boxId);
+
       if (error) throw error;
-      
-      await loadData();
-      
-      toast({
-        title: "更新しました",
-        description: "投稿時間を更新しました",
+
+      setBoxes(prev => {
+        const updated = { ...prev };
+        Object.keys(updated).forEach(personaId => {
+          updated[personaId] = updated[personaId].map(box =>
+            box.id === boxId ? { ...box, random_times: newTimes, next_run_at: nextRunAt } : box
+          );
+        });
+        return updated;
       });
+
+      toast.success("投稿時間を更新しました");
     } catch (error: any) {
-      console.error('Error updating times:', error);
-      toast({
-        title: "エラー",
-        description: "時間の更新に失敗しました",
-        variant: "destructive",
-      });
+      console.error("時間更新エラー:", error);
+      toast.error("時間の更新に失敗しました");
     }
   };
 
-  const [editingTemplates, setEditingTemplates] = useState<Map<string, Template[]>>(new Map());
-
-  const addTemplate = (personaId: string) => {
-    const current = editingTemplates.get(personaId) || [];
-    setEditingTemplates(prev => new Map(prev).set(personaId, [...current, { text: '', image_url: undefined }]));
+  const addTemplate = (boxId: string) => {
+    setEditingTemplates(prev => ({
+      ...prev,
+      [boxId]: [...(prev[boxId] || []), { text: "", image_url: undefined }]
+    }));
   };
 
-  const updateTemplate = (personaId: string, index: number, field: 'text' | 'image_url', value: string) => {
-    const current = editingTemplates.get(personaId) || [];
-    const updated = [...current];
-    updated[index] = { ...updated[index], [field]: value };
-    setEditingTemplates(prev => new Map(prev).set(personaId, updated));
+  const updateTemplate = (boxId: string, index: number, field: keyof Template, value: string) => {
+    setEditingTemplates(prev => {
+      const templates = [...(prev[boxId] || [])];
+      templates[index] = { ...templates[index], [field]: value };
+      return { ...prev, [boxId]: templates };
+    });
   };
 
-  const removeTemplate = (personaId: string, index: number) => {
-    const current = editingTemplates.get(personaId) || [];
-    const updated = current.filter((_, i) => i !== index);
-    setEditingTemplates(prev => new Map(prev).set(personaId, updated));
+  const removeTemplate = (boxId: string, index: number) => {
+    setEditingTemplates(prev => {
+      const templates = [...(prev[boxId] || [])];
+      templates.splice(index, 1);
+      return { ...prev, [boxId]: templates };
+    });
   };
 
-  const handleImageUpload = async (personaId: string, index: number, file: File) => {
+  const handleImageUpload = async (boxId: string, index: number, file: File) => {
+    if (!user) return;
+
     try {
       const fileExt = file.name.split('.').pop();
-      const fileName = `${personaId}/${Date.now()}.${fileExt}`;
+      const fileName = `${user.id}/${boxId}/${Date.now()}.${fileExt}`;
       
-      const { error: uploadError, data } = await supabase.storage
+      const { error: uploadError } = await supabase.storage
         .from('post-images')
         .upload(fileName, file);
-      
+
       if (uploadError) throw uploadError;
-      
+
       const { data: { publicUrl } } = supabase.storage
         .from('post-images')
         .getPublicUrl(fileName);
-      
-      updateTemplate(personaId, index, 'image_url', publicUrl);
-      
-      // Auto-save templates after image upload
-      const config = getConfigForPersona(personaId);
-      if (config) {
-        const current = editingTemplates.get(personaId) || [];
-        const updated = [...current];
-        updated[index] = { ...updated[index], image_url: publicUrl };
-        
-        const templates = updated.filter(t => t.text.trim());
-        
-        if (templates.length > 0) {
-          const { error: saveError } = await supabase
-            .from('template_random_post_configs')
-            .update({
-              templates: templates as any,
-              updated_at: new Date().toISOString()
-            })
-            .eq('id', config.id);
-          
-          if (saveError) throw saveError;
-          await loadData();
-        }
-      }
-      
-      toast({
-        title: "画像をアップロードしました",
-        description: "テンプレートに画像が追加され、自動保存されました",
-      });
+
+      updateTemplate(boxId, index, 'image_url', publicUrl);
+      toast.success("画像をアップロードしました");
     } catch (error: any) {
-      console.error('Image upload error:', error);
-      toast({
-        title: "エラー",
-        description: "画像のアップロードに失敗しました",
-        variant: "destructive",
-      });
+      console.error("画像アップロードエラー:", error);
+      toast.error("画像のアップロードに失敗しました");
     }
   };
 
-  const removeImage = (personaId: string, index: number) => {
-    updateTemplate(personaId, index, 'image_url', '');
-  };
-
-  const saveTemplates = async (personaId: string) => {
+  const saveTemplates = async (boxId: string) => {
+    if (!user) return;
+    
+    setProcessing(prev => ({ ...prev, [boxId]: true }));
     try {
-      const config = getConfigForPersona(personaId);
-      if (!config) return;
-      
-      const templates = (editingTemplates.get(personaId) || []).filter(t => t.text.trim());
+      const templates = editingTemplates[boxId] || [];
       
       if (templates.length === 0) {
-        toast({
-          title: "エラー",
-          description: "少なくとも1つのテンプレートを入力してください",
-          variant: "destructive",
-        });
+        toast.error("テンプレートを最低1つ追加してください");
         return;
       }
+
+      const validTemplates = templates.filter(t => t.text.trim() !== "");
       
+      if (validTemplates.length === 0) {
+        toast.error("有効なテンプレートを追加してください");
+        return;
+      }
+
       const { error } = await supabase
-        .from('template_random_post_configs')
-        .update({
-          templates: templates as any,
+        .from("template_post_boxes")
+        .update({ 
+          templates: validTemplates as any,
           updated_at: new Date().toISOString()
         })
-        .eq('id', config.id);
-      
+        .eq("id", boxId);
+
       if (error) throw error;
-      
-      await loadData();
-      setEditingTemplates(prev => {
-        const newMap = new Map(prev);
-        newMap.delete(personaId);
-        return newMap;
+
+      setBoxes(prev => {
+        const updated = { ...prev };
+        Object.keys(updated).forEach(personaId => {
+          updated[personaId] = updated[personaId].map(box =>
+            box.id === boxId ? { ...box, templates: validTemplates } : box
+          );
+        });
+        return updated;
       });
-      
-      toast({
-        title: "保存しました",
-        description: `${templates.length}個のテンプレートを保存しました`,
-      });
+
+      toast.success("テンプレートを保存しました");
     } catch (error: any) {
-      console.error('Error saving templates:', error);
-      toast({
-        title: "エラー",
-        description: "テンプレートの保存に失敗しました",
-        variant: "destructive",
-      });
+      console.error("テンプレート保存エラー:", error);
+      toast.error("テンプレートの保存に失敗しました");
+    } finally {
+      setProcessing(prev => ({ ...prev, [boxId]: false }));
     }
   };
-
-  useEffect(() => {
-    // Initialize editing templates from loaded configs
-    const newMap = new Map<string, Template[]>();
-    configs.forEach((config, personaId) => {
-      if (!editingTemplates.has(personaId)) {
-        newMap.set(personaId, config.templates || []);
-      }
-    });
-    if (newMap.size > 0) {
-      setEditingTemplates(prev => new Map([...prev, ...newMap]));
-    }
-  }, [configs]);
-
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center p-12">
-        <Loader2 className="h-8 w-8 animate-spin text-purple-600" />
-      </div>
-    );
-  }
-
-  if (personas.length === 0) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>ペルソナが見つかりません</CardTitle>
-          <CardDescription>
-            テンプレートランダムポストを使用するには、まずペルソナを作成してください。
-          </CardDescription>
-        </CardHeader>
-      </Card>
-    );
-  }
 
   return (
     <div className="space-y-6">
-      {personas.map((persona) => {
-        const config = getConfigForPersona(persona.id);
-        const isProcessing = processingPersonas.has(persona.id);
-        const templates = editingTemplates.get(persona.id) || config?.templates || [];
-        
-        return (
-          <Card key={persona.id}>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div className="space-y-1">
-                  <CardTitle className="text-xl">{persona.name}</CardTitle>
-                  {config?.is_active && (
-                    <Badge variant="default">有効</Badge>
-                  )}
-                </div>
-                <Switch
-                  checked={config?.is_active || false}
-                  onCheckedChange={() => togglePersonaConfig(persona)}
-                  disabled={isProcessing}
-                />
-              </div>
-            </CardHeader>
-            
-            {config?.is_active && (
-              <CardContent className="space-y-6">
-                {/* 投稿時間設定 */}
-                <div className="space-y-2">
-                  <MultiTimeSelector
-                    times={config.random_times || []}
-                    onChange={(times) => updateRandomTimes(persona.id, times)}
-                  />
-                </div>
-                
-                {/* テンプレート設定 */}
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-semibold">テンプレート文章</h3>
-                    <Button
-                      onClick={() => addTemplate(persona.id)}
-                      size="sm"
-                      variant="outline"
-                      className="gap-2"
-                    >
-                      <Plus className="h-4 w-4" />
-                      追加
-                    </Button>
+      {loading ? (
+        <div className="flex justify-center p-8">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        </div>
+      ) : personas.length === 0 ? (
+        <Card>
+          <CardContent className="p-6">
+            <p className="text-muted-foreground text-center">
+              アクティブなペルソナが見つかりません。ペルソナを作成してください。
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        personas.map(persona => {
+          const personaBoxes = getBoxesForPersona(persona.id);
+          
+          return (
+            <Card key={persona.id} className="overflow-hidden">
+              <CardHeader className="bg-muted/50">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>{persona.name}</CardTitle>
+                    <CardDescription className="mt-1">
+                      テンプレート箱ごとに投稿時間を設定
+                    </CardDescription>
                   </div>
-                  
-                  {templates.length === 0 && (
-                    <p className="text-sm text-gray-500">
-                      テンプレートを追加してください
-                    </p>
-                  )}
-                  
-                  <div className="space-y-4">
-                    {templates.map((template, index) => (
-                      <div key={index} className="border rounded-lg p-4 space-y-3">
-                        <div className="flex gap-2">
-                          <Textarea
-                            value={template.text}
-                            onChange={(e) => updateTemplate(persona.id, index, 'text', e.target.value)}
-                            placeholder="投稿内容を入力..."
-                            className="flex-1"
-                            rows={3}
-                          />
-                          <Button
-                            onClick={() => removeTemplate(persona.id, index)}
-                            size="sm"
-                            variant="ghost"
-                            className="text-red-500 hover:text-red-700"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                        
-                        <div className="space-y-2">
-                          {template.image_url ? (
-                            <div className="relative">
-                              <img 
-                                src={template.image_url} 
-                                alt="Template preview" 
-                                className="w-32 h-32 object-cover rounded-lg border"
+                  <Button
+                    size="sm"
+                    onClick={() => addNewBox(persona.id)}
+                    disabled={processing[persona.id]}
+                  >
+                    <Plus className="h-4 w-4 mr-1" />
+                    箱を追加
+                  </Button>
+                </div>
+              </CardHeader>
+              
+              <CardContent className="p-6 space-y-4">
+                {personaBoxes.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    箱を追加してテンプレート文章を設定してください
+                  </p>
+                ) : (
+                  personaBoxes.map(box => {
+                    const templates = editingTemplates[box.id] || [];
+                    const isEditingName = editingBoxNames[box.id] !== undefined;
+                    
+                    return (
+                      <Card key={box.id} className="border-2">
+                        <CardHeader className="pb-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3 flex-1">
+                              <Box className="h-5 w-5 text-primary" />
+                              {isEditingName ? (
+                                <Input
+                                  value={editingBoxNames[box.id]}
+                                  onChange={(e) => setEditingBoxNames(prev => ({ ...prev, [box.id]: e.target.value }))}
+                                  onBlur={() => updateBoxName(box.id, editingBoxNames[box.id])}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      updateBoxName(box.id, editingBoxNames[box.id]);
+                                    }
+                                  }}
+                                  className="max-w-xs"
+                                  autoFocus
+                                />
+                              ) : (
+                                <h3 
+                                  className="font-semibold cursor-pointer hover:text-primary"
+                                  onClick={() => setEditingBoxNames(prev => ({ ...prev, [box.id]: box.box_name }))}
+                                >
+                                  {box.box_name}
+                                </h3>
+                              )}
+                              {box.is_active && (
+                                <span className="text-xs font-normal text-green-600 bg-green-50 px-2 py-1 rounded">
+                                  有効
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Switch
+                                checked={box.is_active}
+                                onCheckedChange={() => toggleBoxActive(box)}
+                                disabled={processing[box.id]}
                               />
                               <Button
-                                onClick={() => removeImage(persona.id, index)}
                                 size="sm"
                                 variant="destructive"
-                                className="absolute top-2 right-2"
+                                onClick={() => deleteBox(box)}
+                                disabled={processing[box.id]}
                               >
-                                <Trash2 className="h-3 w-3" />
+                                <Trash2 className="h-4 w-4" />
                               </Button>
                             </div>
-                          ) : (
-                            <div>
-                              <input
-                                type="file"
-                                accept="image/*"
-                                onChange={(e) => {
-                                  const file = e.target.files?.[0];
-                                  if (file) handleImageUpload(persona.id, index, file);
-                                }}
-                                className="text-sm"
-                                id={`image-${persona.id}-${index}`}
-                              />
+                          </div>
+                        </CardHeader>
+                        
+                        <CardContent className="space-y-4">
+                          <div className="space-y-2">
+                            <Label className="text-sm">投稿時間</Label>
+                            <MultiTimeSelector
+                              times={box.random_times || []}
+                              onChange={(times) => updateRandomTimes(box.id, times)}
+                              disabled={!box.is_active}
+                            />
+                            {box.next_run_at && (
+                              <p className="text-xs text-muted-foreground">
+                                次回: {new Date(box.next_run_at).toLocaleString('ja-JP', { 
+                                  timeZone: 'Asia/Tokyo',
+                                  month: '2-digit',
+                                  day: '2-digit',
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })} JST
+                              </p>
+                            )}
+                          </div>
+
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <Label className="text-sm">テンプレート</Label>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => addTemplate(box.id)}
+                                disabled={!box.is_active}
+                              >
+                                <Plus className="h-3 w-3 mr-1" />
+                                追加
+                              </Button>
                             </div>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  
-                  {templates.length > 0 && (
-                    <Button
-                      onClick={() => saveTemplates(persona.id)}
-                      className="w-full gap-2"
-                    >
-                      <Save className="h-4 w-4" />
-                      テンプレートを保存
-                    </Button>
-                  )}
-                </div>
-                
-                {/* 次回実行時刻 */}
-                {config.next_run_at && (
-                  <div className="text-sm text-gray-600">
-                    次回実行 (JST): {new Date(config.next_run_at).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                  </div>
+
+                            {templates.length === 0 ? (
+                              <p className="text-xs text-muted-foreground text-center py-2">
+                                テンプレートを追加
+                              </p>
+                            ) : (
+                              <div className="space-y-2">
+                                {templates.map((template, index) => (
+                                  <div key={index} className="border rounded p-3 space-y-2">
+                                    <div className="flex gap-2">
+                                      <Textarea
+                                        placeholder="投稿テキスト"
+                                        value={template.text}
+                                        onChange={(e) => updateTemplate(box.id, index, 'text', e.target.value)}
+                                        rows={2}
+                                        disabled={!box.is_active}
+                                        className="flex-1"
+                                      />
+                                      <Button
+                                        size="sm"
+                                        variant="destructive"
+                                        onClick={() => removeTemplate(box.id, index)}
+                                        disabled={!box.is_active}
+                                      >
+                                        <Trash2 className="h-3 w-3" />
+                                      </Button>
+                                    </div>
+                                    
+                                    {template.image_url && (
+                                      <img 
+                                        src={template.image_url} 
+                                        alt="画像" 
+                                        className="max-w-[200px] rounded border"
+                                      />
+                                    )}
+                                    
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => {
+                                        const input = document.createElement('input');
+                                        input.type = 'file';
+                                        input.accept = 'image/*';
+                                        input.onchange = (e: any) => {
+                                          const file = e.target.files?.[0];
+                                          if (file) handleImageUpload(box.id, index, file);
+                                        };
+                                        input.click();
+                                      }}
+                                      disabled={!box.is_active}
+                                    >
+                                      <Upload className="h-3 w-3 mr-1" />
+                                      画像
+                                    </Button>
+                                  </div>
+                                ))}
+                                
+                                <Button
+                                  onClick={() => saveTemplates(box.id)}
+                                  disabled={processing[box.id] || !box.is_active}
+                                  size="sm"
+                                  className="w-full"
+                                >
+                                  <Save className="h-3 w-3 mr-1" />
+                                  保存
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })
                 )}
               </CardContent>
-            )}
-          </Card>
-        );
-      })}
+            </Card>
+          );
+        })
+      )}
     </div>
   );
 }

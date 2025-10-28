@@ -934,8 +934,9 @@ export type Database = {
         }
         Relationships: []
       }
-      template_random_post_configs: {
+      template_post_boxes: {
         Row: {
+          box_name: string
           created_at: string
           id: string
           is_active: boolean
@@ -950,6 +951,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          box_name: string
           created_at?: string
           id?: string
           is_active?: boolean
@@ -964,6 +966,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          box_name?: string
           created_at?: string
           id?: string
           is_active?: boolean
@@ -977,15 +980,7 @@ export type Database = {
           updated_at?: string
           user_id?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "template_random_post_configs_persona_id_fkey"
-            columns: ["persona_id"]
-            isOneToOne: false
-            referencedRelation: "personas"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       thread_replies: {
         Row: {
