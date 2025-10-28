@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { Trash2, Upload, Plus, Save, Box } from "lucide-react";
 import { MultiTimeSelector } from "@/components/AutoPost/MultiTimeSelector";
@@ -40,6 +41,7 @@ export function TemplateConfigComponent() {
   const [editingTemplates, setEditingTemplates] = useState<Record<string, Template[]>>({});
   const [editingBoxNames, setEditingBoxNames] = useState<Record<string, string>>({});
   const [processing, setProcessing] = useState<Record<string, boolean>>({});
+  const [selectedPersonaId, setSelectedPersonaId] = useState<string>("all");
 
   useEffect(() => {
     if (user) {
@@ -446,6 +448,10 @@ export function TemplateConfigComponent() {
     }
   };
 
+  const filteredPersonas = selectedPersonaId === "all" 
+    ? personas 
+    : personas.filter(p => p.id === selectedPersonaId);
+
   return (
     <div className="space-y-6">
       {loading ? (
@@ -461,218 +467,227 @@ export function TemplateConfigComponent() {
           </CardContent>
         </Card>
       ) : (
-        personas.map(persona => {
+        <>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">ペルソナフィルター</CardTitle>
+              <CardDescription>表示するペルソナを選択</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Select value={selectedPersonaId} onValueChange={setSelectedPersonaId}>
+                <SelectTrigger className="w-full max-w-md">
+                  <SelectValue placeholder="ペルソナを選択" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">全てのペルソナ</SelectItem>
+                  {personas.map(persona => (
+                    <SelectItem key={persona.id} value={persona.id}>
+                      {persona.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </CardContent>
+          </Card>
+
+          {filteredPersonas.map(persona => {
           const personaBoxes = getBoxesForPersona(persona.id);
           
-          return (
-            <Card key={persona.id} className="overflow-hidden">
-              <CardHeader className="bg-muted/50">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle>{persona.name}</CardTitle>
-                    <CardDescription className="mt-1">
-                      テンプレート箱ごとに投稿時間を設定
-                    </CardDescription>
+            return (
+              <Card key={persona.id} className="overflow-hidden">
+                <CardHeader className="bg-muted/50">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle>{persona.name}</CardTitle>
+                      <CardDescription className="mt-1">
+                        テンプレート箱ごとに投稿時間を設定
+                      </CardDescription>
+                    </div>
+                    <Button
+                      size="sm"
+                      onClick={() => addNewBox(persona.id)}
+                      disabled={processing[persona.id]}
+                    >
+                      <Plus className="h-4 w-4 mr-1" />
+                      箱を追加
+                    </Button>
                   </div>
-                  <Button
-                    size="sm"
-                    onClick={() => addNewBox(persona.id)}
-                    disabled={processing[persona.id]}
-                  >
-                    <Plus className="h-4 w-4 mr-1" />
-                    箱を追加
-                  </Button>
-                </div>
-              </CardHeader>
-              
-              <CardContent className="p-6 space-y-4">
-                {personaBoxes.length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center py-4">
-                    箱を追加してテンプレート文章を設定してください
-                  </p>
-                ) : (
-                  personaBoxes.map(box => {
-                    const templates = editingTemplates[box.id] || [];
-                    const isEditingName = editingBoxNames[box.id] !== undefined;
-                    
-                    return (
-                      <Card key={box.id} className="border-2">
-                        <CardHeader className="pb-3">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3 flex-1">
-                              <Box className="h-5 w-5 text-primary" />
-                              {isEditingName ? (
-                                <Input
-                                  value={editingBoxNames[box.id]}
-                                  onChange={(e) => setEditingBoxNames(prev => ({ ...prev, [box.id]: e.target.value }))}
-                                  onBlur={() => updateBoxName(box.id, editingBoxNames[box.id])}
-                                  onKeyDown={(e) => {
-                                    if (e.key === 'Enter') {
-                                      updateBoxName(box.id, editingBoxNames[box.id]);
-                                    }
-                                  }}
-                                  className="max-w-xs"
-                                  autoFocus
-                                />
-                              ) : (
-                                <h3 
-                                  className="font-semibold cursor-pointer hover:text-primary"
-                                  onClick={() => setEditingBoxNames(prev => ({ ...prev, [box.id]: box.box_name }))}
-                                >
-                                  {box.box_name}
-                                </h3>
-                              )}
-                              {box.is_active && (
-                                <span className="text-xs font-normal text-green-600 bg-green-50 px-2 py-1 rounded">
-                                  有効
-                                </span>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Switch
-                                checked={box.is_active}
-                                onCheckedChange={() => toggleBoxActive(box)}
-                                disabled={processing[box.id]}
-                              />
-                              <Button
-                                size="sm"
-                                variant="destructive"
-                                onClick={() => deleteBox(box)}
-                                disabled={processing[box.id]}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </div>
-                        </CardHeader>
-                        
-                        <CardContent className="space-y-4">
-                          <div className="space-y-2">
-                            <Label className="text-sm">投稿時間</Label>
-                            <MultiTimeSelector
-                              times={box.random_times || []}
-                              onChange={(times) => updateRandomTimes(box.id, times)}
-                              disabled={!box.is_active}
-                            />
-                            {box.next_run_at && (
-                              <p className="text-xs text-muted-foreground">
-                                次回: {new Date(box.next_run_at).toLocaleString('ja-JP', { 
-                                  timeZone: 'Asia/Tokyo',
-                                  month: '2-digit',
-                                  day: '2-digit',
-                                  hour: '2-digit',
-                                  minute: '2-digit'
-                                })} JST
-                              </p>
-                            )}
-                          </div>
-
-                          <div className="space-y-2">
+                </CardHeader>
+                
+                <CardContent className="p-6 space-y-4">
+                  {personaBoxes.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-4">
+                      箱を追加してテンプレート文章を設定してください
+                    </p>
+                  ) : (
+                    personaBoxes.map(box => {
+                      const templates = editingTemplates[box.id] || [];
+                      const isEditingName = editingBoxNames[box.id] !== undefined;
+                      
+                      return (
+                        <Card key={box.id} className="border-2">
+                          <CardHeader className="pb-3">
                             <div className="flex items-center justify-between">
-                              <Label className="text-sm">テンプレート</Label>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => addTemplate(box.id)}
-                                disabled={!box.is_active}
-                              >
-                                <Plus className="h-3 w-3 mr-1" />
-                                追加
-                              </Button>
-                            </div>
-
-                            {templates.length === 0 ? (
-                              <p className="text-xs text-muted-foreground text-center py-2">
-                                テンプレートを追加
-                              </p>
-                            ) : (
-                              <div className="space-y-2">
-                                {templates.map((template, index) => (
-                                  <div key={index} className="border rounded p-3 space-y-2">
-                                    <div className="flex gap-2">
-                                      <Textarea
-                                        placeholder="投稿テキスト"
-                                        value={template.text}
-                                        onChange={(e) => updateTemplate(box.id, index, 'text', e.target.value)}
-                                        rows={2}
-                                        disabled={!box.is_active}
-                                        className="flex-1"
-                                      />
-                                      <Button
-                                        size="sm"
-                                        variant="destructive"
-                                        onClick={() => removeTemplate(box.id, index)}
-                                        disabled={!box.is_active}
-                                      >
-                                        <Trash2 className="h-3 w-3" />
-                                      </Button>
-                                    </div>
-                                    
-                                    {template.image_urls && template.image_urls.length > 0 && (
-                                      <div className="flex gap-2 flex-wrap">
-                                        {template.image_urls.map((url, imgIndex) => (
-                                          <div key={imgIndex} className="relative group">
-                                            <img 
-                                              src={url} 
-                                              alt={`画像${imgIndex + 1}`}
-                                              className="max-w-[150px] rounded border"
-                                            />
-                                            <Button
-                                              size="sm"
-                                              variant="destructive"
-                                              className="absolute top-1 right-1 h-6 w-6 p-0 opacity-0 group-hover:opacity-100"
-                                              onClick={() => removeImage(box.id, index, imgIndex)}
-                                              disabled={!box.is_active}
-                                            >
-                                              <Trash2 className="h-3 w-3" />
-                                            </Button>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    )}
-                                    
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() => {
-                                        const input = document.createElement('input');
-                                        input.type = 'file';
-                                        input.accept = 'image/*';
-                                        input.onchange = (e: any) => {
-                                          const file = e.target.files?.[0];
-                                          if (file) handleImageUpload(box.id, index, file);
-                                        };
-                                        input.click();
-                                      }}
-                                      disabled={!box.is_active || (template.image_urls?.length || 0) >= 2}
+                              <div className="flex items-center gap-3 flex-1">
+                                <Box className="h-5 w-5 text-primary" />
+                                {isEditingName ? (
+                                  <Input
+                                    value={editingBoxNames[box.id]}
+                                    onChange={(e) => setEditingBoxNames(prev => ({ ...prev, [box.id]: e.target.value }))}
+                                    onBlur={() => updateBoxName(box.id, editingBoxNames[box.id])}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') {
+                                        updateBoxName(box.id, editingBoxNames[box.id]);
+                                      }
+                                    }}
+                                    className="max-w-xs"
+                                    autoFocus
+                                  />
+                                ) : (
+                                  <div className="flex flex-col">
+                                    <button
+                                      onClick={() => setEditingBoxNames(prev => ({ ...prev, [box.id]: box.box_name }))}
+                                      className="text-left font-semibold hover:text-primary transition-colors"
                                     >
-                                      <Upload className="h-3 w-3 mr-1" />
-                                      画像追加 ({template.image_urls?.length || 0}/2)
-                                    </Button>
+                                      {box.box_name}
+                                    </button>
+                                    <span className="text-xs text-muted-foreground">
+                                      {box.templates.length}個のテンプレート
+                                    </span>
                                   </div>
-                                ))}
-                                
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Label className="text-sm">有効</Label>
+                                <Switch
+                                  checked={box.is_active}
+                                  onCheckedChange={() => toggleBoxActive(box)}
+                                  disabled={processing[box.id]}
+                                />
                                 <Button
-                                  onClick={() => saveTemplates(box.id)}
-                                  disabled={processing[box.id] || !box.is_active}
-                                  size="sm"
-                                  className="w-full"
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => deleteBox(box)}
+                                  disabled={processing[box.id]}
                                 >
-                                  <Save className="h-3 w-3 mr-1" />
-                                  保存
+                                  <Trash2 className="h-4 w-4 text-destructive" />
                                 </Button>
                               </div>
-                            )}
-                          </div>
-                        </CardContent>
-                      </Card>
-                    );
-                  })
-                )}
-              </CardContent>
-            </Card>
-          );
-        })
+                            </div>
+                          </CardHeader>
+
+                          <CardContent className="space-y-4">
+                            <div className="space-y-2">
+                              <Label>投稿時間</Label>
+                              <MultiTimeSelector
+                                times={box.random_times}
+                                onChange={(times) => updateRandomTimes(box.id, times)}
+                              />
+                              {box.next_run_at && (
+                                <p className="text-xs text-muted-foreground">
+                                  次回実行予定: {new Date(box.next_run_at).toLocaleString('ja-JP', { 
+                                    timeZone: box.timezone,
+                                    year: 'numeric',
+                                    month: '2-digit',
+                                    day: '2-digit',
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                  })}
+                                </p>
+                              )}
+                            </div>
+
+                            <div className="space-y-3 border-t pt-4">
+                              <div className="flex items-center justify-between">
+                                <Label>テンプレート</Label>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => addTemplate(box.id)}
+                                >
+                                  <Plus className="h-3 w-3 mr-1" />
+                                  テンプレート追加
+                                </Button>
+                              </div>
+
+                              {templates.map((template, idx) => (
+                                <Card key={idx} className="p-4 space-y-3">
+                                  <div className="flex items-start justify-between">
+                                    <span className="text-sm font-medium">テンプレート {idx + 1}</span>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => removeTemplate(box.id, idx)}
+                                    >
+                                      <Trash2 className="h-3 w-3" />
+                                    </Button>
+                                  </div>
+
+                                  <Textarea
+                                    placeholder="投稿テキストを入力..."
+                                    value={template.text}
+                                    onChange={(e) => updateTemplate(box.id, idx, 'text', e.target.value)}
+                                    rows={4}
+                                    className="resize-none"
+                                  />
+
+                                  <div className="space-y-2">
+                                    <Label className="text-sm">画像（最大2枚）</Label>
+                                    <div className="flex flex-wrap gap-2">
+                                      {template.image_urls?.map((url, imgIdx) => (
+                                        <div key={imgIdx} className="relative group">
+                                          <img
+                                            src={url}
+                                            alt={`Image ${imgIdx + 1}`}
+                                            className="w-20 h-20 object-cover rounded border"
+                                          />
+                                          <button
+                                            onClick={() => removeImage(box.id, idx, imgIdx)}
+                                            className="absolute -top-2 -right-2 bg-destructive text-destructive-foreground rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                          >
+                                            <Trash2 className="h-3 w-3" />
+                                          </button>
+                                        </div>
+                                      ))}
+                                      
+                                      {(!template.image_urls || template.image_urls.length < 2) && (
+                                        <label className="w-20 h-20 border-2 border-dashed rounded flex items-center justify-center cursor-pointer hover:border-primary transition-colors">
+                                          <Upload className="h-6 w-6 text-muted-foreground" />
+                                          <input
+                                            type="file"
+                                            accept="image/*"
+                                            onChange={(e) => {
+                                              const file = e.target.files?.[0];
+                                              if (file) handleImageUpload(box.id, idx, file);
+                                            }}
+                                            className="hidden"
+                                          />
+                                        </label>
+                                      )}
+                                    </div>
+                                  </div>
+                                </Card>
+                              ))}
+
+                              <Button
+                                className="w-full"
+                                onClick={() => saveTemplates(box.id)}
+                                disabled={processing[box.id]}
+                              >
+                                <Save className="h-4 w-4 mr-2" />
+                                テンプレートを保存
+                              </Button>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );
+                    })
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })}
+        </>
       )}
     </div>
   );
