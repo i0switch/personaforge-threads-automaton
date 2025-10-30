@@ -45,8 +45,9 @@ export const AvatarUpload = ({ personaId, currentAvatarUrl, onAvatarChange }: Av
         return;
       }
 
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('認証が必要です');
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) throw new Error('認証が必要です');
+      const user = session.user;
 
       // Create unique filename
       const fileExt = file.name.split('.').pop();

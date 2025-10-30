@@ -325,9 +325,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       if (!error) {
         // セッション監視（ログイン）
         setTimeout(() => {
-          supabase.auth.getUser().then(({ data: { user } }) => {
-            if (user?.id) {
-              authSecurity.monitorSession(user.id, 'login');
+          supabase.auth.getSession().then(({ data: { session } }) => {
+            if (session?.user?.id) {
+              authSecurity.monitorSession(session.user.id, 'login');
             }
           });
         }, 0);

@@ -101,10 +101,10 @@ export const authSecurity = {
   // 安全なログアウト
   secureLogout: async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
       
-      if (user) {
-        await authSecurity.monitorSession(user.id, 'logout');
+      if (session?.user) {
+        await authSecurity.monitorSession(session.user.id, 'logout');
       }
 
       // セッションクリア

@@ -47,7 +47,8 @@ export const securityMiddleware = {
 
   logSecurityEvent: async (eventType: string, details: any) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
       
       await supabase
         .from('activity_logs')

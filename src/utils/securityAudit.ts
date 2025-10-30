@@ -74,7 +74,8 @@ export const securityAudit = {
   // セキュリティアラートを作成
   createAlert: async (alert: Omit<SecurityAlert, 'id' | 'resolved' | 'created_at'>) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
       
       const { error } = await supabase
         .from('activity_logs')
