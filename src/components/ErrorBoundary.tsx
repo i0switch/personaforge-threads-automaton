@@ -13,9 +13,23 @@ interface State {
 }
 
 export class ErrorBoundary extends Component<Props, State> {
+  private _isMounted = false;
+  private _pendingTimeouts: number[] = [];
+
   public state: State = {
     hasError: false
   };
+
+  public componentDidMount() {
+    this._isMounted = true;
+  }
+
+  public componentWillUnmount() {
+    this._isMounted = false;
+    // すべての保留中のタイムアウトをクリア
+    this._pendingTimeouts.forEach(id => clearTimeout(id));
+    this._pendingTimeouts = [];
+  }
 
   public static getDerivedStateFromError(error: Error): State {
     return { hasError: true, error };
@@ -70,11 +84,14 @@ export class ErrorBoundary extends Component<Props, State> {
       })()
     });
     
-    // プレビュー環境からの即座リダイレクト
+    // プレビュー環境からのリダイレクト（少し待機してからDOM操作の競合を防ぐ）
     if (isPreview) {
       console.log('プレビュー環境でエラー発生。本番環境にリダイレクトします...');
-      const targetUrl = window.location.href.replace('preview--threads-genius-ai.lovable.app', 'threads-genius-ai.lovable.app');
-      window.location.replace(targetUrl);
+      const timeoutId = window.setTimeout(() => {
+        const targetUrl = window.location.href.replace('preview--threads-genius-ai.lovable.app', 'threads-genius-ai.lovable.app');
+        window.location.replace(targetUrl);
+      }, 100);
+      this._pendingTimeouts.push(timeoutId);
       return;
     }
     
@@ -118,6 +135,12 @@ export class ErrorBoundary extends Component<Props, State> {
     
     // Supabaseへの詳細ログ送信（複数回リトライ）
     const sendErrorLog = async (retryCount = 0) => {
+      // コンポーネントがアンマウントされていたら中止
+      if (!this._isMounted) {
+        console.log('ErrorBoundary: コンポーネントがアンマウントされたため、ログ送信を中止');
+        return;
+      }
+
       try {
         console.log(`エラーログ送信試行 ${retryCount + 1}/3`);
         
@@ -178,9 +201,10 @@ export class ErrorBoundary extends Component<Props, State> {
       } catch (logError) {
         console.warn(`❌ エラーログ送信失敗 (試行 ${retryCount + 1}/3):`, logError);
         
-        if (retryCount < 2) {
-          // 1秒後にリトライ
-          setTimeout(() => sendErrorLog(retryCount + 1), 1000);
+        if (retryCount < 2 && this._isMounted) {
+          // 1秒後にリトライ（コンポーネントがマウントされている場合のみ）
+          const timeoutId = window.setTimeout(() => sendErrorLog(retryCount + 1), 1000);
+          this._pendingTimeouts.push(timeoutId);
         } else {
           console.error('❌ エラーログ送信を諦めました');
           console.error('======= ErrorBoundary: 詳細エラーログ終了 =======');
