@@ -161,7 +161,7 @@ SELECT * FROM personas WHERE user_id != auth.uid();
 ### 即座に実施（1-2日）
 - [x] auth.getSession()に統一
 - [x] StrictMode有効化
-- [ ] SECURITY DEFINER関数のsearch_path追加
+- [x] SECURITY DEFINER関数のsearch_path追加（42関数を`public, pg_temp`に設定）
 
 ### 短期（1週間）
 - [ ] トークン検証ロジックの完全統一（client.ts統合）
