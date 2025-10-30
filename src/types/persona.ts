@@ -1,27 +1,9 @@
-// 統一されたPersonaインターフェース（データベーススキーマと一致）
-export interface Persona {
-  id: string;
-  user_id: string;
-  name: string;
-  age: string | null;
-  personality: string | null;
-  expertise: string[] | null;
-  tone_of_voice: string | null;
-  avatar_url: string | null;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
-  threads_access_token: string | null;
-  threads_app_id: string | null;
-  threads_app_secret: string | null;
-  webhook_verify_token: string | null;
-  threads_username: string | null;
-  auto_reply_enabled: boolean | null;
-  ai_auto_reply_enabled: boolean | null;
-  auto_reply_delay_minutes: number | null;
-  threads_user_id: string | null;
-  app_identifier: string | null;
-}
+import type { Database } from '@/integrations/supabase/types';
+
+// Supabase自動生成型から派生（型の一元化）
+export type Persona = Database['public']['Tables']['personas']['Row'];
+export type PersonaInsert = Database['public']['Tables']['personas']['Insert'];
+export type PersonaUpdate = Database['public']['Tables']['personas']['Update'];
 
 // フォーム用の型（編集時に使用）
 export interface PersonaFormData {

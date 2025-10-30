@@ -2,6 +2,7 @@ import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { AlertCircle } from 'lucide-react';
 import { supabase } from "@/integrations/supabase/client";
+import { errorTracker } from '@/utils/errorTracking';
 
 interface Props {
   children?: ReactNode;
@@ -40,6 +41,15 @@ export class ErrorBoundary extends Component<Props, State> {
     console.error('エラーメッセージ:', error.message);
     console.error('エラースタック:', error.stack);
     console.error('コンポーネントスタック:', errorInfo.componentStack);
+    
+    // エラートラッキングシステムに記録
+    errorTracker.trackError(error, {
+      component: 'ErrorBoundary',
+      action: 'component_error',
+      additionalData: {
+        componentStack: errorInfo.componentStack,
+      },
+    }, 'critical');
     
     // 環境情報の詳細収集
     const isIOSSafari = /iPad|iPhone|iPod/.test(navigator.userAgent) && 

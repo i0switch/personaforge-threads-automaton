@@ -356,7 +356,11 @@ const PersonaSetup = () => {
         webhook_verify_token: null,
         auto_reply_enabled: false,
         ai_auto_reply_enabled: false,
-        auto_reply_delay_minutes: 0
+        auto_reply_delay_minutes: 0,
+        is_rate_limited: false,
+        rate_limit_detected_at: null,
+        rate_limit_reason: null,
+        rate_limit_until: null
       });
       setIsEditing(true);
     }, 200);

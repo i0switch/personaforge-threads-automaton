@@ -4,6 +4,7 @@ import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { authSecurity } from "@/utils/authSecurity";
 import { authHandler } from "@/utils/authHandler";
+import { initializeErrorTracking } from '@/utils/errorTracking';
 
 interface AuthContextType {
   user: User | null;
@@ -213,6 +214,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           setUser(session?.user ?? null);
           setLoading(false);
           initialLoadComplete = true;
+          
+          // エラートラッキング初期化
+          if (session?.user) {
+            initializeErrorTracking(session.user.id);
+          }
         }
       } catch (error) {
         console.error('❌ Auth initialization error:', error);
