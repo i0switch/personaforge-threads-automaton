@@ -71,6 +71,15 @@ const addToRemoveQueue = (toastId: string) => {
   toastTimeouts.set(toastId, timeout)
 }
 
+// タイムアウトをクリアするヘルパー関数
+const clearToastTimeout = (toastId: string) => {
+  const timeout = toastTimeouts.get(toastId)
+  if (timeout) {
+    clearTimeout(timeout)
+    toastTimeouts.delete(toastId)
+  }
+}
+
 export const reducer = (state: State, action: Action): State => {
   switch (action.type) {
     case "ADD_TOAST":
@@ -114,11 +123,15 @@ export const reducer = (state: State, action: Action): State => {
     }
     case "REMOVE_TOAST":
       if (action.toastId === undefined) {
+        // すべてのtoastを削除する場合、すべてのタイムアウトをクリア
+        toastTimeouts.forEach((_, id) => clearToastTimeout(id))
         return {
           ...state,
           toasts: [],
         }
       }
+      // 特定のtoastを削除する場合、そのタイムアウトをクリア
+      clearToastTimeout(action.toastId)
       return {
         ...state,
         toasts: state.toasts.filter((t) => t.id !== action.toastId),
@@ -179,7 +192,7 @@ function useToast() {
         listeners.splice(index, 1)
       }
     }
-  }, [state])
+  }, []) // 依存配列を空にして、マウント時のみ実行
 
   return {
     ...state,

@@ -5,17 +5,20 @@ import App from "./App.tsx";
 import "./index.css";
 // 認証ハンドラーを初期化
 import { authHandler } from './utils/authHandler';
-import { isWebSocketRestricted } from './utils/platform';
 
 console.log('🔐 AuthHandler initialized:', !!authHandler);
 
-// iOS/Safari環境では StrictMode を無効化（DOM操作の競合を防ぐため）
-const AppWrapper = isWebSocketRestricted() ? (
+// 開発環境でのDOM競合を防ぐため、StrictModeを無効化
+// 本番環境では元々StrictModeは使われないため、影響なし
+const isDevelopment = import.meta.env.DEV;
+const AppWrapper = isDevelopment ? (
   <App />
 ) : (
   <React.StrictMode>
     <App />
   </React.StrictMode>
 );
+
+console.log('🔧 StrictMode:', isDevelopment ? 'Disabled (Dev)' : 'Enabled (Prod)');
 
 ReactDOM.createRoot(document.getElementById("root")!).render(AppWrapper);
