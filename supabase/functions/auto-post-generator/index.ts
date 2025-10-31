@@ -1006,10 +1006,10 @@ serve(async (req) => {
     let templatePosted = 0;
     let templateFailed = 0;
     
-    console.log('📝 Starting template random post processing...');
+    console.log('📝 Starting template post boxes processing...');
     
     const { data: templateConfigs, error: templateFetchError } = await supabase
-      .from('template_random_post_configs')
+      .from('template_post_boxes')
       .select('*')
       .eq('is_active', true)
       .lte('next_run_at', now.toISOString())
@@ -1110,13 +1110,13 @@ serve(async (req) => {
         const templateContent = typeof randomTemplateObj === 'string' 
           ? randomTemplateObj 
           : (randomTemplateObj as any).text || '';
-        const templateImage = typeof randomTemplateObj === 'object' && randomTemplateObj !== null
-          ? (randomTemplateObj as any).image_url
-          : null;
+        const templateImages = typeof randomTemplateObj === 'object' && randomTemplateObj !== null
+          ? (randomTemplateObj as any).image_urls || []
+          : [];
         
         console.log(`📝 Selected template: "${templateContent.substring(0, 50)}..."`);
-        if (templateImage) {
-          console.log(`🖼️ Template has image: ${templateImage}`);
+        if (templateImages && templateImages.length > 0) {
+          console.log(`🖼️ Template has ${templateImages.length} image(s)`);
         }
         
         // Create post with selected template
@@ -1131,9 +1131,9 @@ serve(async (req) => {
           app_identifier: 'threads-manager-app'
         };
         
-        // Add image if available
-        if (templateImage) {
-          postData.images = [templateImage];
+        // Add images if available
+        if (templateImages && templateImages.length > 0) {
+          postData.images = templateImages;
         }
         
         console.log(`📅 Creating template post for persona ${persona.name}...`);
@@ -1234,7 +1234,7 @@ serve(async (req) => {
         
         // Update config
         const { error: updateError } = await supabase
-          .from('template_random_post_configs')
+          .from('template_post_boxes')
           .update({
             posted_times_today: updatedPostedTimes,
             last_posted_date: todayDate,
@@ -1258,7 +1258,7 @@ serve(async (req) => {
         // Apply cooldown on failure
         try {
           const { data: stillActive } = await supabase
-            .from('template_random_post_configs')
+            .from('template_post_boxes')
             .select('is_active')
             .eq('id', templateCfg.id)
             .single();
@@ -1266,7 +1266,7 @@ serve(async (req) => {
           if (stillActive?.is_active) {
             const nextRun = new Date(Date.now() + RATE_LIMITS.COOLDOWN_AFTER_FAILURE);
             await supabase
-              .from('template_random_post_configs')
+              .from('template_post_boxes')
               .update({
                 next_run_at: nextRun.toISOString(),
                 updated_at: new Date().toISOString()
