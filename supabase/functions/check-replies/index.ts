@@ -318,20 +318,18 @@ async function checkRepliesForPost(persona: any, postId: string): Promise<number
                replied_to: { id: thread.reply_to_id }
              };
              
-             try {
-               let replySent = false;
-               
-               // キーワード自動返信をチェック
-               if (persona.auto_reply_enabled) {
-                 const templateResult = await processTemplateAutoReply(persona, replyObject);
-                 if (templateResult.sent) {
-                   console.log(`✅ 定型文自動返信成功 - reply: ${thread.id}`);
-                   replySent = true;
-                 }
-               }
+              try {
+                let replySent = false;
+                
+                // キーワード自動返信をチェック（auto_repliesテーブルのis_activeで判断）
+                const templateResult = await processTemplateAutoReply(persona, replyObject);
+                if (templateResult.sent) {
+                  console.log(`✅ 定型文自動返信成功 - reply: ${thread.id}`);
+                  replySent = true;
+                }
 
-               // AI自動返信をチェック（定型文が送信されなかった場合のみ）
-               if (!replySent && persona.ai_auto_reply_enabled) {
+                // AI自動返信をチェック（定型文が送信されなかった場合のみ）
+                if (!replySent && persona.ai_auto_reply_enabled) {
                  const autoReplyResult = await supabase.functions.invoke('threads-auto-reply', {
                    body: {
                      postContent: 'Original post content',

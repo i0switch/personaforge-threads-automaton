@@ -272,13 +272,11 @@ serve(async (req) => {
         
         let replySent = false;
 
-        // キーワード自動返信をチェック
-        if (persona.auto_reply_enabled) {
-          const templateResult = await processTemplateAutoReply(persona, reply);
-          if (templateResult.sent) {
-            console.log(`✅ 定型文自動返信成功 - reply: ${reply.id}`);
-            replySent = true;
-          }
+        // キーワード自動返信をチェック（auto_repliesテーブルのis_activeで判断）
+        const templateResult = await processTemplateAutoReply(persona, reply);
+        if (templateResult.sent) {
+          console.log(`✅ 定型文自動返信成功 - reply: ${reply.id}`);
+          replySent = true;
         }
 
         // AI自動返信をチェック（定型文が送信されなかった場合のみ）
