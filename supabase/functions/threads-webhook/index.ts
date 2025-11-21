@@ -319,28 +319,27 @@ async function processReply(persona: any, reply: any): Promise<boolean> {
       });
 
     // Step 3: 自動返信処理（定型文またはAI自動返信が有効な場合のみ）
-    if (!persona.auto_reply_enabled && !persona.ai_auto_reply_enabled) {
-      console.log(`ℹ️ 自動返信設定がすべてOFF - persona: ${persona.name}`);
-      return true;
+    // キーワード自動返信は auto_replies テーブルの is_active で判断するため、ここでは ai_auto_reply_enabled のみチェック
+    if (!persona.ai_auto_reply_enabled) {
+      // AI自動返信が無効でも、キーワード自動返信の可能性があるため処理を続行
+      console.log(`ℹ️ AI自動返信OFF - キーワード自動返信のみチェック - persona: ${persona.name}`);
     }
 
     console.log(`🤖 自動返信処理開始 - persona: ${persona.name}`);
     
     try {
-      // Step 4: トリガー自動返信（定型文）をチェック（auto_reply_enabledの場合のみ）
-      if (persona.auto_reply_enabled) {
-        const templateResult = await processTemplateAutoReply(persona, reply);
-        if (templateResult.sent) {
-          // スケジュールされた場合（template_scheduled）は、auto_reply_sentを更新しない
-          // 即時送信された場合（template）のみ、auto_reply_sentフラグを更新
-          if (templateResult.method === 'template_scheduled') {
-            console.log(`⏰ 定型文自動返信スケジュール成功 - reply: ${reply.id} (送信時刻待ち)`);
-          } else {
-            console.log(`✅ 定型文自動返信即時送信成功 - reply: ${reply.id}`);
-            await updateAutoReplySentFlag(reply.id, true);
-          }
-          return true;
+      // Step 4: トリガー自動返信（定型文）をチェック（auto_repliesテーブルのis_activeで判断）
+      const templateResult = await processTemplateAutoReply(persona, reply);
+      if (templateResult.sent) {
+        // スケジュールされた場合（template_scheduled）は、auto_reply_sentを更新しない
+        // 即時送信された場合（template）のみ、auto_reply_sentフラグを更新
+        if (templateResult.method === 'template_scheduled') {
+          console.log(`⏰ 定型文自動返信スケジュール成功 - reply: ${reply.id} (送信時刻待ち)`);
+        } else {
+          console.log(`✅ 定型文自動返信即時送信成功 - reply: ${reply.id}`);
+          await updateAutoReplySentFlag(reply.id, true);
         }
+        return true;
       }
 
       // Step 5: AI自動返信をチェック
