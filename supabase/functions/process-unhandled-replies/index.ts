@@ -164,6 +164,7 @@ serve(async (req) => {
           id,
           name,
           user_id,
+          is_active,
           auto_reply_enabled,
           ai_auto_reply_enabled,
           threads_access_token
