@@ -388,6 +388,30 @@ async function checkRepliesForPost(persona: any, postId: string): Promise<number
  }
 
 // トリガー自動返信（定型文）を処理
+// 絵文字の正規化関数（threads-webhookと同じ実装）
+function normalizeEmojiAndText(text: string): string {
+  return text
+    .normalize('NFD')
+    .replace(/[\u200d\ufe0f]/g, '') // Zero Width Joiner と Variation Selector を削除
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+// キーワードマッチング判定（threads-webhookと同じ実装）
+function isKeywordMatch(replyText: string, keyword: string): boolean {
+  const normalizedReply = normalizeEmojiAndText(replyText);
+  const normalizedKeyword = normalizeEmojiAndText(keyword);
+  
+  // 複数文字のキーワードは部分一致
+  if (normalizedKeyword.length > 1) {
+    return normalizedReply.includes(normalizedKeyword);
+  }
+  
+  // 単一文字（絵文字など）の場合は厳密チェック
+  return normalizedReply === normalizedKeyword;
+}
+
 async function processTemplateAutoReply(persona: any, reply: any): Promise<{ sent: boolean, method?: string }> {
   console.log(`🎯 定型文自動返信チェック開始`);
 
@@ -405,19 +429,20 @@ async function processTemplateAutoReply(persona: any, reply: any): Promise<{ sen
 
   console.log(`✅ 定型文自動返信設定が有効 - persona: ${persona.name}, 設定数: ${autoRepliesSettings.length}`);
 
-  const replyText = (reply.text || '').trim().toLowerCase();
-  console.log(`🔍 リプライテキスト: "${replyText}"`);
+  const replyText = reply.text || '';
+  const normalizedReply = normalizeEmojiAndText(replyText);
+  console.log(`🔍 リプライテキスト: "${replyText}" → 正規化: "${normalizedReply}"`);
 
   for (const setting of autoRepliesSettings) {
     const keywords = setting.trigger_keywords || [];
     console.log(`🔑 チェック中のキーワード:`, keywords);
 
     for (const keyword of keywords) {
-      const cleanKeyword = keyword.trim().toLowerCase();
-      console.log(`🔍 キーワード "${cleanKeyword}" をテキスト "${replyText}" と照合中`);
+      const normalizedKeyword = normalizeEmojiAndText(keyword);
+      console.log(`🔍 キーワード "${keyword}" → 正規化: "${normalizedKeyword}" をテキストと照合中`);
       
-      if (replyText.includes(cleanKeyword)) {
-        console.log(`🎉 キーワードマッチ: "${keyword}" → 返信: "${setting.response_template}"`);
+      if (isKeywordMatch(replyText, keyword)) {
+        console.log(`🎉 キーワードマッチ成功: "${keyword}" → 返信: "${setting.response_template}"`);
         
         try {
           // 遅延時間を取得（定型文設定の遅延時間またはペルソナのデフォルト遅延時間）
@@ -429,12 +454,13 @@ async function processTemplateAutoReply(persona: any, reply: any): Promise<{ sen
             // スケジュール時刻を計算
             const scheduledTime = new Date(Date.now() + delayMinutes * 60 * 1000);
             
-            // thread_repliesのscheduled_reply_atを更新
+            // thread_repliesのscheduled_reply_atとai_response（定型文）を保存
             await supabase
               .from('thread_replies')
               .update({ 
+                ai_response: setting.response_template,  // 定型文を保存
                 scheduled_reply_at: scheduledTime.toISOString(),
-                reply_status: 'scheduled'
+                reply_status: 'scheduled'  // 遅延送信のためscheduledステータスを使用
               })
               .eq('reply_id', reply.id);
             
