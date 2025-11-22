@@ -187,7 +187,7 @@ serve(async (req) => {
       new Map(allReplies.map(r => [r.reply_id, r])).values()
     );
 
-    // ペルソナの自動返信設定でフィルタリング
+    // ペルソナの有効性でフィルタリング（自動返信設定は個別にチェック）
     const filteredReplies = uniqueReplies.filter(reply => {
       const persona = reply.personas;
       
@@ -197,12 +197,15 @@ serve(async (req) => {
         return false;
       }
       
+      // ペルソナがアクティブであればフィルタを通過
+      // キーワード自動返信とAI自動返信の判定は後続の処理で行う
+      const isActive = persona.is_active === true;
       const hasAutoReply = persona.auto_reply_enabled === true;
       const hasAIReply = persona.ai_auto_reply_enabled === true;
       
-      console.log(`🔍 フィルタチェック: persona=${persona.name}, auto=${hasAutoReply}, ai=${hasAIReply}`);
+      console.log(`🔍 フィルタチェック: persona=${persona.name}, active=${isActive}, auto=${hasAutoReply}, ai=${hasAIReply}`);
       
-      return hasAutoReply || hasAIReply;
+      return isActive;
     });
 
     console.log(`📋 取得件数: ${unprocessedReplies?.length || 0}, リトライ: ${retryableReplies.length}, フィルタ後: ${filteredReplies.length}`);
