@@ -307,26 +307,33 @@ serve(async (req) => {
                 replySent = true;
               } else {
                 console.error(`❌ 保存済みAI返信送信失敗: ${reply.id}`);
-                // リトライカウントを更新
-                const newRetryCount = (reply.retry_count || 0) + 1;
+                
+                // 無効な投稿IDの場合は最大リトライに設定（リトライ不要）
+                const isInvalidPost = sendResult.errorDetails?.error?.error_subcode === 4279009;
+                const newRetryCount = isInvalidPost ? 999 : ((reply.retry_count || 0) + 1);
                 const maxRetries = reply.max_retries || 3;
                 
                 await supabase
                   .from('thread_replies')
                   .update({ 
-                    reply_status: newRetryCount >= maxRetries ? 'failed' : 'failed',
+                    reply_status: (newRetryCount >= maxRetries || isInvalidPost) ? 'failed' : 'failed',
                     auto_reply_sent: false,
                     retry_count: newRetryCount,
                     last_retry_at: new Date().toISOString(),
                     error_details: {
                       ...sendResult.errorDetails,
                       retry_count: newRetryCount,
+                      invalid_post: isInvalidPost,
                       timestamp: new Date().toISOString()
                     }
                   })
                   .eq('reply_id', reply.reply_id);
                   
-                console.log(`🔄 リトライ記録: ${newRetryCount}/${maxRetries}回目 - reply: ${reply.id}`);
+                if (isInvalidPost) {
+                  console.log(`⚠️ 無効な投稿IDのためリトライスキップ: ${reply.reply_id}`);
+                } else {
+                  console.log(`🔄 リトライ記録: ${newRetryCount}/${maxRetries}回目 - reply: ${reply.id}`);
+                }
               }
             } else {
               // AI返信が未生成の場合は新規生成
@@ -447,6 +454,47 @@ serve(async (req) => {
   }
 });
 
+// 🔧 絵文字とテキストの正規化（threads-webhookと同じロジック）
+function normalizeEmojiAndText(text: string): string {
+  if (!text) return '';
+  
+  // 異体字セレクタを削除（U+FE0F: 絵文字スタイル、U+FE0E: テキストスタイル）
+  let normalized = text.replace(/[\uFE0E\uFE0F]/g, '');
+  
+  // Zero Width Joiner (ZWJ: U+200D) を削除
+  normalized = normalized.replace(/\u200D/g, '');
+  
+  // 空白文字と制御文字を正規化
+  normalized = normalized.replace(/\s+/g, ' ').trim();
+  
+  // 小文字化
+  normalized = normalized.toLowerCase();
+  
+  return normalized;
+}
+
+// キーワードマッチング判定（threads-webhookと同じロジック）
+function isKeywordMatch(replyText: string, keywords: string[]): { matched: boolean; keyword?: string } {
+  if (!keywords || keywords.length === 0) {
+    return { matched: false };
+  }
+  
+  const normalizedReply = normalizeEmojiAndText(replyText);
+  console.log(`🔍 正規化後のリプライテキスト: "${normalizedReply}"`);
+  
+  for (const keyword of keywords) {
+    const normalizedKeyword = normalizeEmojiAndText(keyword);
+    console.log(`🔑 正規化後のキーワード: "${normalizedKeyword}"`);
+    
+    if (normalizedReply.includes(normalizedKeyword)) {
+      console.log(`✅ キーワードマッチ: "${keyword}" → "${normalizedKeyword}"`);
+      return { matched: true, keyword };
+    }
+  }
+  
+  return { matched: false };
+}
+
 // トリガー自動返信（定型文）を処理
 async function processTemplateAutoReply(persona: any, reply: any): Promise<{ sent: boolean, method?: string }> {
   console.log(`🎯 定型文自動返信チェック開始`);
@@ -465,68 +513,80 @@ async function processTemplateAutoReply(persona: any, reply: any): Promise<{ sen
 
   console.log(`✅ 定型文自動返信設定が有効 - persona: ${persona.name}, 設定数: ${autoRepliesSettings.length}`);
 
-  const replyText = (reply.reply_text || '').trim().toLowerCase();
+  const replyText = reply.reply_text || '';
   console.log(`🔍 リプライテキスト: "${replyText}"`);
 
   for (const setting of autoRepliesSettings) {
     const keywords = setting.trigger_keywords || [];
     console.log(`🔑 チェック中のキーワード:`, keywords);
 
-    for (const keyword of keywords) {
-      const cleanKeyword = keyword.trim().toLowerCase();
-      console.log(`🔍 キーワード "${cleanKeyword}" をテキスト "${replyText}" と照合中`);
+    const matchResult = isKeywordMatch(replyText, keywords);
+    
+    if (matchResult.matched) {
+      console.log(`🎉 キーワードマッチ: "${matchResult.keyword}" → 返信: "${setting.response_template}"`);
       
-      if (replyText.includes(cleanKeyword)) {
-        console.log(`🎉 キーワードマッチ: "${keyword}" → 返信: "${setting.response_template}"`);
+      // CRITICAL: ai_responseに定型文を保存（threads-webhookと同じ処理）
+      await supabase
+        .from('thread_replies')
+        .update({ 
+          ai_response: setting.response_template
+        })
+        .eq('reply_id', reply.reply_id);
+      
+      try {
+        // 定型文返信を送信
+        const sendResult = await sendThreadsReply(persona, reply.reply_id, setting.response_template);
         
-        try {
-          // 定型文返信を送信
-          const sendResult = await sendThreadsReply(persona, reply.reply_id, setting.response_template);
+        if (sendResult.success) {
+          console.log(`✅ 定型文返信送信成功`);
+          // 送信成功時にステータスを更新
+          await supabase
+            .from('thread_replies')
+            .update({ 
+              reply_status: 'sent',
+              auto_reply_sent: true
+            })
+            .eq('reply_id', reply.reply_id);
           
-          if (sendResult.success) {
-            console.log(`✅ 定型文返信送信成功`);
-            // 送信成功時にステータスを更新
-            await supabase
-              .from('thread_replies')
-              .update({ 
-                reply_status: 'sent',
-                auto_reply_sent: true
-              })
-              .eq('reply_id', reply.reply_id);
-            
-            // アクティビティログを記録
-            await logActivity(persona.user_id, persona.id, 'template_auto_reply_sent',
-              `定型文自動返信を送信: "${setting.response_template.substring(0, 50)}..."`, {
-                reply_id: reply.reply_id,
-                keyword_matched: keyword,
-                response_sent: setting.response_template
-              });
+          // アクティビティログを記録
+          await logActivity(persona.user_id, persona.id, 'template_auto_reply_sent',
+            `定型文自動返信を送信: "${setting.response_template.substring(0, 50)}..."`, {
+              reply_id: reply.reply_id,
+              keyword_matched: matchResult.keyword,
+              response_sent: setting.response_template
+            });
 
-            return { sent: true, method: 'template' };
-          } else {
-            console.error(`❌ 定型文返信送信失敗`);
-            // 送信失敗時はリトライ情報を記録
-            const newRetryCount = (reply.retry_count || 0) + 1;
-            const maxRetries = reply.max_retries || 3;
-            
-            await supabase
-              .from('thread_replies')
-              .update({ 
-                reply_status: newRetryCount >= maxRetries ? 'failed' : 'failed',
+          return { sent: true, method: 'template' };
+        } else {
+          console.error(`❌ 定型文返信送信失敗`);
+          
+          // 無効な投稿IDの場合は最大リトライに設定（リトライ不要）
+          const isInvalidPost = sendResult.errorDetails?.error?.error_subcode === 4279009;
+          const newRetryCount = isInvalidPost ? 999 : ((reply.retry_count || 0) + 1);
+          const maxRetries = reply.max_retries || 3;
+          
+          await supabase
+            .from('thread_replies')
+            .update({ 
+              reply_status: (newRetryCount >= maxRetries || isInvalidPost) ? 'failed' : 'failed',
+              retry_count: newRetryCount,
+              last_retry_at: new Date().toISOString(),
+              error_details: {
+                ...sendResult.errorDetails,
+                reply_type: 'template',
                 retry_count: newRetryCount,
-                last_retry_at: new Date().toISOString(),
-                error_details: {
-                  ...sendResult.errorDetails,
-                  reply_type: 'template',
-                  retry_count: newRetryCount,
-                  timestamp: new Date().toISOString()
-                }
-              })
-              .eq('reply_id', reply.reply_id);
+                invalid_post: isInvalidPost,
+                timestamp: new Date().toISOString()
+              }
+            })
+            .eq('reply_id', reply.reply_id);
+            
+          if (isInvalidPost) {
+            console.log(`⚠️ 無効な投稿IDのためリトライスキップ: ${reply.reply_id}`);
           }
-        } catch (error) {
-          console.error(`❌ 定型文返信送信エラー:`, error);
         }
+      } catch (error) {
+        console.error(`❌ 定型文返信送信エラー:`, error);
       }
     }
   }
