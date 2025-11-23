@@ -38,48 +38,48 @@ serve(async (req) => {
       });
     }
 
-  // アクティブなリプライチェック設定を取得（アクティブなペルソナのみ）
+  // CRITICAL FIX: 重複外部キーの問題を回避するため、JOINを使わずに個別にクエリ
   const { data: checkSettings, error: settingsError } = await supabase
     .from('reply_check_settings')
-    .select(`
-      *,
-      personas!fk_reply_check_settings_persona_id (
-        id,
-        name,
-        user_id,
-        threads_username,
-        ai_auto_reply_enabled,
-        auto_reply_enabled,
-        is_active
-      )
-    `)
+    .select('*')
     .eq('is_active', true);
   
-  console.log(`🔍 Fetched ${checkSettings?.length || 0} settings from database`);
+  console.log(`🔍 Fetched ${checkSettings?.length || 0} reply check settings from database`);
   
   if (settingsError) {
     console.error('❌ Settings fetch error:', settingsError);
     throw settingsError;
   }
   
-  // アクティブなペルソナのみフィルタリング
-  const activeSettings = checkSettings?.filter(s => {
-    const isActive = s.personas?.is_active === true;
-    if (!isActive) {
-      console.log(`⏭️ Skipping inactive persona: ${s.personas?.name || 'unknown'}`);
-    }
-    return isActive;
-  }) || [];
-
-    if (!activeSettings || activeSettings.length === 0) {
-      console.log('No active reply check settings found');
-      return new Response(JSON.stringify({ message: 'No active settings' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200
-      });
-    }
+  if (!checkSettings || checkSettings.length === 0) {
+    console.log('No active reply check settings found');
+    return new Response(JSON.stringify({ message: 'No active settings' }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 200
+    });
+  }
+  
+  // ペルソナ情報を個別に取得してアクティブなもののみフィルタリング
+  const activeSettings = [];
+  for (const setting of checkSettings) {
+    const { data: persona } = await supabase
+      .from('personas')
+      .select('id, name, user_id, threads_username, ai_auto_reply_enabled, auto_reply_enabled, is_active')
+      .eq('id', setting.persona_id)
+      .eq('is_active', true)
+      .maybeSingle();
     
-    console.log(`✅ Found ${activeSettings.length} active settings to process`);
+    if (persona) {
+      activeSettings.push({
+        ...setting,
+        personas: persona
+      });
+    } else {
+      console.log(`⏭️ Skipping inactive or missing persona for setting: ${setting.id}`);
+    }
+  }
+
+    console.log(`✅ Found ${activeSettings.length} active settings with active personas to process`);
 
     let totalRepliesFound = 0;
 
