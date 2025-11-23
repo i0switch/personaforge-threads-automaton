@@ -39,11 +39,11 @@ serve(async (req) => {
     }
 
   // アクティブなリプライチェック設定を取得（アクティブなペルソナのみ）
-  const { data: checkSettings } = await supabase
+  const { data: checkSettings, error: settingsError } = await supabase
     .from('reply_check_settings')
     .select(`
       *,
-      personas!inner (
+      personas!fk_reply_check_settings_persona_id (
         id,
         name,
         user_id,
@@ -53,23 +53,40 @@ serve(async (req) => {
         is_active
       )
     `)
-    .eq('is_active', true)
-    .eq('personas.is_active', true);
+    .eq('is_active', true);
+  
+  console.log(`🔍 Fetched ${checkSettings?.length || 0} settings from database`);
+  
+  if (settingsError) {
+    console.error('❌ Settings fetch error:', settingsError);
+    throw settingsError;
+  }
+  
+  // アクティブなペルソナのみフィルタリング
+  const activeSettings = checkSettings?.filter(s => {
+    const isActive = s.personas?.is_active === true;
+    if (!isActive) {
+      console.log(`⏭️ Skipping inactive persona: ${s.personas?.name || 'unknown'}`);
+    }
+    return isActive;
+  }) || [];
 
-    if (!checkSettings || checkSettings.length === 0) {
+    if (!activeSettings || activeSettings.length === 0) {
       console.log('No active reply check settings found');
       return new Response(JSON.stringify({ message: 'No active settings' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200
       });
     }
+    
+    console.log(`✅ Found ${activeSettings.length} active settings to process`);
 
     let totalRepliesFound = 0;
 
     // まずスケジュールされた返信を処理
     await processScheduledReplies();
 
-    for (const setting of checkSettings) {
+    for (const setting of activeSettings) {
       const persona = setting.personas;
       if (!persona?.id) {
         console.log(`Skipping invalid persona`);
