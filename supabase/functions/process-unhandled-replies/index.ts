@@ -306,12 +306,26 @@ serve(async (req) => {
                 
                 replySent = true;
               } else {
-                console.error(`❌ 保存済みAI返信送信失敗: ${reply.id}`);
+                console.error(`❌ 保存済みAI返信送信失敗: ${reply.id}`, sendResult.errorDetails);
                 
                 // 無効な投稿IDの場合は最大リトライに設定（リトライ不要）
                 const isInvalidPost = sendResult.errorDetails?.error?.error_subcode === 4279009;
                 const newRetryCount = isInvalidPost ? 999 : ((reply.retry_count || 0) + 1);
                 const maxRetries = reply.max_retries || 3;
+                
+                // CRITICAL: エラー詳細を必ず記録（詳細がない場合もエラー情報を残す）
+                const errorDetails = sendResult.errorDetails ? {
+                  ...sendResult.errorDetails,
+                  retry_count: newRetryCount,
+                  invalid_post: isInvalidPost,
+                  timestamp: new Date().toISOString()
+                } : {
+                  error: 'Reply Send Failed',
+                  message: 'Failed to send saved AI reply without detailed error info',
+                  retry_count: newRetryCount,
+                  invalid_post: isInvalidPost,
+                  timestamp: new Date().toISOString()
+                };
                 
                 await supabase
                   .from('thread_replies')
@@ -320,12 +334,7 @@ serve(async (req) => {
                     auto_reply_sent: false,
                     retry_count: newRetryCount,
                     last_retry_at: new Date().toISOString(),
-                    error_details: {
-                      ...sendResult.errorDetails,
-                      retry_count: newRetryCount,
-                      invalid_post: isInvalidPost,
-                      timestamp: new Date().toISOString()
-                    }
+                    error_details: errorDetails
                   })
                   .eq('reply_id', reply.reply_id);
                   
@@ -354,6 +363,7 @@ serve(async (req) => {
                 const newRetryCount = (reply.retry_count || 0) + 1;
                 const maxRetries = reply.max_retries || 3;
                 
+                // CRITICAL: エラー詳細を必ず記録
                 await supabase
                   .from('thread_replies')
                   .update({ 
@@ -363,9 +373,11 @@ serve(async (req) => {
                     last_retry_at: new Date().toISOString(),
                     error_details: {
                       error: 'AI Reply Generation Failed',
-                      message: autoReplyResult.error.message || 'Unknown error',
+                      message: autoReplyResult.error.message || autoReplyResult.error.toString() || 'Unknown error during AI reply generation',
+                      error_code: autoReplyResult.error.code,
                       retry_count: newRetryCount,
-                      timestamp: new Date().toISOString()
+                      timestamp: new Date().toISOString(),
+                      context: 'threads-auto-reply invocation'
                     }
                   })
                   .eq('reply_id', reply.reply_id);
@@ -378,11 +390,25 @@ serve(async (req) => {
             }
           } catch (error) {
             console.error(`❌ AI自動返信処理エラー:`, error);
+            const newRetryCount = (reply.retry_count || 0) + 1;
+            const maxRetries = reply.max_retries || 3;
+            
+            // CRITICAL: エラー詳細を必ず記録
             await supabase
               .from('thread_replies')
               .update({ 
-                reply_status: 'failed',
-                auto_reply_sent: false
+                reply_status: newRetryCount >= maxRetries ? 'failed' : 'failed',
+                auto_reply_sent: false,
+                retry_count: newRetryCount,
+                last_retry_at: new Date().toISOString(),
+                error_details: {
+                  error: error instanceof Error ? error.name : 'Unexpected Error',
+                  message: error instanceof Error ? error.message : String(error),
+                  stack: error instanceof Error ? error.stack : undefined,
+                  retry_count: newRetryCount,
+                  timestamp: new Date().toISOString(),
+                  context: 'AI auto-reply processing exception'
+                }
               })
               .eq('reply_id', reply.reply_id);
           }
@@ -395,7 +421,37 @@ serve(async (req) => {
             .from('thread_replies')
             .update({ 
               reply_status: 'pending',
-              auto_reply_sent: false  // 処理されなかったのでfalse
+              auto_reply_sent: false,  // 処理されなかったのでfalse
+              error_details: {
+                error: 'Auto Reply Disabled',
+                message: 'Both template and AI auto-reply are disabled for this persona',
+                timestamp: new Date().toISOString(),
+                context: 'auto-reply disabled check'
+              }
+            })
+            .eq('reply_id', reply.reply_id);
+        } else if (!replySent) {
+          // 自動返信は有効だが送信されなかった場合
+          console.log(`⚠️ 自動返信有効だが送信されず: ${reply.id}`);
+          const newRetryCount = (reply.retry_count || 0) + 1;
+          const maxRetries = reply.max_retries || 3;
+          
+          await supabase
+            .from('thread_replies')
+            .update({ 
+              reply_status: newRetryCount >= maxRetries ? 'failed' : 'failed',
+              auto_reply_sent: false,
+              retry_count: newRetryCount,
+              last_retry_at: new Date().toISOString(),
+              error_details: {
+                error: 'Reply Not Sent',
+                message: 'Auto-reply enabled but reply was not sent (no matching keywords, no AI response)',
+                retry_count: newRetryCount,
+                timestamp: new Date().toISOString(),
+                context: 'reply not sent despite auto-reply enabled',
+                persona_auto_reply: persona.auto_reply_enabled,
+                persona_ai_reply: persona.ai_auto_reply_enabled
+              }
             })
             .eq('reply_id', reply.reply_id);
         }
@@ -412,7 +468,7 @@ serve(async (req) => {
         const newRetryCount = (reply.retry_count || 0) + 1;
         const maxRetries = reply.max_retries || 3;
         
-        // エラー時はロックを解除＋リトライ情報を記録
+        // CRITICAL: エラー時は必ず詳細を記録
         await supabase
           .from('thread_replies')
           .update({ 
@@ -423,8 +479,10 @@ serve(async (req) => {
             error_details: {
               error: error instanceof Error ? error.name : 'Unknown Error',
               message: error instanceof Error ? error.message : String(error),
+              stack: error instanceof Error ? error.stack : undefined,
               retry_count: newRetryCount,
-              timestamp: new Date().toISOString()
+              timestamp: new Date().toISOString(),
+              context: 'reply processing top-level catch'
             }
           })
           .eq('reply_id', reply.reply_id);
@@ -565,19 +623,29 @@ async function processTemplateAutoReply(persona: any, reply: any): Promise<{ sen
           const newRetryCount = isInvalidPost ? 999 : ((reply.retry_count || 0) + 1);
           const maxRetries = reply.max_retries || 3;
           
+          // CRITICAL: エラー詳細を必ず記録
+          const errorDetails = sendResult.errorDetails ? {
+            ...sendResult.errorDetails,
+            reply_type: 'template',
+            retry_count: newRetryCount,
+            invalid_post: isInvalidPost,
+            timestamp: new Date().toISOString()
+          } : {
+            error: 'Template Reply Send Failed',
+            message: 'Failed to send template reply without detailed error info',
+            reply_type: 'template',
+            retry_count: newRetryCount,
+            invalid_post: isInvalidPost,
+            timestamp: new Date().toISOString()
+          };
+          
           await supabase
             .from('thread_replies')
             .update({ 
               reply_status: (newRetryCount >= maxRetries || isInvalidPost) ? 'failed' : 'failed',
               retry_count: newRetryCount,
               last_retry_at: new Date().toISOString(),
-              error_details: {
-                ...sendResult.errorDetails,
-                reply_type: 'template',
-                retry_count: newRetryCount,
-                invalid_post: isInvalidPost,
-                timestamp: new Date().toISOString()
-              }
+              error_details: errorDetails
             })
             .eq('reply_id', reply.reply_id);
             
