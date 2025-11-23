@@ -529,9 +529,9 @@ async function processTemplateAutoReply(persona: any, reply: any): Promise<{ sen
           } else {
             // 遅延時間が0分の場合は即座に送信
             console.log(`📤 定型文返信を即座に送信 - reply: ${reply.id}`);
-            const success = await sendThreadsReply(persona, reply.id, setting.response_template);
+            const sendResult = await sendThreadsReply(persona, reply.id, setting.response_template);
             
-            if (success) {
+            if (sendResult.success) {
               console.log(`✅ 定型文返信送信成功`);
               // アクティビティログを記録
               await logActivity(persona.user_id, persona.id, 'template_auto_reply_sent',
@@ -543,7 +543,33 @@ async function processTemplateAutoReply(persona: any, reply: any): Promise<{ sen
 
               return { sent: true, method: 'template' };
             } else {
-              console.error(`❌ 定型文返信送信失敗`);
+              console.error(`❌ 定型文返信送信失敗:`, sendResult.error);
+              
+              // Update reply status to failed with error details
+              const errorDetails = sendResult.errorDetails || {
+                error_type: 'template_reply_send_failed',
+                error_message: sendResult.error || 'Unknown error during template reply send',
+                timestamp: new Date().toISOString(),
+                response_template: setting.response_template
+              };
+              
+              const { error: updateError } = await supabase
+                .from('thread_replies')
+                .update({ 
+                  reply_status: 'failed',
+                  error_details: errorDetails,
+                  updated_at: new Date().toISOString()
+                })
+                .eq('id', reply.id);
+              
+              if (updateError) {
+                console.error('Failed to update reply status to failed:', updateError);
+              } else {
+                console.log('✅ Updated reply status to failed with error details');
+              }
+              
+              await logActivity(persona.user_id, persona.id, 'auto_reply_failed',
+                `定型文返信送信失敗: ${sendResult.error || 'Unknown error'}`);
             }
           }
         } catch (error) {
@@ -630,7 +656,11 @@ async function processAIAutoReply(persona: any, reply: any): Promise<{ sent: boo
 }
 
 // Threads APIを使用して返信を送信
-async function sendThreadsReply(persona: any, replyToId: string, responseText: string): Promise<boolean> {
+async function sendThreadsReply(
+  persona: any, 
+  replyToId: string, 
+  responseText: string
+): Promise<{ success: boolean; error?: string; errorDetails?: any }> {
   try {
     console.log(`📤 Threads返信送信開始: "${responseText}" (Reply to: ${replyToId})`);
 
@@ -638,7 +668,15 @@ async function sendThreadsReply(persona: any, replyToId: string, responseText: s
     const accessToken = await getAccessToken(persona);
     if (!accessToken) {
       console.error('❌ アクセストークンの取得に失敗');
-      return false;
+      return {
+        success: false,
+        error: 'Failed to get access token',
+        errorDetails: {
+          error_type: 'token_retrieval_failed',
+          error_message: 'Could not retrieve access token for persona',
+          timestamp: new Date().toISOString()
+        }
+      };
     }
 
     const userId = persona.threads_user_id || 'me';
@@ -660,7 +698,32 @@ async function sendThreadsReply(persona: any, replyToId: string, responseText: s
     if (!createResponse.ok) {
       const errorText = await createResponse.text();
       console.error('❌ Threads コンテナ作成失敗:', errorText);
-      return false;
+      
+      let errorDetails;
+      try {
+        const errorData = JSON.parse(errorText);
+        errorDetails = {
+          error_type: 'container_creation_failed',
+          error_message: errorData.error?.message || errorText,
+          error_code: errorData.error?.code,
+          error_subcode: errorData.error?.error_subcode,
+          http_status: createResponse.status,
+          timestamp: new Date().toISOString()
+        };
+      } catch {
+        errorDetails = {
+          error_type: 'container_creation_failed',
+          error_message: errorText,
+          http_status: createResponse.status,
+          timestamp: new Date().toISOString()
+        };
+      }
+      
+      return {
+        success: false,
+        error: `Container creation failed: ${errorText}`,
+        errorDetails
+      };
     }
 
     const containerData = await createResponse.json();
@@ -686,8 +749,18 @@ async function sendThreadsReply(persona: any, replyToId: string, responseText: s
       console.error('❌ Threads 投稿公開失敗:', errorText);
       
       // レート制限エラーを検出
+      let errorDetails;
       try {
         const errorData = JSON.parse(errorText);
+        errorDetails = {
+          error_type: 'publish_failed',
+          error_message: errorData.error?.message || errorData.error?.error_user_msg || errorText,
+          error_code: errorData.error?.code,
+          error_subcode: errorData.error?.error_subcode,
+          http_status: publishResponse.status,
+          timestamp: new Date().toISOString()
+        };
+        
         if (errorData.error?.error_subcode === 2207051) {
           console.warn('🚨 スパム検出/レート制限を検出 - ペルソナを制限状態に設定');
           
@@ -704,21 +777,42 @@ async function sendThreadsReply(persona: any, replyToId: string, responseText: s
             .eq('id', persona.id);
           
           console.log(`✅ ペルソナ ${persona.name} をレート制限状態に設定しました`);
+          
+          errorDetails.rate_limited = true;
+          errorDetails.rate_limit_until = rateLimitUntil.toISOString();
         }
       } catch (parseError) {
         console.error('エラーレスポンスのパース失敗:', parseError);
+        errorDetails = {
+          error_type: 'publish_failed',
+          error_message: errorText,
+          http_status: publishResponse.status,
+          timestamp: new Date().toISOString()
+        };
       }
       
-      return false;
+      return {
+        success: false,
+        error: `Publish failed: ${errorText}`,
+        errorDetails
+      };
     }
 
     const publishData = await publishResponse.json();
     console.log(`🎉 返信送信成功: ${publishData.id}`);
-    return true;
+    return { success: true };
 
   } catch (error) {
     console.error('❌ Threads返信送信エラー:', error);
-    return false;
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+      errorDetails: {
+        error_type: 'unexpected_error',
+        error_message: error instanceof Error ? error.message : String(error),
+        timestamp: new Date().toISOString()
+      }
+    };
   }
 }
 
