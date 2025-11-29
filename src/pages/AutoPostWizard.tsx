@@ -296,13 +296,15 @@ export default function AutoPostWizard() {
 
               {multiTimeEnabled ? (
                 // 複数時間設定UI
-                <MultiTimeSelector
-                  times={multiTimes}
-                  onChange={setMultiTimes}
-                />
+                <div key="multi-time">
+                  <MultiTimeSelector
+                    times={multiTimes}
+                    onChange={setMultiTimes}
+                  />
+                </div>
               ) : (
                 // 従来の単一時間設定UI
-                <div>
+                <div key="single-time">
                   <Label htmlFor="time">投稿時間</Label>
                   <Input id="time" type="time" value={time} onChange={(e) => setTime(e.target.value)} />
                   <p className="text-xs text-muted-foreground mt-1">タイムゾーン: {timeZone}</p>
