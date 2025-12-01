@@ -27,7 +27,9 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useAccountStatus } from "@/hooks/useAccountStatus";
 import { AccountStatusBanner } from "@/components/AccountStatusBanner";
 import { TokenMissingAlert } from "@/components/PersonaSetup/TokenMissingAlert";
+import { TokenHealthAlert } from "@/components/TokenHealthAlert";
 import { RateLimitNotification } from "@/components/RateLimitNotification";
+import { PostingMetricsDashboard } from "@/components/PostingMetricsDashboard";
 import { supabase } from "@/integrations/supabase/client";
 
 const Index = () => {
@@ -221,9 +223,13 @@ const Index = () => {
 
         <AccountStatusBanner />
         
+        <TokenHealthAlert />
+        
         <RateLimitNotification />
         
         <TokenMissingAlert />
+        
+        <PostingMetricsDashboard />
 
         {/* Enhanced Admin Section */}
 

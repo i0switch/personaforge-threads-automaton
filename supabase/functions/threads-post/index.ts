@@ -584,32 +584,85 @@ serve(async (req) => {
     if (!publishResponse.ok) {
       console.error('Threads publish error:', publishResponseText);
       
+      // エラーレスポンスを解析
+      let errorData: any;
+      try {
+        errorData = JSON.parse(publishResponseText);
+      } catch {
+        errorData = { message: publishResponseText };
+      }
+
+      // エラーの詳細な分類
+      let failureCategory = 'api_error';
+      let failureReason = `Threads API エラー (${publishResponse.status})`;
+
       // Handle specific error cases
-      if (publishResponse.status === 403) {
+      if (publishResponse.status === 403 || publishResponse.status === 401) {
+        failureCategory = 'token_expired';
+        failureReason = 'Threadsアクセストークンが期限切れまたは無効です';
+        
         await supabase.from('security_events').insert({
           event_type: 'threads_auth_failed',
           user_id: userId,
           details: {
             persona_id: post.persona_id,
             post_id: postId,
-            error: 'Threads API authentication failed during publish (403)',
+            error: `Threads API authentication failed during publish (${publishResponse.status})`,
             response: publishResponseText
           }
         });
-      } else if (publishResponse.status === 400 && publishResponseText.includes('text is too long')) {
-        await supabase.from('security_events').insert({
-          event_type: 'threads_content_error',
-          user_id: userId,
-          details: {
-            persona_id: post.persona_id,
-            post_id: postId,
-            error: 'Threads content length exceeded (500 characters)',
-            content_length: post.content.length
-          }
-        });
+      } else if (publishResponse.status === 400) {
+        // レート制限チェック
+        if (errorData?.error?.error_subcode === 2207050 || publishResponseText.includes('制限されています')) {
+          failureCategory = 'rate_limited';
+          failureReason = 'Threads APIのレート制限により投稿できませんでした';
+          
+          // ペルソナを一時停止
+          await supabase
+            .from('personas')
+            .update({
+              is_rate_limited: true,
+              rate_limit_detected_at: new Date().toISOString(),
+              rate_limit_until: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+              rate_limit_reason: errorData?.error?.error_user_msg || 'Rate limited'
+            })
+            .eq('id', post.persona_id);
+          
+          // 自動投稿設定を一時停止
+          await supabase
+            .from('auto_post_configs')
+            .update({ is_active: false })
+            .eq('persona_id', post.persona_id);
+        } else if (publishResponseText.includes('text is too long')) {
+          failureReason = 'コンテンツが長すぎます（500文字制限）';
+          
+          await supabase.from('security_events').insert({
+            event_type: 'threads_content_error',
+            user_id: userId,
+            details: {
+              persona_id: post.persona_id,
+              post_id: postId,
+              error: 'Threads content length exceeded (500 characters)',
+              content_length: post.content.length
+            }
+          });
+        } else {
+          failureReason = `Threads API エラー: ${errorData?.error?.message || publishResponseText}`;
+        }
       }
+
+      // 失敗情報を記録
+      await supabase
+        .from('posts')
+        .update({
+          status: 'failed',
+          failure_reason: failureReason,
+          failure_category: failureCategory,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', postId);
       
-      throw new Error(`Failed to publish to Threads: ${publishResponse.status} ${publishResponseText}`);
+      throw new Error(`Failed to publish to Threads: ${failureReason}`);
     }
 
     const publishData = JSON.parse(publishResponseText);
@@ -704,9 +757,52 @@ serve(async (req) => {
   } catch (error) {
     console.error('Error in threads-post function:', error);
     console.error('Error stack:', error instanceof Error ? error.stack : 'no stack');
+    
+    // エラー分類とfailure_reasonの設定
+    let failureCategory = 'api_error';
+    let failureReason = error instanceof Error ? error.message : String(error);
+    
+    // エラーメッセージから詳細な分類を行う
+    if (failureReason.includes('expired') || failureReason.includes('403') || failureReason.includes('authentication failed')) {
+      failureCategory = 'token_expired';
+      failureReason = 'Threadsアクセストークンが期限切れまたは無効です';
+    } else if (failureReason.includes('rate limit') || failureReason.includes('2207050') || failureReason.includes('制限されています')) {
+      failureCategory = 'rate_limited';
+      failureReason = 'Threads APIのレート制限により投稿できませんでした';
+    } else if (failureReason.includes('network') || failureReason.includes('timeout') || failureReason.includes('ECONNREFUSED')) {
+      failureCategory = 'network_error';
+      failureReason = 'ネットワークエラーにより投稿できませんでした';
+    } else if (failureReason.includes('400') || failureReason.includes('Invalid') || failureReason.includes('too long')) {
+      failureCategory = 'api_error';
+      failureReason = 'Threads APIエラー: ' + failureReason;
+    }
+    
+    // postsテーブルにfailure情報を記録
+    try {
+      const requestBody = await req.json().catch(() => ({}));
+      const postId = requestBody?.postId;
+      
+      if (postId) {
+        await supabase
+          .from('posts')
+          .update({
+            status: 'failed',
+            failure_reason: failureReason,
+            failure_category: failureCategory,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', postId);
+        
+        console.log(`Failed post recorded: ${postId}, category: ${failureCategory}`);
+      }
+    } catch (updateError) {
+      console.error('Failed to update post failure info:', updateError);
+    }
+    
     return new Response(
       JSON.stringify({ 
-        error: error instanceof Error ? error.message : String(error),
+        error: failureReason,
+        category: failureCategory,
         success: false 
       }),
       { 
