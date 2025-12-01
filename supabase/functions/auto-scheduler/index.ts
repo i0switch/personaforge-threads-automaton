@@ -400,16 +400,26 @@ serve(async (req) => {
           continue;
         }
 
-        // 投稿を処理中に更新
-        console.log('Updating post to processing status...');
-        const { error: updatePostError } = await supabase
+        // ✅ CRITICAL FIX: アトミックロックで重複投稿を防止
+        console.log('Attempting to lock post with atomic update...');
+        const { data: lockResult, error: updatePostError } = await supabase
           .from('posts')
-          .update({ status: 'processing' })
-          .eq('id', post.id);
+          .update({ status: 'processing', updated_at: now.toISOString() })
+          .eq('id', post.id)
+          .eq('status', 'scheduled') // ✅ 重要: scheduledの場合のみ更新
+          .select('id');
 
         if (updatePostError) {
-          console.error('Error updating post status:', updatePostError);
+          console.error('Error locking post:', updatePostError);
+          continue;
         }
+
+        if (!lockResult || lockResult.length === 0) {
+          console.warn(`⏭️ Post ${post.id} already processed by another instance, skipping`);
+          continue;
+        }
+
+        console.log(`🔒 Successfully locked post ${post.id} for processing`);
 
         // Threads投稿を実行
         console.log('Invoking threads-post function...');
