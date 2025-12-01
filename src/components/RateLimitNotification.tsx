@@ -34,7 +34,34 @@ export const RateLimitNotification = () => {
 
         if (error) throw error;
 
-        setRateLimitedPersonas(data || []);
+        // 期限切れのレート制限を自動解除
+        const now = new Date();
+        const validPersonas: RateLimitedPersona[] = [];
+
+        for (const persona of data || []) {
+          if (persona.rate_limit_until) {
+            const limitUntil = new Date(persona.rate_limit_until);
+            if (now >= limitUntil) {
+              // レート制限を解除
+              await supabase
+                .from('personas')
+                .update({
+                  is_rate_limited: false,
+                  rate_limit_detected_at: null,
+                  rate_limit_reason: null,
+                  rate_limit_until: null
+                })
+                .eq('id', persona.id);
+              console.log(`✅ レート制限自動解除: ${persona.name}`);
+            } else {
+              validPersonas.push(persona);
+            }
+          } else {
+            validPersonas.push(persona);
+          }
+        }
+
+        setRateLimitedPersonas(validPersonas);
       } catch (error) {
         console.error('Error fetching rate limited personas:', error);
       } finally {

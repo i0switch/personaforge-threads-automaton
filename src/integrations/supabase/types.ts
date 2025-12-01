@@ -405,12 +405,70 @@ export type Database = {
           },
         ]
       }
+      posting_metrics: {
+        Row: {
+          api_errors: number | null
+          attempts: number | null
+          created_at: string | null
+          date: string
+          failures: number | null
+          id: string
+          network_errors: number | null
+          persona_id: string
+          rate_limit_errors: number | null
+          success_rate: number | null
+          successes: number | null
+          token_errors: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          api_errors?: number | null
+          attempts?: number | null
+          created_at?: string | null
+          date: string
+          failures?: number | null
+          id?: string
+          network_errors?: number | null
+          persona_id: string
+          rate_limit_errors?: number | null
+          success_rate?: number | null
+          successes?: number | null
+          token_errors?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          api_errors?: number | null
+          attempts?: number | null
+          created_at?: string | null
+          date?: string
+          failures?: number | null
+          id?: string
+          network_errors?: number | null
+          persona_id?: string
+          rate_limit_errors?: number | null
+          success_rate?: number | null
+          successes?: number | null
+          token_errors?: number | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "posting_metrics_persona_id_fkey"
+            columns: ["persona_id"]
+            isOneToOne: false
+            referencedRelation: "personas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       posts: {
         Row: {
           app_identifier: string | null
           auto_schedule: boolean | null
           content: string
           created_at: string
+          failure_category: string | null
+          failure_reason: string | null
           hashtags: string[] | null
           id: string
           images: string[] | null
@@ -432,6 +490,8 @@ export type Database = {
           auto_schedule?: boolean | null
           content: string
           created_at?: string
+          failure_category?: string | null
+          failure_reason?: string | null
           hashtags?: string[] | null
           id?: string
           images?: string[] | null
@@ -453,6 +513,8 @@ export type Database = {
           auto_schedule?: boolean | null
           content?: string
           created_at?: string
+          failure_category?: string | null
+          failure_reason?: string | null
           hashtags?: string[] | null
           id?: string
           images?: string[] | null
