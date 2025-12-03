@@ -256,35 +256,58 @@ serve(async (req) => {
 // Webhookペイロードからリプライデータを抽出
 function extractRepliesFromPayload(payload: any): any[] {
   console.log('🔍 リプライデータ抽出開始');
+  console.log(`📋 受信ペイロード構造: entry=${!!payload.entry}, values=${!!payload.values}, object=${payload.object}`);
   
   const replies = [];
   
-  // Meta/Threadsの標準的なwebhook形式
+  // Meta/Threadsの標準的なwebhook形式 (entry.changes)
   if (payload.entry && Array.isArray(payload.entry)) {
+    console.log(`📂 entry配列を処理中: ${payload.entry.length}件`);
     for (const entry of payload.entry) {
+      console.log(`  📁 entry処理: id=${entry.id}, changes=${entry.changes?.length || 0}件`);
       if (entry.changes && Array.isArray(entry.changes)) {
         for (const change of entry.changes) {
-          if (change.field === 'mention' && change.value) {
+          console.log(`    📄 change処理: field="${change.field}", hasValue=${!!change.value}`);
+          
+          // 🔧 修正: 複数形も単数形もサポート (Meta APIの仕様に対応)
+          if ((change.field === 'mentions' || change.field === 'mention') && change.value) {
             // メンション形式のリプライ
             replies.push(change.value);
-            console.log(`✅ メンションリプライ抽出: ${change.value.id} - "${change.value.text}"`);
-          } else if (change.field === 'reply' && change.value) {
+            console.log(`✅ メンションリプライ抽出: ${change.value.id} - "${change.value.text?.substring(0, 50)}..."`);
+          } else if ((change.field === 'replies' || change.field === 'reply') && change.value) {
             // リプライ形式
             replies.push(change.value);
-            console.log(`✅ リプライ抽出: ${change.value.id} - "${change.value.text}"`);
+            console.log(`✅ リプライ抽出: ${change.value.id} - "${change.value.text?.substring(0, 50)}..."`);
+          } else {
+            console.log(`⚠️ 未知のフィールド: "${change.field}" - データ破棄されません、ログのみ`);
           }
         }
       }
     }
   }
   
-  // 既存の形式も保持（後方互換性）
+  // 既存の形式も保持（後方互換性）- values形式
   if (payload.values && Array.isArray(payload.values)) {
+    console.log(`📂 values配列を処理中: ${payload.values.length}件`);
     for (const valueItem of payload.values) {
-      if (valueItem.field === 'replies' && valueItem.value) {
+      console.log(`  📄 value処理: field="${valueItem.field}", hasValue=${!!valueItem.value}`);
+      // 🔧 修正: 複数形も単数形もサポート
+      if ((valueItem.field === 'replies' || valueItem.field === 'reply') && valueItem.value) {
         replies.push(valueItem.value);
-        console.log(`✅ レガシーリプライ抽出: ${valueItem.value.id} - "${valueItem.value.text}"`);
+        console.log(`✅ レガシーリプライ抽出: ${valueItem.value.id} - "${valueItem.value.text?.substring(0, 50)}..."`);
+      } else if ((valueItem.field === 'mentions' || valueItem.field === 'mention') && valueItem.value) {
+        replies.push(valueItem.value);
+        console.log(`✅ レガシーメンション抽出: ${valueItem.value.id} - "${valueItem.value.text?.substring(0, 50)}..."`);
       }
+    }
+  }
+  
+  // 🔧 追加: ペイロードが空の場合のデバッグ情報
+  if (replies.length === 0) {
+    console.warn(`⚠️ リプライ抽出結果: 0件`);
+    console.warn(`   ペイロードキー: ${Object.keys(payload).join(', ')}`);
+    if (payload.entry?.[0]?.changes?.[0]) {
+      console.warn(`   最初のchangeフィールド: "${payload.entry[0].changes[0].field}"`);
     }
   }
   
