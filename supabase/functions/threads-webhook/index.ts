@@ -60,6 +60,29 @@ const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+// 🔍 DEBUG: Webhookリクエストをデータベースにログ記録
+async function logWebhookRequest(
+  personaId: string | null, 
+  method: string, 
+  status: string, 
+  details: any
+): Promise<void> {
+  try {
+    await supabase.from('security_events').insert({
+      event_type: `webhook_${status}`,
+      details: {
+        persona_id: personaId,
+        method,
+        status,
+        ...details,
+        timestamp: new Date().toISOString()
+      }
+    });
+  } catch (err) {
+    console.error('Failed to log webhook request:', err);
+  }
+}
+
 // Phase 1 Security: Webhook payload validation schema
 const WebhookReplyValueSchema = z.object({
   id: z.string().max(100),
@@ -100,7 +123,8 @@ const WebhookPayloadSchema = z.object({
 });
 
 serve(async (req) => {
-  console.log(`🚀 Webhook受信: ${req.method} ${req.url}`);
+  const requestTimestamp = new Date().toISOString();
+  console.log(`🚀 Webhook受信: ${req.method} ${req.url} at ${requestTimestamp}`);
 
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -111,8 +135,24 @@ serve(async (req) => {
     const url = new URL(req.url);
     const personaId = url.searchParams.get('persona_id');
     
+    // 🔍 DEBUG: 全リクエストをログ記録（persona_idがなくても記録）
+    const debugHeaders: Record<string, string> = {};
+    req.headers.forEach((value, key) => {
+      debugHeaders[key] = value;
+    });
+    
+    console.log(`📥 リクエスト詳細:`, {
+      method: req.method,
+      url: req.url,
+      personaId,
+      headers: debugHeaders,
+      timestamp: requestTimestamp
+    });
+    
     if (!personaId) {
       console.error('❌ ペルソナIDが指定されていません');
+      // persona_idなしのリクエストもログ記録
+      await logWebhookRequest(null, req.method, 'missing_persona_id', { url: req.url, headers: debugHeaders });
       return new Response(JSON.stringify({ error: 'persona_id is required' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -128,6 +168,7 @@ serve(async (req) => {
     
     if (!rateLimitResult.allowed) {
       console.warn(`⚠️ レート制限超過: persona_id=${personaId}`);
+      await logWebhookRequest(personaId, req.method, 'rate_limited', { retryAfter: rateLimitResult.retryAfter });
       return new Response(
         JSON.stringify({ 
           error: 'Rate limit exceeded',
@@ -151,25 +192,40 @@ serve(async (req) => {
       
       console.log(`🔐 Facebook Webhook認証 - challenge received, verify_token validation`);
       
+      // 🔍 DEBUG: GET (verification) リクエストをログ記録
+      await logWebhookRequest(personaId, 'GET', 'verification_attempt', { 
+        hasChallenge: !!challenge, 
+        hasVerifyToken: !!verifyToken 
+      });
+      
       // ペルソナのwebhook_verify_tokenを取得
       const { data: persona } = await supabase
         .from('personas')
-        .select('webhook_verify_token')
+        .select('webhook_verify_token, name')
         .eq('id', personaId)
         .maybeSingle();
       
       if (persona && persona.webhook_verify_token && verifyToken === persona.webhook_verify_token) {
-        console.log(`✅ Webhook認証成功 - persona: ${personaId}`);
+        console.log(`✅ Webhook認証成功 - persona: ${personaId} (${persona.name})`);
+        await logWebhookRequest(personaId, 'GET', 'verification_success', { personaName: persona.name });
         return new Response(challenge, {
           headers: { 'Content-Type': 'text/plain' }
         });
       } else {
         console.error(`❌ Webhook認証失敗 - 期待値: ${persona?.webhook_verify_token}, 受信値: ${verifyToken}`);
+        await logWebhookRequest(personaId, 'GET', 'verification_failed', { 
+          expected: persona?.webhook_verify_token ? '[SET]' : '[NOT SET]',
+          received: verifyToken ? '[PROVIDED]' : '[NOT PROVIDED]',
+          personaName: persona?.name
+        });
         return new Response('Forbidden', { status: 403 });
       }
     }
 
     console.log(`📋 処理開始 - ペルソナID: ${personaId}`);
+    
+    // 🔍 DEBUG: POSTリクエスト受信をログ記録
+    await logWebhookRequest(personaId, 'POST', 'received', { step: 'start' });
 
     // ペルソナ情報を取得（自動返信設定も含む）
     const { data: persona, error: personaError } = await supabase
@@ -180,6 +236,7 @@ serve(async (req) => {
 
     if (personaError || !persona) {
       console.error('❌ ペルソナが見つかりません:', personaError);
+      await logWebhookRequest(personaId, 'POST', 'persona_not_found', { error: personaError?.message });
       return new Response(JSON.stringify({ error: 'Persona not found' }), {
         status: 404,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -196,11 +253,23 @@ serve(async (req) => {
       rawPayload = await req.json();
     } catch (e) {
       console.error('❌ Invalid JSON payload:', e);
+      await logWebhookRequest(personaId, 'POST', 'invalid_json', { error: String(e) });
       return new Response(JSON.stringify({ error: 'Invalid JSON payload' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
+
+    // 🔍 DEBUG: 受信したペイロードをログ記録（詳細）
+    await logWebhookRequest(personaId, 'POST', 'payload_received', {
+      personaName: persona.name,
+      payloadKeys: Object.keys(rawPayload),
+      hasEntry: !!rawPayload.entry,
+      hasValues: !!rawPayload.values,
+      entryCount: rawPayload.entry?.length || 0,
+      valuesCount: rawPayload.values?.length || 0,
+      rawPayloadPreview: JSON.stringify(rawPayload).substring(0, 500)
+    });
 
     // Phase 1 Security: Validate webhook payload structure
     let payload;
@@ -222,10 +291,24 @@ serve(async (req) => {
 
     if (replies.length === 0) {
       console.log('ℹ️ 処理対象のリプライがありません');
+      // 🔍 DEBUG: リプライ0件の場合の詳細ログ
+      await logWebhookRequest(personaId, 'POST', 'no_replies_extracted', {
+        personaName: persona.name,
+        payloadKeys: Object.keys(payload),
+        entryChanges: payload.entry?.[0]?.changes?.map((c: any) => c.field) || [],
+        valuesFields: payload.values?.map((v: any) => v.field) || []
+      });
       return new Response(JSON.stringify({ message: 'No replies to process' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
+
+    // 🔍 DEBUG: リプライ抽出成功ログ
+    await logWebhookRequest(personaId, 'POST', 'replies_extracted', {
+      personaName: persona.name,
+      replyCount: replies.length,
+      replyIds: replies.map((r: any) => r.id)
+    });
 
     // 各リプライを処理
     let processedCount = 0;
@@ -235,6 +318,13 @@ serve(async (req) => {
     }
 
     console.log(`✅ 処理完了 - ${processedCount}/${replies.length}件処理しました`);
+    
+    // 🔍 DEBUG: 処理完了ログ
+    await logWebhookRequest(personaId, 'POST', 'processing_complete', {
+      personaName: persona.name,
+      totalReplies: replies.length,
+      processedCount
+    });
 
     return new Response(JSON.stringify({ 
       success: true, 
