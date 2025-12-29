@@ -384,24 +384,67 @@ serve(async (req) => {
 
     let containerId: string;
 
+    // Helper: Validate URL format
+    const isValidUrl = (url: string): boolean => {
+      try {
+        const parsed = new URL(url);
+        return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+      } catch {
+        return false;
+      }
+    };
+
+    // Helper: Rehost image to Supabase storage if needed
+    const rehostImageIfNeeded = async (imageUrl: string, index: number): Promise<string> => {
+      try {
+        const supaHost = new URL(supabaseUrl).host;
+        const srcHost = new URL(imageUrl).host;
+
+        if (supaHost !== srcHost) {
+          console.log(`Rehosting external image ${index + 1} to Supabase Storage:`, imageUrl);
+          const imgRes = await fetch(imageUrl);
+          if (!imgRes.ok) throw new Error(`Failed to fetch source image: ${imgRes.status}`);
+
+          const contentType = imgRes.headers.get('content-type') || 'image/jpeg';
+          const arrayBuf = await imgRes.arrayBuffer();
+
+          const extFromType = contentType.includes('png') ? 'png' : contentType.includes('webp') ? 'webp' : contentType.includes('jpeg') ? 'jpg' : 'jpg';
+          const path = `${post.user_id}/${post.id}/${Date.now()}_${index}.${extFromType}`;
+
+          const { error: upErr } = await supabase
+            .storage
+            .from('post-images')
+            .upload(path, new Uint8Array(arrayBuf), { contentType, upsert: true });
+
+          if (upErr) {
+            console.warn(`Supabase upload failed for image ${index + 1}, using original URL:`, upErr);
+            return imageUrl;
+          }
+
+          const { data: pub } = supabase.storage.from('post-images').getPublicUrl(path);
+          if (pub?.publicUrl) {
+            console.log(`Image ${index + 1} rehosted to:`, pub.publicUrl);
+            return pub.publicUrl;
+          }
+        }
+        return imageUrl;
+      } catch (rehostErr) {
+        console.warn(`Image ${index + 1} rehosting skipped due to error:`, rehostErr);
+        return imageUrl;
+      }
+    };
+
     // Check if post has images and validate them
     if (post.images && post.images.length > 0) {
-      console.log(`Post has ${post.images.length} images, validating...`);
+      console.log(`Post has ${post.images.length} image(s), validating...`);
       
-      // Validate image URL format
-      const imageUrl = post.images[0];
-      const isValidUrl = (url: string): boolean => {
-        try {
-          const parsed = new URL(url);
-          return parsed.protocol === 'http:' || parsed.protocol === 'https:';
-        } catch {
-          return false;
-        }
-      };
+      // Filter valid image URLs
+      const validImages = post.images.filter((url: string) => url && isValidUrl(url));
+      console.log(`Valid images: ${validImages.length}/${post.images.length}`);
 
-      if (!imageUrl || !isValidUrl(imageUrl)) {
-        console.warn('Invalid image URL detected, creating text-only post instead:', imageUrl);
-        // Fallback to text-only post for invalid image URLs
+      if (validImages.length === 0) {
+        // No valid images, fallback to text-only post
+        console.warn('No valid image URLs detected, creating text-only post instead');
         const createContainerResponse = await fetch('https://graph.threads.net/v1.0/me/threads', {
           method: 'POST',
           headers: {
@@ -429,49 +472,17 @@ serve(async (req) => {
         const containerData = JSON.parse(responseText);
         console.log('Fallback text container created:', containerData);
         containerId = containerData.id;
-      } else {
-        console.log('Valid image URL detected, attempting to ensure permanent hosting');
 
-        // Ensure image is hosted on our Supabase storage (avoid expiring external URLs)
-        let finalImageUrl = imageUrl;
-        try {
-          const supaHost = new URL(supabaseUrl).host;
-          const srcHost = new URL(imageUrl).host;
+      } else if (validImages.length === 1) {
+        // Single image post
+        console.log('Single image post, processing...');
+        const finalImageUrl = await rehostImageIfNeeded(validImages[0], 0);
 
-          if (supaHost !== srcHost) {
-            console.log('Rehosting external image to Supabase Storage:', imageUrl);
-            const imgRes = await fetch(imageUrl);
-            if (!imgRes.ok) throw new Error(`Failed to fetch source image: ${imgRes.status}`);
-
-            const contentType = imgRes.headers.get('content-type') || 'image/jpeg';
-            const arrayBuf = await imgRes.arrayBuffer();
-
-            // Derive extension from content-type or fallback to webp/jpg
-            const extFromType = contentType.includes('png') ? 'png' : contentType.includes('webp') ? 'webp' : contentType.includes('jpeg') ? 'jpg' : 'jpg';
-            const path = `${post.user_id}/${post.id}/${Date.now()}.${extFromType}`;
-
-            const { data: upData, error: upErr } = await supabase
-              .storage
-              .from('post-images')
-              .upload(path, new Uint8Array(arrayBuf), { contentType, upsert: true });
-
-            if (upErr) {
-              console.warn('Supabase upload failed, will use original URL:', upErr);
-            } else {
-              const { data: pub } = supabase.storage.from('post-images').getPublicUrl(path);
-              if (pub?.publicUrl) {
-                finalImageUrl = pub.publicUrl;
-                // Persist back to DB so future operations use the stable URL
-                await supabase.from('posts').update({ images: [finalImageUrl] }).eq('id', post.id);
-                console.log('Image rehosted to Supabase Storage:', finalImageUrl);
-              }
-            }
-          }
-        } catch (rehostErr) {
-          console.warn('Image rehosting skipped due to error, proceeding with original URL:', rehostErr);
+        // Update DB with rehosted URL if changed
+        if (finalImageUrl !== validImages[0]) {
+          await supabase.from('posts').update({ images: [finalImageUrl] }).eq('id', post.id);
         }
 
-        // Create image container on Threads using the final (possibly rehosted) URL
         const createContainerResponse = await fetch('https://graph.threads.net/v1.0/me/threads', {
           method: 'POST',
           headers: {
@@ -495,7 +506,6 @@ serve(async (req) => {
         if (!createContainerResponse.ok) {
           console.error('Threads create image container error:', responseText);
           
-          // Handle specific 403 authentication error
           if (createContainerResponse.status === 403) {
             await supabase.from('security_events').insert({
               event_type: 'threads_auth_failed',
@@ -515,6 +525,113 @@ serve(async (req) => {
         const containerData = JSON.parse(responseText);
         console.log('Image container created:', containerData);
         containerId = containerData.id;
+
+      } else {
+        // Multiple images - use CAROUSEL
+        console.log(`Creating CAROUSEL post with ${validImages.length} images...`);
+        
+        // Step 1: Create individual media containers for each image
+        const childContainerIds: string[] = [];
+        const rehostedUrls: string[] = [];
+
+        for (let i = 0; i < validImages.length; i++) {
+          const imageUrl = validImages[i];
+          console.log(`Processing carousel image ${i + 1}/${validImages.length}...`);
+          
+          const finalImageUrl = await rehostImageIfNeeded(imageUrl, i);
+          rehostedUrls.push(finalImageUrl);
+
+          // Create carousel item container (is_carousel_item=true, NO text for carousel items)
+          const itemResponse = await fetch('https://graph.threads.net/v1.0/me/threads', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              media_type: 'IMAGE',
+              image_url: finalImageUrl,
+              is_carousel_item: true,
+              access_token: threadsAccessToken
+            }),
+          });
+
+          const itemText = await itemResponse.text();
+          console.log(`Carousel item ${i + 1} response:`, {
+            status: itemResponse.status,
+            ok: itemResponse.ok,
+            body: itemText
+          });
+
+          if (!itemResponse.ok) {
+            console.error(`Failed to create carousel item ${i + 1}:`, itemText);
+            throw new Error(`Failed to create carousel item ${i + 1}: ${itemResponse.status} ${itemText}`);
+          }
+
+          const itemData = JSON.parse(itemText);
+          childContainerIds.push(itemData.id);
+          console.log(`Carousel item ${i + 1} created: ${itemData.id}`);
+
+          // Wait a bit between creating items to avoid rate limiting
+          if (i < validImages.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+        }
+
+        // Update DB with rehosted URLs if any changed
+        const hasChanges = rehostedUrls.some((url, i) => url !== validImages[i]);
+        if (hasChanges) {
+          await supabase.from('posts').update({ images: rehostedUrls }).eq('id', post.id);
+          console.log('Updated post with rehosted image URLs');
+        }
+
+        // Wait for all items to be processed
+        console.log('Waiting for carousel items to be processed...');
+        await new Promise(resolve => setTimeout(resolve, 3000));
+
+        // Step 2: Create carousel container with children
+        console.log(`Creating carousel container with ${childContainerIds.length} children...`);
+        const carouselResponse = await fetch('https://graph.threads.net/v1.0/me/threads', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            media_type: 'CAROUSEL',
+            children: childContainerIds.join(','),
+            text: post.content,
+            access_token: threadsAccessToken
+          }),
+        });
+
+        const carouselText = await carouselResponse.text();
+        console.log('Carousel container response:', {
+          status: carouselResponse.status,
+          ok: carouselResponse.ok,
+          body: carouselText
+        });
+
+        if (!carouselResponse.ok) {
+          console.error('Failed to create carousel container:', carouselText);
+          
+          if (carouselResponse.status === 403) {
+            await supabase.from('security_events').insert({
+              event_type: 'threads_auth_failed',
+              user_id: userId,
+              details: {
+                persona_id: post.persona_id,
+                post_id: postId,
+                error: 'Threads API CAROUSEL authentication failed (403)',
+                response: carouselText
+              }
+            });
+          }
+          
+          throw new Error(`Failed to create carousel container: ${carouselResponse.status} ${carouselText}`);
+        }
+
+        const carouselData = JSON.parse(carouselText);
+        console.log('Carousel container created:', carouselData);
+        containerId = carouselData.id;
       }
 
     } else {
