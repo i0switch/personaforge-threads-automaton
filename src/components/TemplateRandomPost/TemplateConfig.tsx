@@ -669,6 +669,18 @@ export function TemplateConfigComponent() {
                                 </Card>
                               ))}
 
+                              {templates.length > 0 && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => addTemplate(box.id)}
+                                  className="w-full"
+                                >
+                                  <Plus className="h-3 w-3 mr-1" />
+                                  テンプレート追加
+                                </Button>
+                              )}
+
                               <Button
                                 className="w-full"
                                 onClick={() => saveTemplates(box.id)}
