@@ -9,8 +9,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { toast } from "sonner";
-import { Trash2, Upload, Plus, Save, Box, Copy } from "lucide-react";
+import { Trash2, Upload, Plus, Save, Box, Copy, ChevronDown, User } from "lucide-react";
 import { MultiTimeSelector } from "@/components/AutoPost/MultiTimeSelector";
 interface Persona {
   id: string;
@@ -45,6 +47,7 @@ export function TemplateConfigComponent() {
   const [duplicateDialogOpen, setDuplicateDialogOpen] = useState<string | null>(null);
   const [selectedSourcePersona, setSelectedSourcePersona] = useState<string>("");
   const [selectedSourceBox, setSelectedSourceBox] = useState<string>("");
+  const [expandedBoxes, setExpandedBoxes] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (user) {
@@ -561,297 +564,324 @@ export function TemplateConfigComponent() {
             </CardContent>
           </Card>
 
-          {filteredPersonas.map(persona => {
-          const personaBoxes = getBoxesForPersona(persona.id);
-          
-            return (
-              <Card key={persona.id} className="overflow-hidden">
-                <CardHeader className="bg-muted/50">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <CardTitle>{persona.name}</CardTitle>
-                      <CardDescription className="mt-1">
-                        テンプレート箱ごとに投稿時間を設定
-                      </CardDescription>
-                    </div>
-                    <div className="flex gap-2">
-                      <Dialog 
-                        open={duplicateDialogOpen === persona.id} 
-                        onOpenChange={(open) => {
-                          setDuplicateDialogOpen(open ? persona.id : null);
-                          if (!open) {
-                            setSelectedSourcePersona("");
-                            setSelectedSourceBox("");
-                          }
-                        }}
-                      >
-                        <DialogTrigger asChild>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={processing[persona.id]}
-                          >
-                            <Copy className="h-4 w-4 mr-1" />
-                            他から複製
-                          </Button>
-                        </DialogTrigger>
-                        <DialogContent>
-                          <DialogHeader>
-                            <DialogTitle>他ペルソナから箱を複製</DialogTitle>
-                            <DialogDescription>
-                              複製元のペルソナと箱を選択してください
-                            </DialogDescription>
-                          </DialogHeader>
-                          <div className="space-y-4 py-4">
-                            <div className="space-y-2">
-                              <Label>複製元ペルソナ</Label>
-                              <Select 
-                                value={selectedSourcePersona} 
-                                onValueChange={(value) => {
-                                  setSelectedSourcePersona(value);
-                                  setSelectedSourceBox("");
-                                }}
-                              >
-                                <SelectTrigger>
-                                  <SelectValue placeholder="ペルソナを選択" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {personas.filter(p => p.id !== persona.id && getSourceBoxesForPersona(p.id).length > 0).map(p => (
-                                    <SelectItem key={p.id} value={p.id}>
-                                      {p.name}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            
-                            {selectedSourcePersona && (
+          <Accordion type="single" collapsible className="space-y-4">
+            {filteredPersonas.map(persona => {
+              const personaBoxes = getBoxesForPersona(persona.id);
+              const activeBoxCount = personaBoxes.filter(b => b.is_active).length;
+              const totalTemplateCount = personaBoxes.reduce((sum, b) => sum + b.templates.length, 0);
+              
+              return (
+                <AccordionItem key={persona.id} value={persona.id} className="border rounded-lg overflow-hidden">
+                  <AccordionTrigger className="px-4 py-3 bg-muted/50 hover:bg-muted/70 [&[data-state=open]>svg]:rotate-180">
+                    <div className="flex items-center justify-between w-full mr-4">
+                      <div className="flex items-center gap-3">
+                        <User className="h-5 w-5 text-primary" />
+                        <div className="text-left">
+                          <div className="font-semibold">{persona.name}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {personaBoxes.length}箱 / {totalTemplateCount}テンプレート
+                            {activeBoxCount > 0 && (
+                              <span className="ml-2 text-green-600">（{activeBoxCount}箱 有効）</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+                        <Dialog 
+                          open={duplicateDialogOpen === persona.id} 
+                          onOpenChange={(open) => {
+                            setDuplicateDialogOpen(open ? persona.id : null);
+                            if (!open) {
+                              setSelectedSourcePersona("");
+                              setSelectedSourceBox("");
+                            }
+                          }}
+                        >
+                          <DialogTrigger asChild>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={processing[persona.id]}
+                            >
+                              <Copy className="h-4 w-4 mr-1" />
+                              他から複製
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent>
+                            <DialogHeader>
+                              <DialogTitle>他ペルソナから箱を複製</DialogTitle>
+                              <DialogDescription>
+                                複製元のペルソナと箱を選択してください
+                              </DialogDescription>
+                            </DialogHeader>
+                            <div className="space-y-4 py-4">
                               <div className="space-y-2">
-                                <Label>複製元の箱</Label>
-                                <Select value={selectedSourceBox} onValueChange={setSelectedSourceBox}>
+                                <Label>複製元ペルソナ</Label>
+                                <Select 
+                                  value={selectedSourcePersona} 
+                                  onValueChange={(value) => {
+                                    setSelectedSourcePersona(value);
+                                    setSelectedSourceBox("");
+                                  }}
+                                >
                                   <SelectTrigger>
-                                    <SelectValue placeholder="箱を選択" />
+                                    <SelectValue placeholder="ペルソナを選択" />
                                   </SelectTrigger>
                                   <SelectContent>
-                                    {getSourceBoxesForPersona(selectedSourcePersona).map(box => (
-                                      <SelectItem key={box.id} value={box.id}>
-                                        {box.box_name} ({box.templates.length}テンプレート)
+                                    {personas.filter(p => p.id !== persona.id && getSourceBoxesForPersona(p.id).length > 0).map(p => (
+                                      <SelectItem key={p.id} value={p.id}>
+                                        {p.name}
                                       </SelectItem>
                                     ))}
                                   </SelectContent>
                                 </Select>
                               </div>
-                            )}
-                            
-                            <Button 
-                              onClick={() => duplicateBoxFromOtherPersona(persona.id)}
-                              disabled={!selectedSourceBox || processing[persona.id]}
-                              className="w-full"
-                            >
-                              <Copy className="h-4 w-4 mr-2" />
-                              この箱を複製
-                            </Button>
-                          </div>
-                        </DialogContent>
-                      </Dialog>
-                      
-                      <Button
-                        size="sm"
-                        onClick={() => addNewBox(persona.id)}
-                        disabled={processing[persona.id]}
-                      >
-                        <Plus className="h-4 w-4 mr-1" />
-                        新規箱
-                      </Button>
-                    </div>
-                  </div>
-                </CardHeader>
-                
-                <CardContent className="p-6 space-y-4">
-                  {personaBoxes.length === 0 ? (
-                    <p className="text-sm text-muted-foreground text-center py-4">
-                      箱を追加してテンプレート文章を設定してください
-                    </p>
-                  ) : (
-                    personaBoxes.map(box => {
-                      const templates = editingTemplates[box.id] || [];
-                      const isEditingName = editingBoxNames[box.id] !== undefined;
-                      
-                      return (
-                        <Card key={box.id} className="border-2">
-                          <CardHeader className="pb-3">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-3 flex-1">
-                                <Box className="h-5 w-5 text-primary" />
-                                {isEditingName ? (
-                                  <Input
-                                    value={editingBoxNames[box.id]}
-                                    onChange={(e) => setEditingBoxNames(prev => ({ ...prev, [box.id]: e.target.value }))}
-                                    onBlur={() => updateBoxName(box.id, editingBoxNames[box.id])}
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Enter') {
-                                        updateBoxName(box.id, editingBoxNames[box.id]);
-                                      }
-                                    }}
-                                    className="max-w-xs"
-                                    autoFocus
-                                  />
-                                ) : (
-                                  <div className="flex flex-col">
-                                    <button
-                                      onClick={() => setEditingBoxNames(prev => ({ ...prev, [box.id]: box.box_name }))}
-                                      className="text-left font-semibold hover:text-primary transition-colors"
-                                    >
-                                      {box.box_name}
-                                    </button>
-                                    <span className="text-xs text-muted-foreground">
-                                      {box.templates.length}個のテンプレート
-                                    </span>
-                                  </div>
-                                )}
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <Label className="text-sm">有効</Label>
-                                <Switch
-                                  checked={box.is_active}
-                                  onCheckedChange={() => toggleBoxActive(box)}
-                                  disabled={processing[box.id]}
-                                />
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => deleteBox(box)}
-                                  disabled={processing[box.id]}
-                                >
-                                  <Trash2 className="h-4 w-4 text-destructive" />
-                                </Button>
-                              </div>
-                            </div>
-                          </CardHeader>
-
-                          <CardContent className="space-y-4">
-                            <div className="space-y-2">
-                              <Label>投稿時間</Label>
-                              <MultiTimeSelector
-                                times={box.random_times}
-                                onChange={(times) => updateRandomTimes(box.id, times)}
-                              />
-                              {box.next_run_at && (
-                                <p className="text-xs text-muted-foreground">
-                                  次回実行予定: {new Date(box.next_run_at).toLocaleString('ja-JP', { 
-                                    timeZone: box.timezone,
-                                    year: 'numeric',
-                                    month: '2-digit',
-                                    day: '2-digit',
-                                    hour: '2-digit',
-                                    minute: '2-digit'
-                                  })}
-                                </p>
-                              )}
-                            </div>
-
-                            <div className="space-y-3 border-t pt-4">
-                              <div className="flex items-center justify-between">
-                                <Label>テンプレート</Label>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => addTemplate(box.id)}
-                                >
-                                  <Plus className="h-3 w-3 mr-1" />
-                                  テンプレート追加
-                                </Button>
-                              </div>
-
-                              {templates.map((template, idx) => (
-                                <Card key={idx} className="p-4 space-y-3">
-                                  <div className="flex items-start justify-between">
-                                    <span className="text-sm font-medium">テンプレート {idx + 1}</span>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={() => removeTemplate(box.id, idx)}
-                                    >
-                                      <Trash2 className="h-3 w-3" />
-                                    </Button>
-                                  </div>
-
-                                  <Textarea
-                                    placeholder="投稿テキストを入力..."
-                                    value={template.text}
-                                    onChange={(e) => updateTemplate(box.id, idx, 'text', e.target.value)}
-                                    rows={4}
-                                    className="resize-none"
-                                  />
-
-                                  <div className="space-y-2">
-                                    <Label className="text-sm">画像（最大2枚）</Label>
-                                    <div className="flex flex-wrap gap-2">
-                                      {template.image_urls?.map((url, imgIdx) => (
-                                        <div key={imgIdx} className="relative group">
-                                          <img
-                                            src={url}
-                                            alt={`Image ${imgIdx + 1}`}
-                                            className="w-20 h-20 object-cover rounded border"
-                                          />
-                                          <button
-                                            onClick={() => removeImage(box.id, idx, imgIdx)}
-                                            className="absolute -top-2 -right-2 bg-destructive text-destructive-foreground rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                                          >
-                                            <Trash2 className="h-3 w-3" />
-                                          </button>
-                                        </div>
+                              
+                              {selectedSourcePersona && (
+                                <div className="space-y-2">
+                                  <Label>複製元の箱</Label>
+                                  <Select value={selectedSourceBox} onValueChange={setSelectedSourceBox}>
+                                    <SelectTrigger>
+                                      <SelectValue placeholder="箱を選択" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {getSourceBoxesForPersona(selectedSourcePersona).map(box => (
+                                        <SelectItem key={box.id} value={box.id}>
+                                          {box.box_name} ({box.templates.length}テンプレート)
+                                        </SelectItem>
                                       ))}
-                                      
-                                      {(!template.image_urls || template.image_urls.length < 2) && (
-                                        <label className="w-20 h-20 border-2 border-dashed rounded flex items-center justify-center cursor-pointer hover:border-primary transition-colors">
-                                          <Upload className="h-6 w-6 text-muted-foreground" />
-                                          <input
-                                            type="file"
-                                            accept="image/*"
-                                            onChange={(e) => {
-                                              const file = e.target.files?.[0];
-                                              if (file) handleImageUpload(box.id, idx, file);
-                                            }}
-                                            className="hidden"
-                                          />
-                                        </label>
-                                      )}
-                                    </div>
-                                  </div>
-                                </Card>
-                              ))}
-
-                              {templates.length > 0 && (
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => addTemplate(box.id)}
-                                  className="w-full"
-                                >
-                                  <Plus className="h-3 w-3 mr-1" />
-                                  テンプレート追加
-                                </Button>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
                               )}
-
-                              <Button
+                              
+                              <Button 
+                                onClick={() => duplicateBoxFromOtherPersona(persona.id)}
+                                disabled={!selectedSourceBox || processing[persona.id]}
                                 className="w-full"
-                                onClick={() => saveTemplates(box.id)}
-                                disabled={processing[box.id]}
                               >
-                                <Save className="h-4 w-4 mr-2" />
-                                テンプレートを保存
+                                <Copy className="h-4 w-4 mr-2" />
+                                この箱を複製
                               </Button>
                             </div>
-                          </CardContent>
-                        </Card>
-                      );
-                    })
-                  )}
-                </CardContent>
-              </Card>
-            );
-          })}
+                          </DialogContent>
+                        </Dialog>
+                        
+                        <Button
+                          size="sm"
+                          onClick={() => addNewBox(persona.id)}
+                          disabled={processing[persona.id]}
+                        >
+                          <Plus className="h-4 w-4 mr-1" />
+                          新規箱
+                        </Button>
+                      </div>
+                    </div>
+                  </AccordionTrigger>
+                  
+                  <AccordionContent className="p-4 space-y-3">
+                    {personaBoxes.length === 0 ? (
+                      <p className="text-sm text-muted-foreground text-center py-4">
+                        箱を追加してテンプレート文章を設定してください
+                      </p>
+                    ) : (
+                      personaBoxes.map(box => {
+                        const templates = editingTemplates[box.id] || [];
+                        const isEditingName = editingBoxNames[box.id] !== undefined;
+                        const isExpanded = expandedBoxes[box.id] ?? false;
+                        
+                        return (
+                          <Collapsible
+                            key={box.id}
+                            open={isExpanded}
+                            onOpenChange={(open) => setExpandedBoxes(prev => ({ ...prev, [box.id]: open }))}
+                          >
+                            <Card className="border-2">
+                              <CollapsibleTrigger asChild>
+                                <CardHeader className="pb-3 cursor-pointer hover:bg-muted/30 transition-colors">
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-3 flex-1">
+                                      <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                                      <Box className="h-5 w-5 text-primary" />
+                                      {isEditingName ? (
+                                        <Input
+                                          value={editingBoxNames[box.id]}
+                                          onChange={(e) => setEditingBoxNames(prev => ({ ...prev, [box.id]: e.target.value }))}
+                                          onBlur={() => updateBoxName(box.id, editingBoxNames[box.id])}
+                                          onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                              updateBoxName(box.id, editingBoxNames[box.id]);
+                                            }
+                                          }}
+                                          onClick={(e) => e.stopPropagation()}
+                                          className="max-w-xs"
+                                          autoFocus
+                                        />
+                                      ) : (
+                                        <div className="flex flex-col">
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setEditingBoxNames(prev => ({ ...prev, [box.id]: box.box_name }));
+                                            }}
+                                            className="text-left font-semibold hover:text-primary transition-colors"
+                                          >
+                                            {box.box_name}
+                                          </button>
+                                          <span className="text-xs text-muted-foreground">
+                                            {box.templates.length}個のテンプレート
+                                            {box.random_times.length > 0 && ` / ${box.random_times.length}時間設定`}
+                                          </span>
+                                        </div>
+                                      )}
+                                    </div>
+                                    <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                                      <Label className="text-sm">有効</Label>
+                                      <Switch
+                                        checked={box.is_active}
+                                        onCheckedChange={() => toggleBoxActive(box)}
+                                        disabled={processing[box.id]}
+                                      />
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        onClick={() => deleteBox(box)}
+                                        disabled={processing[box.id]}
+                                      >
+                                        <Trash2 className="h-4 w-4 text-destructive" />
+                                      </Button>
+                                    </div>
+                                  </div>
+                                </CardHeader>
+                              </CollapsibleTrigger>
+
+                              <CollapsibleContent>
+                                <CardContent className="space-y-4 pt-0">
+                                  <div className="space-y-2">
+                                    <Label>投稿時間</Label>
+                                    <MultiTimeSelector
+                                      times={box.random_times}
+                                      onChange={(times) => updateRandomTimes(box.id, times)}
+                                    />
+                                    {box.next_run_at && (
+                                      <p className="text-xs text-muted-foreground">
+                                        次回実行予定: {new Date(box.next_run_at).toLocaleString('ja-JP', { 
+                                          timeZone: box.timezone,
+                                          year: 'numeric',
+                                          month: '2-digit',
+                                          day: '2-digit',
+                                          hour: '2-digit',
+                                          minute: '2-digit'
+                                        })}
+                                      </p>
+                                    )}
+                                  </div>
+
+                                  <div className="space-y-3 border-t pt-4">
+                                    <div className="flex items-center justify-between">
+                                      <Label>テンプレート</Label>
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => addTemplate(box.id)}
+                                      >
+                                        <Plus className="h-3 w-3 mr-1" />
+                                        テンプレート追加
+                                      </Button>
+                                    </div>
+
+                                    {templates.map((template, idx) => (
+                                      <Card key={idx} className="p-4 space-y-3">
+                                        <div className="flex items-start justify-between">
+                                          <span className="text-sm font-medium">テンプレート {idx + 1}</span>
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => removeTemplate(box.id, idx)}
+                                          >
+                                            <Trash2 className="h-3 w-3" />
+                                          </Button>
+                                        </div>
+
+                                        <Textarea
+                                          placeholder="投稿テキストを入力..."
+                                          value={template.text}
+                                          onChange={(e) => updateTemplate(box.id, idx, 'text', e.target.value)}
+                                          rows={4}
+                                          className="resize-none"
+                                        />
+
+                                        <div className="space-y-2">
+                                          <Label className="text-sm">画像（最大2枚）</Label>
+                                          <div className="flex flex-wrap gap-2">
+                                            {template.image_urls?.map((url, imgIdx) => (
+                                              <div key={imgIdx} className="relative group">
+                                                <img
+                                                  src={url}
+                                                  alt={`Image ${imgIdx + 1}`}
+                                                  className="w-20 h-20 object-cover rounded border"
+                                                />
+                                                <button
+                                                  onClick={() => removeImage(box.id, idx, imgIdx)}
+                                                  className="absolute -top-2 -right-2 bg-destructive text-destructive-foreground rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                >
+                                                  <Trash2 className="h-3 w-3" />
+                                                </button>
+                                              </div>
+                                            ))}
+                                            
+                                            {(!template.image_urls || template.image_urls.length < 2) && (
+                                              <label className="w-20 h-20 border-2 border-dashed rounded flex items-center justify-center cursor-pointer hover:border-primary transition-colors">
+                                                <Upload className="h-6 w-6 text-muted-foreground" />
+                                                <input
+                                                  type="file"
+                                                  accept="image/*"
+                                                  onChange={(e) => {
+                                                    const file = e.target.files?.[0];
+                                                    if (file) handleImageUpload(box.id, idx, file);
+                                                  }}
+                                                  className="hidden"
+                                                />
+                                              </label>
+                                            )}
+                                          </div>
+                                        </div>
+                                      </Card>
+                                    ))}
+
+                                    {templates.length > 0 && (
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => addTemplate(box.id)}
+                                        className="w-full"
+                                      >
+                                        <Plus className="h-3 w-3 mr-1" />
+                                        テンプレート追加
+                                      </Button>
+                                    )}
+
+                                    <Button
+                                      className="w-full"
+                                      onClick={() => saveTemplates(box.id)}
+                                      disabled={processing[box.id]}
+                                    >
+                                      <Save className="h-4 w-4 mr-2" />
+                                      テンプレートを保存
+                                    </Button>
+                                  </div>
+                                </CardContent>
+                              </CollapsibleContent>
+                            </Card>
+                          </Collapsible>
+                        );
+                      })
+                    )}
+                  </AccordionContent>
+                </AccordionItem>
+              );
+            })}
+          </Accordion>
         </>
       )}
     </div>
