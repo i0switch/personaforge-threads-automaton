@@ -8,10 +8,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Trash2, Upload, Plus, Save, Box } from "lucide-react";
+import { Trash2, Upload, Plus, Save, Box, Copy } from "lucide-react";
 import { MultiTimeSelector } from "@/components/AutoPost/MultiTimeSelector";
-
 interface Persona {
   id: string;
   name: string;
@@ -42,6 +42,9 @@ export function TemplateConfigComponent() {
   const [editingBoxNames, setEditingBoxNames] = useState<Record<string, string>>({});
   const [processing, setProcessing] = useState<Record<string, boolean>>({});
   const [selectedPersonaId, setSelectedPersonaId] = useState<string>("all");
+  const [duplicateDialogOpen, setDuplicateDialogOpen] = useState<string | null>(null);
+  const [selectedSourcePersona, setSelectedSourcePersona] = useState<string>("");
+  const [selectedSourceBox, setSelectedSourceBox] = useState<string>("");
 
   useEffect(() => {
     if (user) {
@@ -193,6 +196,74 @@ export function TemplateConfigComponent() {
     } finally {
       setProcessing(prev => ({ ...prev, [personaId]: false }));
     }
+  };
+
+  const duplicateBoxFromOtherPersona = async (targetPersonaId: string) => {
+    if (!user || !selectedSourceBox) return;
+    
+    const sourceBox = Object.values(boxes).flat().find(b => b.id === selectedSourceBox);
+    if (!sourceBox) {
+      toast.error("複製元の箱が見つかりません");
+      return;
+    }
+    
+    setProcessing(prev => ({ ...prev, [targetPersonaId]: true }));
+    try {
+      const newBoxName = `${sourceBox.box_name}（複製）`;
+      
+      const { data, error } = await supabase
+        .from("template_post_boxes")
+        .insert({
+          user_id: user.id,
+          persona_id: targetPersonaId,
+          box_name: newBoxName,
+          is_active: false,
+          random_times: sourceBox.random_times,
+          templates: sourceBox.templates as any,
+          timezone: sourceBox.timezone,
+          next_run_at: calculateNextRun(sourceBox.random_times, sourceBox.timezone)
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      const newBox: TemplatePostBox = {
+        id: data.id,
+        persona_id: data.persona_id,
+        box_name: data.box_name,
+        is_active: data.is_active,
+        random_times: data.random_times || [],
+        templates: (data.templates as unknown as Template[]) || [],
+        timezone: data.timezone || "Asia/Tokyo",
+        next_run_at: data.next_run_at
+      };
+
+      setBoxes(prev => ({
+        ...prev,
+        [targetPersonaId]: [...(prev[targetPersonaId] || []), newBox]
+      }));
+
+      setEditingTemplates(prev => ({
+        ...prev,
+        [data.id]: (data.templates as unknown as Template[]) || []
+      }));
+
+      setDuplicateDialogOpen(null);
+      setSelectedSourcePersona("");
+      setSelectedSourceBox("");
+      
+      toast.success(`箱「${newBoxName}」を複製しました`);
+    } catch (error: any) {
+      console.error("箱複製エラー:", error);
+      toast.error("箱の複製に失敗しました");
+    } finally {
+      setProcessing(prev => ({ ...prev, [targetPersonaId]: false }));
+    }
+  };
+
+  const getSourceBoxesForPersona = (personaId: string): TemplatePostBox[] => {
+    return boxes[personaId] || [];
   };
 
   const toggleBoxActive = async (box: TemplatePostBox) => {
@@ -503,14 +574,96 @@ export function TemplateConfigComponent() {
                         テンプレート箱ごとに投稿時間を設定
                       </CardDescription>
                     </div>
-                    <Button
-                      size="sm"
-                      onClick={() => addNewBox(persona.id)}
-                      disabled={processing[persona.id]}
-                    >
-                      <Plus className="h-4 w-4 mr-1" />
-                      箱を追加
-                    </Button>
+                    <div className="flex gap-2">
+                      <Dialog 
+                        open={duplicateDialogOpen === persona.id} 
+                        onOpenChange={(open) => {
+                          setDuplicateDialogOpen(open ? persona.id : null);
+                          if (!open) {
+                            setSelectedSourcePersona("");
+                            setSelectedSourceBox("");
+                          }
+                        }}
+                      >
+                        <DialogTrigger asChild>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={processing[persona.id]}
+                          >
+                            <Copy className="h-4 w-4 mr-1" />
+                            他から複製
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                          <DialogHeader>
+                            <DialogTitle>他ペルソナから箱を複製</DialogTitle>
+                            <DialogDescription>
+                              複製元のペルソナと箱を選択してください
+                            </DialogDescription>
+                          </DialogHeader>
+                          <div className="space-y-4 py-4">
+                            <div className="space-y-2">
+                              <Label>複製元ペルソナ</Label>
+                              <Select 
+                                value={selectedSourcePersona} 
+                                onValueChange={(value) => {
+                                  setSelectedSourcePersona(value);
+                                  setSelectedSourceBox("");
+                                }}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="ペルソナを選択" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {personas.filter(p => p.id !== persona.id && getSourceBoxesForPersona(p.id).length > 0).map(p => (
+                                    <SelectItem key={p.id} value={p.id}>
+                                      {p.name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            
+                            {selectedSourcePersona && (
+                              <div className="space-y-2">
+                                <Label>複製元の箱</Label>
+                                <Select value={selectedSourceBox} onValueChange={setSelectedSourceBox}>
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="箱を選択" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {getSourceBoxesForPersona(selectedSourcePersona).map(box => (
+                                      <SelectItem key={box.id} value={box.id}>
+                                        {box.box_name} ({box.templates.length}テンプレート)
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            )}
+                            
+                            <Button 
+                              onClick={() => duplicateBoxFromOtherPersona(persona.id)}
+                              disabled={!selectedSourceBox || processing[persona.id]}
+                              className="w-full"
+                            >
+                              <Copy className="h-4 w-4 mr-2" />
+                              この箱を複製
+                            </Button>
+                          </div>
+                        </DialogContent>
+                      </Dialog>
+                      
+                      <Button
+                        size="sm"
+                        onClick={() => addNewBox(persona.id)}
+                        disabled={processing[persona.id]}
+                      >
+                        <Plus className="h-4 w-4 mr-1" />
+                        新規箱
+                      </Button>
+                    </div>
                   </div>
                 </CardHeader>
                 
