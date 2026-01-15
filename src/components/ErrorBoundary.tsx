@@ -33,6 +33,27 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   public static getDerivedStateFromError(error: Error): State {
+    // removeChild エラーはReact DOMの競合問題で、通常は無害
+    // ブラウザ拡張機能やポータルの競合が原因のことが多い
+    const isRemoveChildError = error.message?.includes('removeChild') || 
+                               error.name === 'NotFoundError';
+    
+    // removeChildエラーの場合はページリロードで回復を試みる
+    if (isRemoveChildError && typeof window !== 'undefined') {
+      console.warn('removeChild DOM競合を検出しました。自動回復を試みます...');
+      
+      // 短い遅延後にリロードを試みる（無限ループを防ぐため、セッション中1回のみ）
+      const reloadKey = '__removeChildReloadAttempted';
+      if (!sessionStorage.getItem(reloadKey)) {
+        sessionStorage.setItem(reloadKey, 'true');
+        setTimeout(() => {
+          window.location.reload();
+        }, 100);
+        // リロード中はエラー画面を表示しない
+        return { hasError: false };
+      }
+    }
+    
     return { hasError: true, error };
   }
 
