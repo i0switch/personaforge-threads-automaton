@@ -247,9 +247,72 @@ const PersonaSetup = () => {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("このペルソナを削除してもよろしいですか？")) return;
+    if (!confirm("このペルソナを削除してもよろしいですか？\n\n※関連する投稿、自動返信設定、スケジュール設定なども全て削除されます。")) return;
 
     try {
+      console.log('🗑️ ペルソナ削除開始:', id);
+      
+      // 関連テーブルのデータを先に削除（外部キー制約がないため手動で削除）
+      const relatedTables = [
+        'self_reply_jobs',
+        'self_reply_settings',
+        'template_post_boxes',
+        'auto_post_configs',
+        'random_post_configs',
+        'reply_check_settings',
+        'scheduling_settings',
+        'webhook_settings',
+        'auto_replies',
+        'thread_replies',
+        'api_credentials',
+        'posting_metrics',
+        'activity_logs',
+        'analytics',
+        'post_queue',
+        'posts'
+      ];
+      
+      // post_queueは特別処理（persona_idではなくpost_id経由）
+      const { data: postsToDelete } = await supabase
+        .from('posts')
+        .select('id')
+        .eq('persona_id', id);
+      
+      if (postsToDelete && postsToDelete.length > 0) {
+        const postIds = postsToDelete.map(p => p.id);
+        console.log('📋 削除する投稿ID:', postIds.length, '件');
+        
+        const { error: queueError } = await supabase
+          .from('post_queue')
+          .delete()
+          .in('post_id', postIds);
+        
+        if (queueError) {
+          console.warn('post_queue削除警告:', queueError.message);
+        }
+      }
+      
+      // 各関連テーブルからデータを削除
+      for (const tableName of relatedTables) {
+        if (tableName === 'post_queue') continue; // 既に処理済み
+        
+        try {
+          const { error: deleteError } = await supabase
+            .from(tableName as any)
+            .delete()
+            .eq('persona_id', id);
+          
+          if (deleteError) {
+            console.warn(`${tableName}削除警告:`, deleteError.message);
+          } else {
+            console.log(`✅ ${tableName}削除完了`);
+          }
+        } catch (tableError) {
+          console.warn(`${tableName}削除スキップ:`, tableError);
+        }
+      }
+      
+      // 最後にペルソナ本体を削除
       const { error } = await supabase
         .from("personas")
         .delete()
@@ -257,9 +320,11 @@ const PersonaSetup = () => {
 
       if (error) throw error;
 
+      console.log('✅ ペルソナ削除完了:', id);
+      
       toast({
         title: "成功",
-        description: "ペルソナが削除されました。",
+        description: "ペルソナと関連データが削除されました。",
       });
       await loadPersonas();
       await refetchLimit();
@@ -267,7 +332,7 @@ const PersonaSetup = () => {
       console.error("Error deleting persona:", error);
       toast({
         title: "エラー",
-        description: "ペルソナの削除に失敗しました。",
+        description: "ペルソナの削除に失敗しました。関連データが削除できない可能性があります。",
         variant: "destructive",
       });
     }
