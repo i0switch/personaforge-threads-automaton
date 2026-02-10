@@ -136,6 +136,39 @@ const PersonaSetup = () => {
         user_id: user.id
       };
 
+      // Threads Access Tokenが設定されている場合、threads_user_idを自動取得
+      const accessToken = formData.threads_access_token?.trim();
+      if (accessToken && accessToken !== editingPersona?.threads_access_token) {
+        try {
+          console.log('🔄 Threads APIからユーザーID自動取得中...');
+          const res = await fetch(
+            `https://graph.threads.net/v1.0/me?fields=id,username&access_token=${encodeURIComponent(accessToken)}`
+          );
+          if (res.ok) {
+            const threadsProfile = await res.json();
+            console.log('✅ Threads プロフィール取得成功:', threadsProfile);
+            personaData.threads_user_id = threadsProfile.id;
+            if (threadsProfile.username && !formData.threads_username?.trim()) {
+              personaData.threads_username = threadsProfile.username;
+            }
+            toast({
+              title: "Threads連携成功",
+              description: `Threads User ID (${threadsProfile.id}) を自動取得しました。`,
+            });
+          } else {
+            const errBody = await res.text();
+            console.warn('⚠️ Threads API取得失敗:', res.status, errBody);
+            toast({
+              title: "警告",
+              description: "Threads User IDの自動取得に失敗しました。トークンが正しいか確認してください。",
+              variant: "destructive",
+            });
+          }
+        } catch (fetchErr) {
+          console.warn('⚠️ Threads API呼び出しエラー:', fetchErr);
+        }
+      }
+
       // threads_app_secretが入力されている場合のみ暗号化して保存
       if (formData.threads_app_secret?.trim() && formData.threads_app_secret.trim() !== "" && formData.threads_app_secret !== "***設定済み***") {
         console.log("Encrypting threads_app_secret for persona:", editingPersona?.id || 'new');
