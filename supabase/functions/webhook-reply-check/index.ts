@@ -19,25 +19,34 @@ serve(async (req) => {
     console.log('Starting webhook reply check...');
     
     // パフォーマンス最適化：バッチ処理でアクティブなペルソナとその設定を取得
-    const { data: activeSettings, error } = await supabase
+    // JOINを使わずに個別クエリ（重複FK回避）
+    const { data: checkSettings, error } = await supabase
       .from('reply_check_settings')
-      .select(`
-        id,
-        persona_id,
-        user_id,
-        check_interval_minutes,
-        last_check_at,
-        personas!inner (
-          id,
-          name,
-          user_id,
-          threads_username,
-          ai_auto_reply_enabled,
-          is_active
-        )
-      `)
-      .eq('is_active', true)
-      .eq('personas.is_active', true);
+      .select('*')
+      .eq('is_active', true);
+
+    if (error) {
+      console.error('Failed to fetch reply check settings:', error);
+      return new Response(JSON.stringify({ error: 'Database error' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 500
+      });
+    }
+
+    // ペルソナ情報を個別に取得してフィルタリング
+    const activeSettings = [];
+    for (const setting of (checkSettings || [])) {
+      if (!setting.persona_id) continue;
+      const { data: persona } = await supabase
+        .from('personas')
+        .select('id, name, user_id, threads_username, ai_auto_reply_enabled, auto_reply_enabled, is_active')
+        .eq('id', setting.persona_id)
+        .eq('is_active', true)
+        .maybeSingle();
+      if (persona) {
+        activeSettings.push({ ...setting, personas: persona });
+      }
+    }
 
     if (error) {
       console.error('Failed to fetch reply check settings:', error);

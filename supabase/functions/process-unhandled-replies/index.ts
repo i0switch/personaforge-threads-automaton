@@ -284,7 +284,9 @@ serve(async (req) => {
         }
 
         // AI自動返信をチェック（定型文が送信されなかった場合のみ）
-        if (!replySent && persona.ai_auto_reply_enabled) {
+        // キーワード不一致時のAIフォールバック: auto_reply_enabledがONでもキーワードが一致しなかった場合、AI返信を試行
+        if (!replySent && (persona.ai_auto_reply_enabled || persona.auto_reply_enabled)) {
+          console.log(`🔄 AIフォールバック: キーワード不一致のためAI返信を試行 (ai=${persona.ai_auto_reply_enabled}, keyword=${persona.auto_reply_enabled})`);
           try {
             // 既にAI返信が生成済みかチェック
             if (reply.ai_response) {

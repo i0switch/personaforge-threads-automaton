@@ -73,3 +73,9 @@ verify_jwt = false
 
 [functions.refresh-threads-tokens]
 verify_jwt = false
+
+[functions.webhook-reply-check]
+verify_jwt = false
+
+[functions.fetch-threads-user-ids]
+verify_jwt = false
