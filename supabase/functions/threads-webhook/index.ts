@@ -455,12 +455,11 @@ async function processReply(persona: any, reply: any): Promise<boolean> {
         return true;
       }
 
-      // Step 5: AI自動返信をチェック
-      if (persona.ai_auto_reply_enabled) {
+      // Step 5: AI自動返信をチェック（AI自動返信ON、またはキーワード不一致時のAIフォールバック）
+      if (persona.ai_auto_reply_enabled || persona.auto_reply_enabled) {
+        console.log(`🔄 AIフォールバック: ai=${persona.ai_auto_reply_enabled}, keyword=${persona.auto_reply_enabled}`);
         const aiResult = await processAIAutoReply(persona, reply);
         if (aiResult.sent) {
-          // スケジュールされた場合（ai_scheduled）は、auto_reply_sentを更新しない
-          // 即時送信された場合（ai）のみ、auto_reply_sentフラグを更新
           if (aiResult.method === 'ai_scheduled') {
             console.log(`⏰ AI自動返信スケジュール成功 - reply: ${reply.id} (送信時刻待ち)`);
           } else {
@@ -943,9 +942,9 @@ async function getAccessToken(persona: any): Promise<string | null> {
         }
       });
 
-      if (tokenData?.value && !tokenError) {
+      if ((tokenData?.secret || tokenData?.value) && !tokenError) {
         console.log('✅ トークン取得成功（新方式）');
-        return tokenData.value;
+        return tokenData.secret || tokenData.value;
       }
       console.log('🔄 新方式でトークン取得失敗、従来方式を試行');
     } catch (error) {
