@@ -91,34 +91,8 @@ serve(async (req) => {
           return 0;
         }
 
-        // 最近の投稿を取得（過去24時間）
-        const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-        const { data: recentPosts } = await supabase
-          .from('posts')
-          .select('id, content, published_at')
-          .eq('persona_id', (persona as any).id)
-          .eq('status', 'published')
-          .not('published_at', 'is', null)
-          .gte('published_at', twentyFourHoursAgo)
-          .order('published_at', { ascending: false })
-          .limit(5); // 最新5件のみチェック
-
-        if (!recentPosts || recentPosts.length === 0) {
-          console.log(`No recent posts found for persona ${(persona as any).id}`);
-          return 0;
-        }
-
-        let repliesFound = 0;
-        
-        // 各投稿のリプライをチェック
-        for (const post of recentPosts) {
-          try {
-            const newReplies = await checkRepliesForPost(post, persona, decryptedToken);
-            repliesFound += newReplies;
-          } catch (error) {
-            console.error(`Error checking post ${post.id}:`, error);
-          }
-        }
+        // ペルソナ単位でリプライをチェック（check-repliesと同じアプローチ）
+        const repliesFound = await checkRepliesForPersona(persona, decryptedToken);
 
         // last_check_atを更新
         await supabase
@@ -163,31 +137,35 @@ serve(async (req) => {
   }
 });
 
-async function checkRepliesForPost(post: any, persona: any, accessToken: string): Promise<number> {
+// check-repliesと同じアプローチ：ペルソナの全スレッドを取得してリプライを検出
+async function checkRepliesForPersona(persona: any, accessToken: string): Promise<number> {
   try {
-    console.log(`Checking replies for post: ${post.id}`);
+    console.log(`🔍 ペルソナ ${persona.name} のスレッドを取得中...`);
     
-    // Threads APIから投稿のリプライを取得
-    console.log(`🔍 Checking replies for post ${post.id}`);
-    const threadsApiUrl = `https://graph.threads.net/v1.0/${post.id}/replies?fields=id,username,text,timestamp,media_type,permalink&access_token=${accessToken}`;
+    // Threads APIからペルソナの全スレッドを取得（リプライを含む）
+    const response = await fetch(
+      `https://graph.threads.net/v1.0/me/threads?fields=id,text,username,timestamp,reply_to_id&access_token=${accessToken}`
+    );
     
-    const response = await fetch(threadsApiUrl);
     if (!response.ok) {
-      console.error(`Failed to fetch replies for post ${post.id}: ${response.status}`);
+      console.error(`Failed to fetch threads for persona ${persona.id}: ${response.status}`);
       return 0;
     }
 
-    const repliesData = await response.json();
+    const data = await response.json();
     
-    if (!repliesData.data || repliesData.data.length === 0) {
+    if (!data.data || data.data.length === 0) {
       return 0;
     }
 
     let newRepliesCount = 0;
 
-    for (const reply of repliesData.data) {
+    for (const thread of data.data) {
+      // リプライでないものをスキップ
+      if (!thread.reply_to_id) continue;
+
       // 自分自身のリプライをスキップ
-      if (reply.username === persona.threads_username) {
+      if (thread.username === persona.threads_username || thread.username === persona.name) {
         continue;
       }
 
@@ -195,8 +173,7 @@ async function checkRepliesForPost(post: any, persona: any, accessToken: string)
       const { data: existingReply } = await supabase
         .from('thread_replies')
         .select('id')
-        .eq('reply_id', reply.id)
-        .eq('persona_id', persona.id)
+        .eq('reply_id', thread.id)
         .maybeSingle();
 
       if (existingReply) {
@@ -209,12 +186,12 @@ async function checkRepliesForPost(post: any, persona: any, accessToken: string)
         .insert({
           user_id: persona.user_id,
           persona_id: persona.id,
-          original_post_id: post.id,
-          reply_id: reply.id,
-          reply_text: reply.text || '',
-          reply_author_id: reply.username,
-          reply_author_username: reply.username,
-          reply_timestamp: new Date(reply.timestamp).toISOString(),
+          original_post_id: thread.reply_to_id,
+          reply_id: thread.id,
+          reply_text: thread.text || '',
+          reply_author_id: thread.username || '',
+          reply_author_username: thread.username,
+          reply_timestamp: new Date(thread.timestamp || Date.now()).toISOString(),
           auto_reply_sent: false,
           reply_status: 'pending'
         });
@@ -224,19 +201,19 @@ async function checkRepliesForPost(post: any, persona: any, accessToken: string)
         continue;
       }
 
-      console.log(`Saved new reply: ${reply.id} from ${reply.username}`);
+      console.log(`Saved new reply: ${thread.id} from ${thread.username}`);
       newRepliesCount++;
 
-      // AI自動返信またはキーワード返信（AIフォールバック）が有効な場合
+      // AI自動返信またはキーワード返信が有効な場合
       if (persona.ai_auto_reply_enabled || persona.auto_reply_enabled) {
         try {
           console.log(`Triggering auto-reply for persona ${persona.id}`);
           
           const autoReplyResponse = await supabase.functions.invoke('threads-auto-reply', {
             body: {
-              postContent: post.content,
-              replyContent: reply.text,
-              replyId: reply.id,
+              postContent: '',
+              replyContent: thread.text,
+              replyId: thread.id,
               personaId: persona.id,
               userId: persona.user_id
             }
@@ -256,7 +233,7 @@ async function checkRepliesForPost(post: any, persona: any, accessToken: string)
     return newRepliesCount;
 
   } catch (error) {
-    console.error(`Error checking replies for post ${post.id}:`, error);
+    console.error(`Error checking replies for persona ${persona.id}:`, error);
     return 0;
   }
 }

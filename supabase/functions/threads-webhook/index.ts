@@ -672,7 +672,7 @@ async function processTemplateAutoReply(persona: any, reply: any): Promise<{ sen
                   error_details: errorDetails,
                   updated_at: new Date().toISOString()
                 })
-                .eq('id', reply.id);
+                .eq('reply_id', reply.id);
               
               if (updateError) {
                 console.error('Failed to update reply status to failed:', updateError);
@@ -1015,7 +1015,7 @@ async function updateAutoReplySentFlag(replyId: string, sent: boolean): Promise<
       .from('thread_replies')
       .update({ 
         auto_reply_sent: sent,
-        reply_status: sent ? 'completed' : 'pending'
+        reply_status: sent ? 'sent' : 'pending'
       })
       .eq('reply_id', replyId);
     
