@@ -2,12 +2,13 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Shield, Users, Settings, Monitor } from "lucide-react";
+import { ArrowLeft, Shield, Users, Settings, Monitor, Key } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { UserManagementTable } from "@/components/Admin/UserManagementTable";
 import { AdminStats } from "@/components/Admin/AdminStats";
 import { PersonaLimitManager } from "@/components/Admin/PersonaLimitManager";
 import { MonitoringDashboard } from "@/components/Admin/MonitoringDashboard";
+import { TokenManagementDashboard } from "@/components/Admin/TokenManagementDashboard";
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
@@ -47,6 +48,10 @@ const AdminDashboard = () => {
               <Monitor className="h-4 w-4" />
               システム監視
             </TabsTrigger>
+            <TabsTrigger value="tokens" className="flex items-center gap-2">
+              <Key className="h-4 w-4" />
+              トークン管理
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="users">
@@ -83,6 +88,23 @@ const AdminDashboard = () => {
               </CardHeader>
               <CardContent>
                 <MonitoringDashboard />
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="tokens">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Key className="h-5 w-5" />
+                  トークン管理
+                </CardTitle>
+                <CardDescription>
+                  全ペルソナのThreadsアクセストークンの状態管理と自動更新
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <TokenManagementDashboard />
               </CardContent>
             </Card>
           </TabsContent>

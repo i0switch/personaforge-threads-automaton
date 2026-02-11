@@ -8,6 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { Bot, MessageSquare, Settings, User, Clock } from "lucide-react";
 import { AvatarUpload } from "./AvatarUpload";
+import { ThreadsOAuthButton } from "./ThreadsOAuthButton";
 import type { Persona, PersonaFormData } from "@/types/persona";
 
 interface PersonaFormProps {
@@ -300,7 +301,19 @@ export const PersonaForm = ({ editingPersona, onSubmit, onCancel }: PersonaFormP
                   onChange={(e) => handleInputChange("threads_access_token", e.target.value)}
                   placeholder="Threads Access Token"
                 />
+                <p className="text-xs text-muted-foreground">
+                  手動入力、またはOAuth認証で自動取得できます。
+                </p>
               </div>
+
+              {/* OAuth認証ボタン */}
+              {editingPersona?.id && formData.threads_app_id && (
+                <ThreadsOAuthButton
+                  personaId={editingPersona.id}
+                  appId={formData.threads_app_id}
+                  disabled={!formData.threads_app_secret || formData.threads_app_secret === ''}
+                />
+              )}
 
               <div className="space-y-2">
                 <Label htmlFor="webhook_verify_token">Webhook確認トークン</Label>
