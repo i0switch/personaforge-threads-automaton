@@ -94,44 +94,51 @@ async function cleanupStuckProcessing(): Promise<number> {
 async function getRetryableFailedReplies(): Promise<any[]> {
   const now = Date.now();
   
+  // CRITICAL FIX: JOINを使わず個別クエリ（重複FK回避）
   const { data: failedReplies, error } = await supabase
     .from('thread_replies')
-    .select(`
-      *,
-      personas!inner (
-        id,
-        name,
-        user_id,
-        auto_reply_enabled,
-        ai_auto_reply_enabled,
-        threads_access_token
-      )
-    `)
+    .select('*')
     .eq('reply_status', 'failed')
     .eq('auto_reply_sent', false)
-    .lt('retry_count', supabase.rpc('COALESCE(max_retries, 3)'))
-    .gte('created_at', new Date(now - 24 * 60 * 60 * 1000).toISOString()); // 24時間以内
+    .gte('created_at', new Date(now - 24 * 60 * 60 * 1000).toISOString());
   
   if (error || !failedReplies) {
     return [];
   }
   
-  // 指数バックオフでリトライ時刻をチェック（2^retry_count * 5分）
-  const retryable = failedReplies.filter(reply => {
-    if (!reply.last_retry_at) return true; // 初回リトライ
+  // max_retriesを超えていないもののみフィルタ
+  const underMaxRetries = failedReplies.filter(r => (r.retry_count || 0) < (r.max_retries || 3));
+  
+  // 指数バックオフでリトライ時刻をチェック
+  const retryable = underMaxRetries.filter(reply => {
+    if (!reply.last_retry_at) return true;
     
     const retryCount = reply.retry_count || 0;
-    const backoffMinutes = Math.pow(2, retryCount) * 5; // 5分, 10分, 20分, 40分...
+    const backoffMinutes = Math.pow(2, retryCount) * 5;
     const nextRetryTime = new Date(reply.last_retry_at).getTime() + backoffMinutes * 60 * 1000;
     
     return now >= nextRetryTime;
   });
   
-  if (retryable.length > 0) {
-    console.log(`🔄 リトライ可能な失敗リプライ: ${retryable.length}件`);
+  // ペルソナ情報を個別に取得
+  const withPersonas = [];
+  for (const reply of retryable.slice(0, 20)) { // 最大20件
+    const { data: persona } = await supabase
+      .from('personas')
+      .select('id, name, user_id, auto_reply_enabled, ai_auto_reply_enabled, threads_access_token')
+      .eq('id', reply.persona_id)
+      .maybeSingle();
+    
+    if (persona) {
+      withPersonas.push({ ...reply, personas: persona });
+    }
   }
   
-  return retryable;
+  if (withPersonas.length > 0) {
+    console.log(`🔄 リトライ可能な失敗リプライ: ${withPersonas.length}件`);
+  }
+  
+  return withPersonas;
 }
 
 serve(async (req) => {
@@ -157,19 +164,7 @@ serve(async (req) => {
     
     const { data: unprocessedReplies, error: fetchError } = await supabase
       .from('thread_replies')
-      .select(`
-        *,
-        ai_response,
-        personas!inner (
-          id,
-          name,
-          user_id,
-          is_active,
-          auto_reply_enabled,
-          ai_auto_reply_enabled,
-          threads_access_token
-        )
-      `)
+      .select('*')
       .or(`and(reply_status.eq.pending,auto_reply_sent.eq.false),and(reply_status.eq.scheduled,scheduled_reply_at.lte.${now}),and(reply_status.eq.completed,auto_reply_sent.eq.false,scheduled_reply_at.lte.${now})`)
       .gte('created_at', twoHoursAgo)
       .order('created_at', { ascending: true })
@@ -180,26 +175,44 @@ serve(async (req) => {
       throw fetchError;
     }
 
-    // ステップ3: リトライリプライと未処理リプライを統合
-    const allReplies = [...(unprocessedReplies || []), ...retryableReplies];
+    // ペルソナ情報を個別に取得（重複FK回避）
+    const repliesWithPersonas = [];
+    const personaCache = new Map<string, any>();
     
-    // 重複を削除（同じreply_idのものは1つだけ）
+    for (const reply of (unprocessedReplies || [])) {
+      if (!reply.persona_id) continue;
+      
+      let persona = personaCache.get(reply.persona_id);
+      if (!persona) {
+        const { data: p } = await supabase
+          .from('personas')
+          .select('id, name, user_id, is_active, auto_reply_enabled, ai_auto_reply_enabled, threads_access_token')
+          .eq('id', reply.persona_id)
+          .maybeSingle();
+        if (p) {
+          personaCache.set(reply.persona_id, p);
+          persona = p;
+        }
+      }
+      
+      if (persona) {
+        repliesWithPersonas.push({ ...reply, personas: persona });
+      }
+    }
+
+    // ステップ3: リトライリプライと未処理リプライを統合
+    const allReplies = [...repliesWithPersonas, ...retryableReplies];
+    
+    // 重複を削除
     const uniqueReplies = Array.from(
       new Map(allReplies.map(r => [r.reply_id, r])).values()
     );
 
-    // ペルソナの有効性でフィルタリング（自動返信設定は個別にチェック）
+    // ペルソナの有効性でフィルタリング
     const filteredReplies = uniqueReplies.filter(reply => {
       const persona = reply.personas;
+      if (!persona) return false;
       
-      // デバッグ: personaオブジェクトの構造を確認
-      if (!persona) {
-        console.log(`⚠️ personaがnull: reply.id=${reply.id}`);
-        return false;
-      }
-      
-      // ペルソナがアクティブであればフィルタを通過
-      // キーワード自動返信とAI自動返信の判定は後続の処理で行う
       const isActive = persona.is_active === true;
       const hasAutoReply = persona.auto_reply_enabled === true;
       const hasAIReply = persona.ai_auto_reply_enabled === true;
@@ -805,9 +818,9 @@ async function getAccessToken(persona: any): Promise<string | null> {
         }
       });
 
-      if (tokenData?.value && !tokenError) {
+      if ((tokenData?.secret || tokenData?.value) && !tokenError) {
         console.log('✅ トークン取得成功（新方式）');
-        return tokenData.value;
+        return tokenData.secret || tokenData.value;
       }
       console.log('🔄 新方式でトークン取得失敗、従来方式を試行');
     } catch (error) {

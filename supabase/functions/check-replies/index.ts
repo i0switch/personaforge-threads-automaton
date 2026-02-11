@@ -561,9 +561,9 @@ async function getAccessToken(persona: any): Promise<string | null> {
         }
       });
 
-      if (tokenData?.value && !tokenError) {
+      if ((tokenData?.secret || tokenData?.value) && !tokenError) {
         console.log('✅ トークン取得成功（新方式）');
-        return tokenData.value;
+        return tokenData.secret || tokenData.value;
       }
       console.log('🔄 新方式でトークン取得失敗、従来方式を試行');
     } catch (error) {
@@ -669,21 +669,10 @@ async function processScheduledReplies(): Promise<void> {
   try {
     console.log('🕒 スケジュールされた返信をチェック中...');
     
-    // 送信時刻が来ているスケジュール返信を取得
+    // CRITICAL FIX: JOINを使わず個別クエリ（重複FK回避）
     const { data: scheduledReplies, error } = await supabase
       .from('thread_replies')
-      .select(`
-        *,
-        personas!inner(
-          id,
-          name,
-          user_id,
-          threads_access_token,
-          ai_auto_reply_enabled,
-          auto_reply_enabled,
-          auto_reply_delay_minutes
-        )
-      `)
+      .select('*')
       .eq('reply_status', 'scheduled')
       .lte('scheduled_reply_at', new Date().toISOString());
 
@@ -700,7 +689,17 @@ async function processScheduledReplies(): Promise<void> {
     console.log(`📤 ${scheduledReplies.length}件のスケジュール返信を処理中...`);
 
     for (const reply of scheduledReplies) {
-      const persona = reply.personas;
+      // ペルソナ情報を個別に取得（重複FK回避）
+      const { data: persona } = await supabase
+        .from('personas')
+        .select('id, name, user_id, threads_access_token, ai_auto_reply_enabled, auto_reply_enabled, auto_reply_delay_minutes')
+        .eq('id', reply.persona_id)
+        .maybeSingle();
+      
+      if (!persona) {
+        console.log(`⏭️ ペルソナが見つかりません: ${reply.persona_id}`);
+        continue;
+      }
       
       try {
         // アクセストークンを取得
@@ -727,6 +726,12 @@ async function processScheduledReplies(): Promise<void> {
           } else if (log.action_type === 'template_auto_reply_scheduled') {
             responseContent = log.metadata?.response_template;
           }
+        }
+
+        // activity_logsになければ、thread_repliesのai_responseを使用
+        if (!responseContent && reply.ai_response) {
+          responseContent = reply.ai_response;
+          console.log(`📋 thread_repliesからAI返信を取得: "${responseContent.substring(0, 50)}..."`);
         }
 
         if (!responseContent) {

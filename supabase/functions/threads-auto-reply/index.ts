@@ -39,13 +39,15 @@ serve(async (req) => {
       });
     }
 
-    // AI自動返信が無効な場合は処理をスキップ
-    if (!persona.ai_auto_reply_enabled) {
-      console.log(`ℹ️ AI自動返信が無効 - persona: ${persona.name}`);
+    // AI自動返信が無効 かつ キーワード自動返信のAIフォールバックでもない場合はスキップ
+    // auto_reply_enabled=true の場合、キーワード不一致時のAIフォールバックとして呼ばれる
+    if (!persona.ai_auto_reply_enabled && !persona.auto_reply_enabled) {
+      console.log(`ℹ️ AI自動返信もキーワード自動返信も無効 - persona: ${persona.name}`);
       return new Response(JSON.stringify({ message: 'AI auto reply disabled' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
+    console.log(`✅ AI返信処理続行 - ai_enabled=${persona.ai_auto_reply_enabled}, keyword_enabled=${persona.auto_reply_enabled}`);
 
     // Gemini APIを使用してAI返信を生成
     console.log(`🧠 AI返信生成開始 - リプライ内容: "${replyContent}"`);
