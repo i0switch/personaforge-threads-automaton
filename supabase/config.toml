@@ -67,3 +67,9 @@ verify_jwt = false
 
 [functions.reset-stuck-ai-replies]
 verify_jwt = false
+
+[functions.threads-oauth-callback]
+verify_jwt = false
+
+[functions.refresh-threads-tokens]
+verify_jwt = false

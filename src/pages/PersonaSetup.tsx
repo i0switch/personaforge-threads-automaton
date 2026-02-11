@@ -458,7 +458,9 @@ const PersonaSetup = () => {
         is_rate_limited: false,
         rate_limit_detected_at: null,
         rate_limit_reason: null,
-        rate_limit_until: null
+        rate_limit_until: null,
+        token_expires_at: null,
+        token_refreshed_at: null
       });
       setIsEditing(true);
     }, 200);
