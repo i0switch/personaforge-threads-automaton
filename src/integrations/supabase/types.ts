@@ -664,7 +664,7 @@ export type Database = {
           id: string
           is_active: boolean | null
           last_check_at: string | null
-          persona_id: string | null
+          persona_id: string
           updated_at: string
           user_id: string
         }
@@ -674,7 +674,7 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           last_check_at?: string | null
-          persona_id?: string | null
+          persona_id: string
           updated_at?: string
           user_id: string
         }
@@ -684,7 +684,7 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           last_check_at?: string | null
-          persona_id?: string | null
+          persona_id?: string
           updated_at?: string
           user_id?: string
         }
@@ -1307,6 +1307,7 @@ export type Database = {
         Args: { request_headers: Json }
         Returns: boolean
       }
+      auto_cleanup_stuck_replies: { Args: never; Returns: undefined }
       auto_fix_queue_integrity: { Args: never; Returns: undefined }
       auto_fix_stuck_processing: { Args: never; Returns: undefined }
       calculate_next_multi_time_run: {

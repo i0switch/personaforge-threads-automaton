@@ -48,14 +48,6 @@ serve(async (req) => {
       }
     }
 
-    if (error) {
-      console.error('Failed to fetch reply check settings:', error);
-      return new Response(JSON.stringify({ error: 'Database error' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 500
-      });
-    }
-
     if (!activeSettings || activeSettings.length === 0) {
       console.log('No active reply check settings found');
       return new Response(JSON.stringify({ 
@@ -235,8 +227,8 @@ async function checkRepliesForPost(post: any, persona: any, accessToken: string)
       console.log(`Saved new reply: ${reply.id} from ${reply.username}`);
       newRepliesCount++;
 
-      // AI自動返信が有効な場合、threads-auto-replyを呼び出し
-      if (persona.ai_auto_reply_enabled) {
+      // AI自動返信またはキーワード返信（AIフォールバック）が有効な場合
+      if (persona.ai_auto_reply_enabled || persona.auto_reply_enabled) {
         try {
           console.log(`Triggering auto-reply for persona ${persona.id}`);
           
