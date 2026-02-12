@@ -82,12 +82,32 @@ serve(async (req) => {
           return 0;
         }
 
-        // 復号化されたアクセストークンを取得
-        const { data: decryptedToken, error: decryptError } = await supabase
-          .rpc('decrypt_access_token', { encrypted_token: personaWithToken.threads_access_token });
+        // retrieve-secret関数を使用してアクセストークンを復号化（他の関数と同じ方式）
+        let decryptedToken: string | null = null;
+        try {
+          const tokenResult = await supabase.functions.invoke('retrieve-secret', {
+            body: {
+              key: `threads_access_token_${(persona as any).id}`,
+              fallback: personaWithToken.threads_access_token
+            }
+          });
+          
+          if (tokenResult.data?.secret) {
+            decryptedToken = tokenResult.data.secret;
+            console.log(`✅ 暗号化トークン復号化成功 - persona: ${(persona as any).name}`);
+          } else if (personaWithToken.threads_access_token.startsWith('THAA')) {
+            decryptedToken = personaWithToken.threads_access_token;
+            console.log(`✅ 非暗号化トークン使用 - persona: ${(persona as any).name}`);
+          }
+        } catch (tokenError) {
+          console.error(`Token retrieval error for persona ${(persona as any).id}:`, tokenError);
+          if (personaWithToken.threads_access_token.startsWith('THAA')) {
+            decryptedToken = personaWithToken.threads_access_token;
+          }
+        }
 
-        if (decryptError || !decryptedToken) {
-          console.log(`Skipping persona ${(persona as any).id} - token decryption failed:`, decryptError);
+        if (!decryptedToken) {
+          console.log(`Skipping persona ${(persona as any).id} - token decryption failed`);
           return 0;
         }
 
