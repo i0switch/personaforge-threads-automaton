@@ -185,11 +185,10 @@ serve(async (req) => {
           continue;
         }
 
-        // 各投稿のリプライをチェック
-        for (const post of recentPosts) {
-          const repliesFound = await checkRepliesForPost(personaWithDecryptedToken, post.id);
-          totalRepliesFound += repliesFound;
-        }
+        // ペルソナの全スレッドを一度だけ取得してリプライをチェック
+        // （各投稿ごとに同じ/me/threadsを呼ぶ無駄を排除）
+        const repliesFound = await checkRepliesForPost(personaWithDecryptedToken, recentPosts[0].id);
+        totalRepliesFound += repliesFound;
 
         // 最後のチェック時刻を更新
         await supabase
@@ -256,9 +255,9 @@ async function checkRepliesForPost(persona: any, postId: string): Promise<number
           // すでに保存されているかチェック
           const { data: existingReply } = await supabase
             .from('thread_replies')
-            .select('id, auto_reply_sent')
+            .select('id, auto_reply_sent, reply_status')
             .eq('reply_id', thread.id)
-            .single();
+            .maybeSingle();
 
            let shouldProcessAutoReply = false;
 
