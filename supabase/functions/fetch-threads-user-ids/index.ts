@@ -15,6 +15,9 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
+    // バッチサイズ制限（タイムアウト防止）
+    const BATCH_SIZE = 20
+
     // threads_user_idが未設定でthreads_access_tokenがあるペルソナを取得
     const { data: personas, error } = await supabase
       .from('personas')
@@ -22,10 +25,20 @@ Deno.serve(async (req) => {
       .is('threads_user_id', null)
       .not('threads_access_token', 'is', null)
       .not('threads_access_token', 'eq', '')
+      .limit(BATCH_SIZE)
 
     if (error) throw error
 
-    console.log(`対象ペルソナ数: ${personas?.length || 0}`)
+    const remaining = personas?.length || 0
+    console.log(`対象ペルソナ数: ${remaining} (バッチ上限: ${BATCH_SIZE})`)
+
+    if (remaining === 0) {
+      return new Response(JSON.stringify({
+        success: true,
+        summary: { total: 0, success: 0, failed: 0, remaining: 0 },
+        results: []
+      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    }
 
     const results: Array<{ id: string; name: string; success: boolean; threads_user_id?: string; username?: string; error?: string }> = []
 
@@ -69,7 +82,7 @@ Deno.serve(async (req) => {
         }
 
         // レート制限回避のため少し待機
-        await new Promise(r => setTimeout(r, 500))
+        await new Promise(r => setTimeout(r, 300))
       } catch (fetchErr) {
         console.warn(`❌ ${persona.name}: ${fetchErr}`)
         results.push({ id: persona.id, name: persona.name, success: false, error: String(fetchErr) })
