@@ -49,8 +49,14 @@ export const ThreadsOAuthButton = ({ personaId, appId, disabled, missingFields }
     localStorage.setItem('threads_oauth_persona_id', personaId);
     localStorage.setItem('threads_oauth_redirect_uri', REDIRECT_URI);
 
-    const authUrl = `https://threads.net/oauth/authorize?client_id=${encodeURIComponent(appId)}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=threads_basic,threads_content_publish&response_type=code`;
-    window.location.href = authUrl;
+    const authUrl = `https://threads.net/oauth/authorize?client_id=${encodeURIComponent(appId)}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=threads_basic,threads_content_publish,threads_manage_replies,threads_read_replies&response_type=code`;
+    
+    // iframe内ではリダイレクトがブロックされるため、新しいウィンドウで開く
+    const newWindow = window.open(authUrl, '_blank', 'width=600,height=700,scrollbars=yes');
+    if (!newWindow) {
+      // ポップアップがブロックされた場合はトップレベルでリダイレクト
+      window.open(authUrl, '_blank');
+    }
   };
 
   const missingItems: string[] = [];
