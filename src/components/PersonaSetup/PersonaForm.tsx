@@ -306,14 +306,17 @@ export const PersonaForm = ({ editingPersona, onSubmit, onCancel }: PersonaFormP
                 </p>
               </div>
 
-              {/* OAuth認証ボタン */}
-              {editingPersona?.id && formData.threads_app_id && (
-                <ThreadsOAuthButton
-                  personaId={editingPersona.id}
-                  appId={formData.threads_app_id}
-                  disabled={!formData.threads_app_secret || formData.threads_app_secret === ''}
-                />
-              )}
+              {/* OAuth認証ボタン（常に表示） */}
+              <ThreadsOAuthButton
+                personaId={editingPersona?.id || ''}
+                appId={formData.threads_app_id}
+                disabled={false}
+                missingFields={{
+                  appId: !formData.threads_app_id,
+                  appSecret: !formData.threads_app_secret || formData.threads_app_secret === '',
+                  notSaved: !editingPersona?.id,
+                }}
+              />
 
               <div className="space-y-2">
                 <Label htmlFor="webhook_verify_token">Webhook確認トークン</Label>
