@@ -62,12 +62,12 @@ serve(async (req) => {
   // ペルソナ情報を個別に取得してアクティブなもののみフィルタリング
   const activeSettings = [];
   for (const setting of checkSettings) {
-    const { data: persona } = await supabase
-      .from('personas')
-      .select('id, name, user_id, threads_username, ai_auto_reply_enabled, auto_reply_enabled, is_active')
-      .eq('id', setting.persona_id)
-      .eq('is_active', true)
-      .maybeSingle();
+      const { data: persona } = await supabase
+        .from('personas')
+        .select('id, name, user_id, threads_username, threads_user_id, ai_auto_reply_enabled, auto_reply_enabled, is_active')
+        .eq('id', setting.persona_id)
+        .eq('is_active', true)
+        .maybeSingle();
     
     if (persona) {
       activeSettings.push({
@@ -226,10 +226,47 @@ async function checkRepliesForPost(persona: any, postId: string): Promise<number
     // Threads APIを使用してメンション・リプライを検索
     // Note: Threads APIの実際のエンドポイントは公式ドキュメントを確認してください
     console.log(`🔍 Fetching threads for persona ${persona.id}`);
+
+    // threads_user_idが未設定の場合、自動取得を試みる
+    if (!persona.threads_user_id) {
+      console.warn(`⚠️ threads_user_id未設定: persona ${persona.name} (${persona.id}) - 自動取得を試行`);
+      try {
+        const profileRes = await fetch(`https://graph.threads.net/v1.0/me?fields=id,username&access_token=${persona.threads_access_token}`);
+        if (profileRes.ok) {
+          const profile = await profileRes.json();
+          if (profile.id) {
+            const updateData: Record<string, string> = { threads_user_id: profile.id };
+            if (profile.username) updateData.threads_username = profile.username;
+            await supabase.from('personas').update(updateData).eq('id', persona.id);
+            console.log(`✅ threads_user_id自動設定完了: ${persona.name} → ${profile.id}`);
+          }
+        } else {
+          console.error(`❌ threads_user_id取得失敗: ${persona.name} - ${profileRes.status}`);
+        }
+      } catch (e) {
+        console.error(`❌ threads_user_id取得エラー: ${persona.name}`, e);
+      }
+    }
+
     const response = await fetch(`https://graph.threads.net/v1.0/me/threads?fields=id,text,username,timestamp,reply_to_id&access_token=${persona.threads_access_token}`);
     
     if (!response.ok) {
-      console.error(`Failed to fetch threads for persona ${persona.id}:`, response.status);
+      const errorBody = await response.text().catch(() => 'Unknown');
+      console.error(`Failed to fetch threads for persona ${persona.id}: ${response.status}`, errorBody);
+      
+      // エラー詳細をsecurity_eventsに記録
+      await supabase.from('security_events').insert({
+        event_type: 'check_replies_api_error',
+        user_id: persona.user_id,
+        details: {
+          persona_id: persona.id,
+          persona_name: persona.name,
+          status_code: response.status,
+          error_body: errorBody,
+          has_threads_user_id: !!persona.threads_user_id,
+          timestamp: new Date().toISOString()
+        }
+      });
       return 0;
     }
 
@@ -357,16 +394,23 @@ async function checkRepliesForPost(persona: any, postId: string): Promise<number
                    }
                  });
 
-                 if (autoReplyResult.error) {
-                   console.error(`❌ AI自動返信呼び出しエラー:`, autoReplyResult.error);
-                   // エラー時は処理失敗としてマーク
-                   await supabase
-                     .from('thread_replies')
-                     .update({ 
-                       reply_status: 'failed',
-                       auto_reply_sent: false // リトライ可能にする
-                     })
-                     .eq('reply_id', thread.id);
+                if (autoReplyResult.error) {
+                    console.error(`❌ AI自動返信呼び出しエラー:`, autoReplyResult.error);
+                    // エラー時は処理失敗としてマーク + エラー詳細を必ず記録
+                    await supabase
+                      .from('thread_replies')
+                      .update({ 
+                        reply_status: 'failed',
+                        auto_reply_sent: false,
+                        error_details: {
+                          error: 'AI Auto Reply Invocation Failed',
+                          message: autoReplyResult.error.message || String(autoReplyResult.error),
+                          error_code: autoReplyResult.error.code,
+                          timestamp: new Date().toISOString(),
+                          context: 'check-replies AI auto reply'
+                        }
+                      })
+                      .eq('reply_id', thread.id);
                  } else {
                    console.log(`✅ AI自動返信呼び出し成功: ${thread.id}`);
                    replySent = true;
@@ -382,15 +426,22 @@ async function checkRepliesForPost(persona: any, postId: string): Promise<number
                    .eq('reply_id', thread.id);
                }
              } catch (error) {
-               console.error(`❌ 自動返信処理エラー:`, error);
-               // エラー時はロックを解除
-               await supabase
-                 .from('thread_replies')
-                 .update({ 
-                   reply_status: 'failed',
-                   auto_reply_sent: false
-                 })
-                 .eq('reply_id', thread.id);
+            console.error(`❌ 自動返信処理エラー:`, error);
+                // エラー時はロックを解除 + エラー詳細を必ず記録
+                await supabase
+                  .from('thread_replies')
+                  .update({ 
+                    reply_status: 'failed',
+                    auto_reply_sent: false,
+                    error_details: {
+                      error: 'Auto Reply Processing Error',
+                      message: error instanceof Error ? error.message : String(error),
+                      stack: error instanceof Error ? error.stack : undefined,
+                      timestamp: new Date().toISOString(),
+                      context: 'check-replies auto reply processing'
+                    }
+                  })
+                  .eq('reply_id', thread.id);
              }
            }
          }

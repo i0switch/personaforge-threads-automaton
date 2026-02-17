@@ -43,7 +43,21 @@ Deno.serve(async (req) => {
     const results: Array<{ id: string; name: string; success: boolean; threads_user_id?: string; username?: string; error?: string }> = []
 
     for (const persona of (personas || [])) {
-      const token = persona.threads_access_token?.trim()
+      let token = persona.threads_access_token?.trim()
+      
+      // 暗号化トークンの場合はretrieve-secretで復号化を試行
+      if (token && !token.startsWith('THAA') && token !== 'ENCRYPTED_VIA_EDGE_FUNCTION') {
+        try {
+          const tokenResult = await supabase.functions.invoke('retrieve-secret', {
+            body: { key: `threads_access_token_${persona.id}`, fallback: token }
+          })
+          if (tokenResult.data?.secret) {
+            token = tokenResult.data.secret
+          }
+        } catch (e) {
+          console.warn(`⚠️ ${persona.name}: トークン復号化失敗、スキップ`)
+        }
+      }
       
       // 明らかにトークンでないもの（短すぎる、THAAで始まらない）をスキップ
       if (!token || token.length < 20 || !token.startsWith('THAA')) {
