@@ -318,6 +318,20 @@ export const PersonaForm = ({ editingPersona, onSubmit, onCancel }: PersonaFormP
                 </Alert>
               )}
 
+              {/* コールバックURL案内 */}
+              <Alert className="border-primary/30 bg-primary/5">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription className="text-sm">
+                  <span className="font-medium">FacebookDevアプリのコールバックURL設定：</span>
+                  <br />
+                  リダイレクト欄に下記のURLを必ず追加してください。
+                  <br />
+                  <code className="mt-1 inline-block rounded bg-muted px-2 py-0.5 text-xs font-mono select-all">
+                    https://threads-genius-ai.lovable.app/auth/callback
+                  </code>
+                </AlertDescription>
+              </Alert>
+
               {/* OAuth認証ボタン（常に表示） */}
               <ThreadsOAuthButton
                 personaId={editingPersona?.id || ''}
