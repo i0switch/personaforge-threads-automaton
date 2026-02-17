@@ -158,7 +158,8 @@ Deno.serve(async (req) => {
 
     // Step 3: Threads プロフィール取得
     const profileRes = await fetch(
-      `https://graph.threads.net/v1.0/me?fields=id,username&access_token=${encodeURIComponent(longToken)}`
+      `https://graph.threads.net/v1.0/me?fields=id,username`,
+      { headers: { 'Authorization': `Bearer ${longToken}` } }
     )
 
     let threadsUserId: string | null = null

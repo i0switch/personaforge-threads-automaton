@@ -231,7 +231,9 @@ async function checkRepliesForPost(persona: any, postId: string): Promise<number
     if (!persona.threads_user_id) {
       console.warn(`⚠️ threads_user_id未設定: persona ${persona.name} (${persona.id}) - 自動取得を試行`);
       try {
-        const profileRes = await fetch(`https://graph.threads.net/v1.0/me?fields=id,username&access_token=${persona.threads_access_token}`);
+        const profileRes = await fetch(`https://graph.threads.net/v1.0/me?fields=id,username`, {
+          headers: { 'Authorization': `Bearer ${persona.threads_access_token}` }
+        });
         if (profileRes.ok) {
           const profile = await profileRes.json();
           if (profile.id) {
@@ -248,7 +250,9 @@ async function checkRepliesForPost(persona: any, postId: string): Promise<number
       }
     }
 
-    const response = await fetch(`https://graph.threads.net/v1.0/me/threads?fields=id,text,username,timestamp,reply_to_id&access_token=${persona.threads_access_token}`);
+    const response = await fetch(`https://graph.threads.net/v1.0/me/threads?fields=id,text,username,timestamp,reply_to_id`, {
+      headers: { 'Authorization': `Bearer ${persona.threads_access_token}` }
+    });
     
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unknown');
