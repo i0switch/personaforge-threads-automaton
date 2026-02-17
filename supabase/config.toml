@@ -79,3 +79,6 @@ verify_jwt = false
 
 [functions.fetch-threads-user-ids]
 verify_jwt = false
+
+[functions.admin-reset-password]
+verify_jwt = false

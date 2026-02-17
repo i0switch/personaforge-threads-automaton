@@ -24,6 +24,39 @@ serve(async (req) => {
       }
     )
 
+    // 認証チェック: JWTからユーザーを特定
+    const authHeader = req.headers.get('Authorization')
+    if (!authHeader?.startsWith('Bearer ')) {
+      return new Response(
+        JSON.stringify({ error: 'Authentication required' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const token = authHeader.replace('Bearer ', '')
+    const { data: { user: callerUser }, error: authError } = await supabaseAdmin.auth.getUser(token)
+    if (authError || !callerUser) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid authentication token' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // 管理者権限チェック
+    const { data: isAdminResult, error: adminCheckError } = await supabaseAdmin.rpc('is_admin', { _user_id: callerUser.id })
+    if (adminCheckError || !isAdminResult) {
+      console.warn(`Unauthorized admin-reset-password attempt by user ${callerUser.id}`)
+      await supabaseAdmin.from('security_events').insert({
+        event_type: 'unauthorized_admin_action',
+        user_id: callerUser.id,
+        details: { action: 'admin_password_reset', timestamp: new Date().toISOString() }
+      })
+      return new Response(
+        JSON.stringify({ error: 'Admin privileges required' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
     const { email, newPassword } = await req.json()
 
     if (!email || !newPassword) {

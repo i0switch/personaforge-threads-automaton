@@ -94,7 +94,6 @@ serve(async (req) => {
       JSON.stringify({ 
         success: true, 
         message: 'APIキーが安全に保存されました',
-        encrypted_key: encryptedKey,
         keyName: keyName
       }),
       { 
