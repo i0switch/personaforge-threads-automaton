@@ -27,6 +27,10 @@ serve(async (req) => {
     console.log('Request body:', JSON.stringify(requestBody, null, 2));
 
     const { postId, userId } = requestBody;
+    
+    // catchブロックからもpostIdにアクセスできるよう外部スコープに保持
+    let _postId = postId;
+    let _personaId: string | null = null;
 
     if (!postId || !userId) {
       const error = 'Missing required fields: postId, userId';
@@ -60,6 +64,8 @@ serve(async (req) => {
       throw new Error(error);
     }
 
+    _personaId = post.persona_id;
+    
     console.log('Post found:', {
       id: post.id,
       content: post.content.substring(0, 100) + '...',
@@ -717,15 +723,26 @@ serve(async (req) => {
       if (publishResponse.status === 403 || publishResponse.status === 401) {
         failureCategory = 'token_expired';
         failureReason = 'Threadsアクセストークンが期限切れまたは無効です';
-        
+
+        // トークン期限切れ時にペルソナを非アクティブ化
+        console.warn(`🔒 トークン期限切れ検出: ペルソナ ${post.persona_id} を非アクティブ化`);
+        await supabase.from('personas').update({
+          is_active: false,
+          token_expires_at: new Date(0).toISOString()
+        }).eq('id', post.persona_id);
+
+        await supabase.from('auto_post_configs').update({ is_active: false }).eq('persona_id', post.persona_id);
+        await supabase.from('random_post_configs').update({ is_active: false }).eq('persona_id', post.persona_id);
+
         await supabase.from('security_events').insert({
           event_type: 'threads_auth_failed',
           user_id: userId,
           details: {
             persona_id: post.persona_id,
             post_id: postId,
-            error: `Threads API authentication failed during publish (${publishResponse.status})`,
-            response: publishResponseText
+            error: `Threads API auth failed (${publishResponse.status})`,
+            response: publishResponseText,
+            action: 'persona_deactivated'
           }
         });
       } else if (publishResponse.status === 400) {
@@ -894,12 +911,9 @@ serve(async (req) => {
       failureReason = 'Threads APIエラー: ' + failureReason;
     }
     
-    // postsテーブルにfailure情報を記録
+    // postsテーブルにfailure情報を記録（外部スコープのpostIdを使用）
     try {
-      const requestBody = await req.json().catch(() => ({}));
-      const postId = requestBody?.postId;
-      
-      if (postId) {
+      if (_postId) {
         await supabase
           .from('posts')
           .update({
@@ -908,9 +922,31 @@ serve(async (req) => {
             failure_category: failureCategory,
             updated_at: new Date().toISOString()
           })
-          .eq('id', postId);
+          .eq('id', _postId);
         
-        console.log(`Failed post recorded: ${postId}, category: ${failureCategory}`);
+        console.log(`Failed post recorded: ${_postId}, category: ${failureCategory}`);
+        
+        // トークン期限切れの場合、ペルソナも非アクティブ化
+        if (failureCategory === 'token_expired' && _personaId) {
+          console.warn(`🔒 catchブロック: ペルソナ ${_personaId} を非アクティブ化`);
+          await supabase
+            .from('personas')
+            .update({ 
+              is_active: false,
+              token_expires_at: new Date(0).toISOString()
+            })
+            .eq('id', _personaId);
+          
+          await supabase
+            .from('auto_post_configs')
+            .update({ is_active: false })
+            .eq('persona_id', _personaId);
+          
+          await supabase
+            .from('random_post_configs')
+            .update({ is_active: false })
+            .eq('persona_id', _personaId);
+        }
       }
     } catch (updateError) {
       console.error('Failed to update post failure info:', updateError);
