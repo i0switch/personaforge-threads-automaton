@@ -293,12 +293,21 @@ serve(async (req) => {
       if (!appSecret) {
         console.warn(`⚠️ threads_app_secretが未設定のため署名検証スキップ - persona: ${persona.name}`);
       } else {
-        // 暗号化されたsecretの復号化（THAAトークンでなければEdge経由で復号化が必要だが、
-        // ここではDB関数を使用）
+        // 暗号化されたsecretを復号化してから使用
         let secretForVerify = appSecret;
-        if (appSecret.startsWith('THAA')) {
-          // 非暗号化トークン（そのまま使用はapp_secretとしては通常ないがフォールバック）
-          secretForVerify = appSecret;
+        try {
+          const { data: decrypted, error: decryptError } = await supabase.rpc('decrypt_access_token', {
+            encrypted_token: appSecret
+          });
+          if (!decryptError && decrypted) {
+            secretForVerify = decrypted;
+            console.log(`🔓 app_secret復号化成功 - persona: ${persona.name}`);
+          } else {
+            // 復号失敗時は平文として試行（未暗号化の場合）
+            console.warn(`⚠️ app_secret復号化失敗、平文として試行 - persona: ${persona.name}, error: ${decryptError?.message}`);
+          }
+        } catch (decryptErr) {
+          console.warn(`⚠️ app_secret復号化例外、平文として試行 - persona: ${persona.name}`);
         }
         
         const isValid = await verifyHubSignature(rawBody, hubSignature, secretForVerify);
