@@ -2,6 +2,7 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
 import { z } from 'https://deno.land/x/zod@v3.22.4/mod.ts';
+import { decryptIfNeeded, verifyHmacSignature } from '../_shared/crypto.ts';
 
 // Phase 2 Security: Rate limiting function
 async function checkRateLimit(
@@ -60,45 +61,7 @@ const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-// HMAC-SHA256 署名検証（Meta X-Hub-Signature-256対応）
-async function verifyHubSignature(
-  rawBody: string,
-  signatureHeader: string,
-  secret: string
-): Promise<boolean> {
-  try {
-    const encoder = new TextEncoder();
-    const key = await crypto.subtle.importKey(
-      'raw',
-      encoder.encode(secret),
-      { name: 'HMAC', hash: 'SHA-256' },
-      false,
-      ['sign']
-    );
-
-    const signature = await crypto.subtle.sign(
-      'HMAC',
-      key,
-      encoder.encode(rawBody)
-    );
-
-    const expectedHex = 'sha256=' + Array.from(new Uint8Array(signature))
-      .map(b => b.toString(16).padStart(2, '0'))
-      .join('');
-
-    // 定数時間比較（タイミング攻撃対策）
-    const provided = signatureHeader;
-    if (expectedHex.length !== provided.length) return false;
-    let result = 0;
-    for (let i = 0; i < expectedHex.length; i++) {
-      result |= expectedHex.charCodeAt(i) ^ provided.charCodeAt(i);
-    }
-    return result === 0;
-  } catch (error) {
-    console.error('HMAC verification error:', error);
-    return false;
-  }
-}
+// HMAC署名検証は共通モジュール (verifyHmacSignature) を使用
 
 // 🔍 DEBUG: Webhookリクエストをデータベースにログ記録
 async function logWebhookRequest(
@@ -287,80 +250,23 @@ serve(async (req) => {
       });
     }
 
-    // HMAC署名検証（署名ヘッダーが存在する場合は必須チェック）
+    // HMAC署名検証（共通モジュール使用）
     if (hubSignature) {
       const appSecret = persona.threads_app_secret;
       if (!appSecret) {
-        console.warn(`⚠️ threads_app_secretが未設定のため署名検証スキップ - persona: ${persona.name}`);
+        console.warn(`⚠️ threads_app_secret未設定 - 署名検証スキップ - persona: ${persona.name}`);
       } else {
-        // ENCRYPTION_KEYベースのAES-GCM復号（Edge Functionで暗号化された値に対応）
-        let secretForVerify = appSecret;
-        const encryptionKey = Deno.env.get('ENCRYPTION_KEY');
-        if (encryptionKey) {
-          try {
-            const encoder = new TextEncoder();
-            const decoder = new TextDecoder();
-            const encryptedData = Uint8Array.from(atob(appSecret), c => c.charCodeAt(0));
-            const iv = encryptedData.slice(0, 12);
-            const ciphertext = encryptedData.slice(12);
-
-            // Try raw key (padded to 32 bytes)
-            let decryptedValue: string | null = null;
-            try {
-              const keyMaterial = await crypto.subtle.importKey(
-                'raw',
-                encoder.encode(encryptionKey.padEnd(32, '0').slice(0, 32)),
-                { name: 'AES-GCM' },
-                false,
-                ['decrypt']
-              );
-              const decrypted = await crypto.subtle.decrypt(
-                { name: 'AES-GCM', iv },
-                keyMaterial,
-                ciphertext
-              );
-              decryptedValue = decoder.decode(decrypted);
-            } catch (_e) {
-              // Fallback: PBKDF2-derived key
-              try {
-                const baseKey = await crypto.subtle.importKey(
-                  'raw',
-                  encoder.encode(encryptionKey),
-                  { name: 'PBKDF2' },
-                  false,
-                  ['deriveKey']
-                );
-                const derivedKey = await crypto.subtle.deriveKey(
-                  { name: 'PBKDF2', salt: encoder.encode('salt'), iterations: 100000, hash: 'SHA-256' },
-                  baseKey,
-                  { name: 'AES-GCM', length: 256 },
-                  false,
-                  ['decrypt']
-                );
-                const decrypted = await crypto.subtle.decrypt(
-                  { name: 'AES-GCM', iv },
-                  derivedKey,
-                  ciphertext
-                );
-                decryptedValue = decoder.decode(decrypted);
-                console.log(`🔓 app_secret PBKDF2復号化成功 - persona: ${persona.name}`);
-              } catch (e2) {
-                console.warn(`⚠️ app_secret復号化失敗(両方式)、平文として試行 - persona: ${persona.name}`);
-              }
-            }
-            
-            if (decryptedValue) {
-              secretForVerify = decryptedValue;
-              console.log(`🔓 app_secret復号化成功 - persona: ${persona.name}, decrypted_len: ${decryptedValue.length}`);
-            }
-          } catch (decryptErr) {
-            console.warn(`⚠️ app_secret復号化例外(base64解析失敗等)、平文として試行 - persona: ${persona.name}, error: ${decryptErr}`);
-          }
-        } else {
-          console.warn(`⚠️ ENCRYPTION_KEY未設定、app_secretを平文として試行 - persona: ${persona.name}`);
+        const secretForVerify = await decryptIfNeeded(appSecret, `app_secret:${persona.name}`);
+        if (!secretForVerify) {
+          console.error(`❌ app_secret復号失敗 - persona: ${persona.name}`);
+          await logWebhookRequest(personaId, 'POST', 'decrypt_failed', { personaName: persona.name });
+          return new Response(JSON.stringify({ error: 'App secret decryption failed' }), {
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          });
         }
         
-        const isValid = await verifyHubSignature(rawBody, hubSignature, secretForVerify);
+        const isValid = await verifyHmacSignature(rawBody, hubSignature, secretForVerify);
         if (!isValid) {
           console.error(`❌ HMAC署名検証失敗 - persona: ${persona.name}`);
           await logWebhookRequest(personaId, 'POST', 'signature_invalid', { personaName: persona.name });
@@ -1136,12 +1042,12 @@ async function sendThreadsReply(
   }
 }
 
-// アクセストークンを取得
+// アクセストークンを取得（共通復号モジュール使用、RPCフォールバック廃止）
 async function getAccessToken(persona: any): Promise<string | null> {
   try {
     console.log('🔑 アクセストークン取得開始');
 
-    // Step 1: 新しい方法でトークンを取得（キー名を統一）
+    // Step 1: retrieve-secret経由で取得
     try {
       const { data: tokenData, error: tokenError } = await supabase.functions.invoke('retrieve-secret', {
         body: { 
@@ -1151,15 +1057,15 @@ async function getAccessToken(persona: any): Promise<string | null> {
       });
 
       if ((tokenData?.secret || tokenData?.value) && !tokenError) {
-        console.log('✅ トークン取得成功（新方式）');
+        console.log('✅ トークン取得成功（retrieve-secret）');
         return tokenData.secret || tokenData.value;
       }
-      console.log('🔄 新方式でトークン取得失敗、従来方式を試行');
+      console.log('🔄 retrieve-secret失敗、直接復号を試行');
     } catch (error) {
-      console.log('🔄 新方式エラー、従来方式を試行:', error);
+      console.log('🔄 retrieve-secretエラー:', error);
     }
 
-    // Step 2: 従来方式のフォールバック
+    // Step 2: DBから直接取得して共通モジュールで復号
     const { data: personaWithToken } = await supabase
       .from('personas')
       .select('threads_access_token')
@@ -1171,40 +1077,14 @@ async function getAccessToken(persona: any): Promise<string | null> {
       return null;
     }
 
-    // Step 3: retrieve-secret関数を使用してトークンを取得
-    try {
-      const { data: tokenData, error: tokenError } = await supabase.functions.invoke('retrieve-secret', {
-        body: { 
-          key: `threads_access_token_${persona.id}`,
-          fallback: personaWithToken.threads_access_token
-        }
-      });
+    const token = await decryptIfNeeded(
+      personaWithToken.threads_access_token,
+      `access_token:${persona.name}`
+    );
 
-      if (tokenData?.secret && !tokenError) {
-        console.log('✅ トークン取得成功（retrieve-secret）');
-        return tokenData.secret;
-      }
-    } catch (error) {
-      console.log('🔄 retrieve-secret方式エラー:', error);
-    }
-
-    // Step 4: 暗号化されていないトークンかチェック
-    if (personaWithToken.threads_access_token.startsWith('THAA')) {
-      console.log('✅ 非暗号化トークン使用');
-      return personaWithToken.threads_access_token;
-    }
-
-    // Step 5: 従来の復号化方式を試行
-    try {
-      const { data: decryptedToken, error: decryptError } = await supabase
-        .rpc('decrypt_access_token', { encrypted_token: personaWithToken.threads_access_token });
-
-      if (decryptedToken && !decryptError) {
-        console.log('✅ トークン復号化成功（従来方式）');
-        return decryptedToken;
-      }
-    } catch (error) {
-      console.error('❌ 復号化処理エラー:', error);
+    if (token) {
+      console.log('✅ トークン復号成功（共通モジュール）');
+      return token;
     }
 
     console.error('❌ 全ての方式でアクセストークン取得失敗');

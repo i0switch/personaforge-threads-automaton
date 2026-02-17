@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
+import { decryptValue } from '../_shared/crypto.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -105,40 +106,19 @@ serve(async (req) => {
       );
     }
 
-    // Supabase Secretsから暗号化キーを取得
-    const encryptionKey = Deno.env.get('ENCRYPTION_KEY');
-    if (!encryptionKey) {
-      console.error('❌ ENCRYPTION_KEY not configured');
+    // 共通復号モジュールで復号
+    const result = await decryptValue(keyData.encrypted_key, `retrieve-secret:${key}`);
+    
+    if (!result.success) {
+      console.error(`❌ 復号失敗: ${key}, errorType: ${result.errorType}`);
       return new Response(
-        JSON.stringify({ error: 'Server configuration error' }),
+        JSON.stringify({ error: `Decryption failed: ${result.errorType}` }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // 復号化処理
-    const encoder = new TextEncoder();
-    const decoder = new TextDecoder();
-    
-    const encryptedData = Uint8Array.from(atob(keyData.encrypted_key), c => c.charCodeAt(0));
-    const iv = encryptedData.slice(0, 12);
-    const ciphertext = encryptedData.slice(12);
-
-    const keyMaterial = await crypto.subtle.importKey(
-      'raw',
-      encoder.encode(encryptionKey.padEnd(32, '0').slice(0, 32)),
-      { name: 'AES-GCM' },
-      false,
-      ['decrypt']
-    );
-
-    const decryptedData = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv },
-      keyMaterial,
-      ciphertext
-    );
-
-    const decryptedKey = decoder.decode(decryptedData);
-    console.log('✅ 復号化成功:', key);
+    const decryptedKey = result.value;
+    console.log(`✅ 復号化成功: ${key} (method: ${result.method})`);
 
     return new Response(
       JSON.stringify({ success: true, secret: decryptedKey, source: 'decrypted' }),

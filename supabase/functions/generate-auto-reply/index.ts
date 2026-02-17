@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
 import { z } from 'https://deno.land/x/zod@v3.22.4/mod.ts';
+import { getUserApiKeyDecrypted } from '../_shared/crypto.ts';
 
 // Phase 2 Security: Rate limiting function
 async function checkRateLimit(
@@ -135,94 +136,7 @@ serve(async (req) => {
 
     // Get all Gemini API keys for the user
     async function getUserApiKey(userId: string, keyName: string): Promise<string | null> {
-      try {
-        console.log(`  📥 Querying DB for user_id: ${userId}, key_name: ${keyName}`);
-        
-        const { data: userApiKey, error: keyError } = await supabase
-          .from('user_api_keys')
-          .select('encrypted_key')
-          .eq('user_id', userId)
-          .eq('key_name', keyName)
-          .single();
-
-        if (keyError) {
-          console.log(`  ⚠️ Query error for ${keyName}:`, keyError.message);
-        }
-        
-        if (!userApiKey?.encrypted_key) {
-          console.log(`  ⚠️ No encrypted_key found for ${keyName}`);
-          return null;
-        }
-
-        console.log(`  🔓 Found ${keyName}, attempting decryption...`);
-        
-        // Decrypt the user's API key
-        const encoder = new TextEncoder();
-        const decoder = new TextDecoder();
-        
-        // Base64デコード
-        const encryptedData = Uint8Array.from(atob(userApiKey.encrypted_key), c => c.charCodeAt(0));
-        
-        // IVと暗号化されたデータを分離
-        const iv = encryptedData.slice(0, 12);
-        const ciphertext = encryptedData.slice(12);
-
-        // Try current AES-GCM (raw key padded to 32 bytes)
-        try {
-          const keyMaterial = await crypto.subtle.importKey(
-            'raw',
-            encoder.encode(encryptionKey?.padEnd(32, '0').slice(0, 32) || '0'.repeat(32)),
-            { name: 'AES-GCM' },
-            false,
-            ['decrypt']
-          );
-
-          const decryptedData = await crypto.subtle.decrypt(
-            { name: 'AES-GCM', iv: iv },
-            keyMaterial,
-            ciphertext
-          );
-
-          return decoder.decode(decryptedData);
-        } catch (_e) {
-          console.log(`  ⚠️ Current AES-GCM decryption failed for ${keyName}, trying legacy...`);
-          // Fallback: legacy PBKDF2-derived AES-GCM
-          try {
-            const baseKey = await crypto.subtle.importKey(
-              'raw',
-              encoder.encode(encryptionKey),
-              { name: 'PBKDF2' },
-              false,
-              ['deriveKey']
-            );
-            const derivedKey = await crypto.subtle.deriveKey(
-              {
-                name: 'PBKDF2',
-                salt: encoder.encode('salt'),
-                iterations: 100000,
-                hash: 'SHA-256',
-              },
-              baseKey,
-              { name: 'AES-GCM', length: 256 },
-              false,
-              ['decrypt']
-            );
-            const decryptedData = await crypto.subtle.decrypt(
-              { name: 'AES-GCM', iv },
-              derivedKey,
-              ciphertext
-            );
-            console.log('Legacy key decryption succeeded (PBKDF2 fallback).');
-            return decoder.decode(decryptedData);
-          } catch (e2) {
-            console.error(`  ❌ Failed to decrypt ${keyName} with both methods:`, e2);
-            return null;
-          }
-        }
-      } catch (error) {
-        console.error(`  ❌ Error retrieving ${keyName}:`, error);
-        return null;
-      }
+      return getUserApiKeyDecrypted(supabase, userId, keyName);
     }
 
     async function getAllGeminiApiKeys(userId: string): Promise<string[]> {

@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
+import { getUserApiKeyDecrypted } from '../_shared/crypto.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -12,80 +13,7 @@ const supabase = createClient(
 );
 
 async function getUserApiKey(userId: string, keyName: string): Promise<string | null> {
-  try {
-    const { data, error } = await supabase
-      .from('user_api_keys')
-      .select('encrypted_key')
-      .eq('user_id', userId)
-      .eq('key_name', keyName)
-      .single();
-
-    if (error || !data) return null;
-
-    const encryptionKey = Deno.env.get('ENCRYPTION_KEY');
-    if (!encryptionKey) return null;
-
-    const encoder = new TextEncoder();
-    const decoder = new TextDecoder();
-
-    const encryptedData = Uint8Array.from(atob(data.encrypted_key), c => c.charCodeAt(0));
-    const iv = encryptedData.slice(0, 12);
-    const ciphertext = encryptedData.slice(12);
-
-    // Try current AES-GCM (raw key padded to 32 bytes)
-    try {
-      const keyMaterial = await crypto.subtle.importKey(
-        'raw',
-        encoder.encode(encryptionKey.padEnd(32, '0').slice(0, 32)),
-        { name: 'AES-GCM' },
-        false,
-        ['decrypt']
-      );
-
-      const decrypted = await crypto.subtle.decrypt(
-        { name: 'AES-GCM', iv },
-        keyMaterial,
-        ciphertext
-      );
-      return decoder.decode(decrypted);
-    } catch (_e) {
-      // Fallback: legacy PBKDF2-derived AES-GCM
-      try {
-        const baseKey = await crypto.subtle.importKey(
-          'raw',
-          encoder.encode(encryptionKey),
-          { name: 'PBKDF2' },
-          false,
-          ['deriveKey']
-        );
-        const derivedKey = await crypto.subtle.deriveKey(
-          {
-            name: 'PBKDF2',
-            salt: encoder.encode('salt'),
-            iterations: 100000,
-            hash: 'SHA-256',
-          },
-          baseKey,
-          { name: 'AES-GCM', length: 256 },
-          false,
-          ['decrypt']
-        );
-        const decrypted = await crypto.subtle.decrypt(
-          { name: 'AES-GCM', iv },
-          derivedKey,
-          ciphertext
-        );
-        console.log('Legacy key decryption succeeded (PBKDF2 fallback).');
-        return decoder.decode(decrypted);
-      } catch (e2) {
-        console.error('Failed to decrypt user API key with both methods:', e2);
-        return null;
-      }
-    }
-  } catch (e) {
-    console.error('Failed to get user API key:', e);
-    return null;
-  }
+  return getUserApiKeyDecrypted(supabase, userId, keyName);
 }
 
 async function getAllGeminiApiKeys(userId: string): Promise<string[]> {
