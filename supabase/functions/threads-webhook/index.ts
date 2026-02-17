@@ -293,21 +293,71 @@ serve(async (req) => {
       if (!appSecret) {
         console.warn(`⚠️ threads_app_secretが未設定のため署名検証スキップ - persona: ${persona.name}`);
       } else {
-        // 暗号化されたsecretを復号化してから使用
+        // ENCRYPTION_KEYベースのAES-GCM復号（Edge Functionで暗号化された値に対応）
         let secretForVerify = appSecret;
-        try {
-          const { data: decrypted, error: decryptError } = await supabase.rpc('decrypt_access_token', {
-            encrypted_token: appSecret
-          });
-          if (!decryptError && decrypted) {
-            secretForVerify = decrypted;
-            console.log(`🔓 app_secret復号化成功 - persona: ${persona.name}`);
-          } else {
-            // 復号失敗時は平文として試行（未暗号化の場合）
-            console.warn(`⚠️ app_secret復号化失敗、平文として試行 - persona: ${persona.name}, error: ${decryptError?.message}`);
+        const encryptionKey = Deno.env.get('ENCRYPTION_KEY');
+        if (encryptionKey) {
+          try {
+            const encoder = new TextEncoder();
+            const decoder = new TextDecoder();
+            const encryptedData = Uint8Array.from(atob(appSecret), c => c.charCodeAt(0));
+            const iv = encryptedData.slice(0, 12);
+            const ciphertext = encryptedData.slice(12);
+
+            // Try raw key (padded to 32 bytes)
+            let decryptedValue: string | null = null;
+            try {
+              const keyMaterial = await crypto.subtle.importKey(
+                'raw',
+                encoder.encode(encryptionKey.padEnd(32, '0').slice(0, 32)),
+                { name: 'AES-GCM' },
+                false,
+                ['decrypt']
+              );
+              const decrypted = await crypto.subtle.decrypt(
+                { name: 'AES-GCM', iv },
+                keyMaterial,
+                ciphertext
+              );
+              decryptedValue = decoder.decode(decrypted);
+            } catch (_e) {
+              // Fallback: PBKDF2-derived key
+              try {
+                const baseKey = await crypto.subtle.importKey(
+                  'raw',
+                  encoder.encode(encryptionKey),
+                  { name: 'PBKDF2' },
+                  false,
+                  ['deriveKey']
+                );
+                const derivedKey = await crypto.subtle.deriveKey(
+                  { name: 'PBKDF2', salt: encoder.encode('salt'), iterations: 100000, hash: 'SHA-256' },
+                  baseKey,
+                  { name: 'AES-GCM', length: 256 },
+                  false,
+                  ['decrypt']
+                );
+                const decrypted = await crypto.subtle.decrypt(
+                  { name: 'AES-GCM', iv },
+                  derivedKey,
+                  ciphertext
+                );
+                decryptedValue = decoder.decode(decrypted);
+                console.log(`🔓 app_secret PBKDF2復号化成功 - persona: ${persona.name}`);
+              } catch (e2) {
+                console.warn(`⚠️ app_secret復号化失敗(両方式)、平文として試行 - persona: ${persona.name}`);
+              }
+            }
+            
+            if (decryptedValue) {
+              secretForVerify = decryptedValue;
+              console.log(`🔓 app_secret復号化成功 - persona: ${persona.name}, decrypted_len: ${decryptedValue.length}`);
+            }
+          } catch (decryptErr) {
+            console.warn(`⚠️ app_secret復号化例外(base64解析失敗等)、平文として試行 - persona: ${persona.name}, error: ${decryptErr}`);
           }
-        } catch (decryptErr) {
-          console.warn(`⚠️ app_secret復号化例外、平文として試行 - persona: ${persona.name}`);
+        } else {
+          console.warn(`⚠️ ENCRYPTION_KEY未設定、app_secretを平文として試行 - persona: ${persona.name}`);
         }
         
         const isValid = await verifyHubSignature(rawBody, hubSignature, secretForVerify);
