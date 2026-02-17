@@ -6,6 +6,24 @@ import { authSecurity } from "@/utils/authSecurity";
 import { authHandler } from "@/utils/authHandler";
 import { initializeErrorTracking } from '@/utils/errorTracking';
 
+// Supabase認証関連のストレージのみクリア（他アプリ設定は保持）
+const SUPABASE_STORAGE_PREFIX = 'sb-';
+function clearSupabaseStorage() {
+  const lsKeys: string[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key?.startsWith(SUPABASE_STORAGE_PREFIX)) lsKeys.push(key);
+  }
+  lsKeys.forEach(k => localStorage.removeItem(k));
+
+  const ssKeys: string[] = [];
+  for (let i = 0; i < sessionStorage.length; i++) {
+    const key = sessionStorage.key(i);
+    if (key?.startsWith(SUPABASE_STORAGE_PREFIX)) ssKeys.push(key);
+  }
+  ssKeys.forEach(k => sessionStorage.removeItem(k));
+}
+
 interface AuthContextType {
   user: User | null;
   session: Session | null;
@@ -151,9 +169,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         const { data: { session }, error } = await supabase.auth.getSession();
         if (error) {
           console.error('❌ Error getting session:', error);
-          // Clear potentially corrupted session data
-          localStorage.clear();
-          sessionStorage.clear();
+      // Supabase認証キーのみクリア（他アプリ設定は保持）
+      clearSupabaseStorage();
           await supabase.auth.signOut({ scope: 'local' });
           if (mounted && !initialLoadComplete) {
             setSession(null);
@@ -195,8 +212,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             console.log('✅ Session token valid');
           } catch (tokenError) {
             console.error('❌ Token validation failed, clearing session:', tokenError);
-            localStorage.clear();
-            sessionStorage.clear();
+            clearSupabaseStorage();
             await supabase.auth.signOut({ scope: 'local' });
             if (mounted && !initialLoadComplete) {
               setSession(null);
@@ -223,8 +239,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       } catch (error) {
         console.error('❌ Auth initialization error:', error);
         // Clear session on any error
-        localStorage.clear();
-        sessionStorage.clear();
+        clearSupabaseStorage();
         await supabase.auth.signOut({ scope: 'local' });
         if (mounted && !initialLoadComplete) {
           setSession(null);
@@ -251,8 +266,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const signUp = async (email: string, password: string, displayName?: string) => {
     try {
-      console.log('Attempting signup for:', email); // デバッグ用ログ追加
-      // 本番環境のURLを強制使用
+      console.log('Attempting signup for:', email);
       const redirectUrl = 'https://threads-genius-ai.lovable.app/';
       const { data, error } = await supabase.auth.signUp({
         email,
@@ -264,51 +278,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           }
         }
       });
-      console.log('Signup result:', error ? 'error' : 'success'); // デバッグ用ログ追加
+      console.log('Signup result:', error ? 'error' : 'success');
       
-      // サインアップ成功時にプロファイルとアカウントステータスを作成
-      if (!error && data.user) {
-        try {
-          console.log('Creating profile for new user:', data.user.id);
-          
-          // プロファイル作成
-          const { error: profileError } = await supabase
-            .from('profiles')
-            .insert({
-              user_id: data.user.id,
-              display_name: displayName || email
-            });
-          
-          if (profileError) {
-            console.error('Profile creation error:', profileError);
-          } else {
-            console.log('Profile created successfully');
-          }
-          
-          // アカウントステータス作成
-          const { error: statusError } = await supabase
-            .from('user_account_status')
-            .insert({
-              user_id: data.user.id,
-              is_active: true,
-              is_approved: true,
-              persona_limit: 1
-            });
-          
-          if (statusError) {
-            console.error('Account status creation error:', statusError);
-          } else {
-            console.log('Account status created successfully');
-          }
-        } catch (profileCreationError) {
-          console.error('Error creating user profile data:', profileCreationError);
-          // プロファイル作成エラーはサインアップをブロックしない
-        }
-      }
+      // プロファイル・アカウントステータスはDBトリガー(handle_new_user)で自動作成
+      // フロントからの二重作成は行わない
       
       return { error };
     } catch (error) {
-      console.error('Signup error:', error); // デバッグ用ログ追加
+      console.error('Signup error:', error);
       return { error };
     }
   };

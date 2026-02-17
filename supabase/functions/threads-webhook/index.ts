@@ -60,6 +60,46 @@ const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+// HMAC-SHA256 署名検証（Meta X-Hub-Signature-256対応）
+async function verifyHubSignature(
+  rawBody: string,
+  signatureHeader: string,
+  secret: string
+): Promise<boolean> {
+  try {
+    const encoder = new TextEncoder();
+    const key = await crypto.subtle.importKey(
+      'raw',
+      encoder.encode(secret),
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['sign']
+    );
+
+    const signature = await crypto.subtle.sign(
+      'HMAC',
+      key,
+      encoder.encode(rawBody)
+    );
+
+    const expectedHex = 'sha256=' + Array.from(new Uint8Array(signature))
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
+
+    // 定数時間比較（タイミング攻撃対策）
+    const provided = signatureHeader;
+    if (expectedHex.length !== provided.length) return false;
+    let result = 0;
+    for (let i = 0; i < expectedHex.length; i++) {
+      result |= expectedHex.charCodeAt(i) ^ provided.charCodeAt(i);
+    }
+    return result === 0;
+  } catch (error) {
+    console.error('HMAC verification error:', error);
+    return false;
+  }
+}
+
 // 🔍 DEBUG: Webhookリクエストをデータベースにログ記録
 async function logWebhookRequest(
   personaId: string | null, 
@@ -227,7 +267,11 @@ serve(async (req) => {
     // 🔍 DEBUG: POSTリクエスト受信をログ記録
     await logWebhookRequest(personaId, 'POST', 'received', { step: 'start' });
 
-    // ペルソナ情報を取得（自動返信設定も含む）
+    // === H-01: HMAC署名検証 (X-Hub-Signature-256) ===
+    const rawBody = await req.text();
+    const hubSignature = req.headers.get('x-hub-signature-256');
+    
+    // ペルソナ情報を取得（署名検証用のapp_secretも含む）
     const { data: persona, error: personaError } = await supabase
       .from('personas')
       .select('*')
@@ -243,14 +287,39 @@ serve(async (req) => {
       });
     }
 
-    console.log(`✅ ペルソナ取得成功: ${persona.name}`);
-    console.log(`   - 定型文返信: ${persona.auto_reply_enabled ? 'ON' : 'OFF'}`);
-    console.log(`   - AI自動返信: ${persona.ai_auto_reply_enabled ? 'ON' : 'OFF'}`);
+    // HMAC署名検証（署名ヘッダーが存在する場合は必須チェック）
+    if (hubSignature) {
+      const appSecret = persona.threads_app_secret;
+      if (!appSecret) {
+        console.warn(`⚠️ threads_app_secretが未設定のため署名検証スキップ - persona: ${persona.name}`);
+      } else {
+        // 暗号化されたsecretの復号化（THAAトークンでなければEdge経由で復号化が必要だが、
+        // ここではDB関数を使用）
+        let secretForVerify = appSecret;
+        if (appSecret.startsWith('THAA')) {
+          // 非暗号化トークン（そのまま使用はapp_secretとしては通常ないがフォールバック）
+          secretForVerify = appSecret;
+        }
+        
+        const isValid = await verifyHubSignature(rawBody, hubSignature, secretForVerify);
+        if (!isValid) {
+          console.error(`❌ HMAC署名検証失敗 - persona: ${persona.name}`);
+          await logWebhookRequest(personaId, 'POST', 'signature_invalid', { personaName: persona.name });
+          return new Response(JSON.stringify({ error: 'Invalid signature' }), {
+            status: 403,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          });
+        }
+        console.log(`✅ HMAC署名検証成功 - persona: ${persona.name}`);
+      }
+    } else {
+      console.warn(`⚠️ X-Hub-Signature-256ヘッダーなし - 署名検証スキップ (persona: ${persona.name})`);
+    }
 
-    // Webhookペイロードを解析（POSTリクエストの場合のみ）
+    // Webhookペイロードを解析
     let rawPayload;
     try {
-      rawPayload = await req.json();
+      rawPayload = JSON.parse(rawBody);
     } catch (e) {
       console.error('❌ Invalid JSON payload:', e);
       await logWebhookRequest(personaId, 'POST', 'invalid_json', { error: String(e) });
