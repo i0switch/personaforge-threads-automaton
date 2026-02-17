@@ -5,6 +5,61 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// 暗号化されたApp Secretを復号化する関数
+async function decryptAppSecret(encryptedValue: string, personaId: string, supabase: any): Promise<string> {
+  // THAAで始まる場合は非暗号化トークン
+  if (encryptedValue.startsWith('THAA')) {
+    return encryptedValue
+  }
+
+  // 32文字以下の場合は平文のApp Secretと判断
+  if (encryptedValue.length <= 40) {
+    return encryptedValue
+  }
+
+  // 暗号化されている場合はretrieve-secretと同じロジックで復号化
+  const encryptionKey = Deno.env.get('ENCRYPTION_KEY')
+  if (!encryptionKey) {
+    console.error('❌ ENCRYPTION_KEY not set, cannot decrypt app_secret')
+    throw new Error('Encryption key not configured')
+  }
+
+  try {
+    const encoder = new TextEncoder()
+    const decoder = new TextDecoder()
+
+    // Base64デコード
+    const encryptedData = Uint8Array.from(atob(encryptedValue), c => c.charCodeAt(0))
+
+    // IVと暗号化されたデータを分離
+    const iv = encryptedData.slice(0, 12)
+    const ciphertext = encryptedData.slice(12)
+
+    // 暗号化キーをCryptoKeyに変換
+    const keyMaterial = await crypto.subtle.importKey(
+      'raw',
+      encoder.encode(encryptionKey.padEnd(32, '0').slice(0, 32)),
+      { name: 'AES-GCM' },
+      false,
+      ['decrypt']
+    )
+
+    // データを復号化
+    const decryptedData = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: iv },
+      keyMaterial,
+      ciphertext
+    )
+
+    const decrypted = decoder.decode(decryptedData)
+    console.log(`✅ App Secret decrypted successfully for persona ${personaId}`)
+    return decrypted
+  } catch (err) {
+    console.error(`❌ Failed to decrypt app_secret:`, err)
+    throw new Error('Failed to decrypt App Secret. Please re-enter it in persona settings.')
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
@@ -47,11 +102,16 @@ Deno.serve(async (req) => {
 
     const callbackUri = redirect_uri || 'https://threads-genius-ai.lovable.app/auth/callback'
 
+    // App Secretを復号化（暗号化されている場合）
+    console.log(`🔓 [${persona.name}] Decrypting App Secret (length: ${persona.threads_app_secret.length})...`)
+    const decryptedAppSecret = await decryptAppSecret(persona.threads_app_secret, persona_id, supabase)
+    console.log(`✅ [${persona.name}] App Secret ready (length: ${decryptedAppSecret.length})`)
+
     // Step 1: 認証コードを短期トークンに交換
     console.log(`🔄 [${persona.name}] Exchanging auth code for short-lived token...`)
     const tokenParams = new URLSearchParams({
       client_id: persona.threads_app_id,
-      client_secret: persona.threads_app_secret,
+      client_secret: decryptedAppSecret,
       grant_type: 'authorization_code',
       redirect_uri: callbackUri,
       code,
@@ -78,7 +138,7 @@ Deno.serve(async (req) => {
     // Step 2: 短期トークンを長期トークンに交換
     console.log(`🔄 [${persona.name}] Exchanging for long-lived token...`)
     const longTokenRes = await fetch(
-      `https://graph.threads.net/access_token?grant_type=th_exchange_token&client_secret=${encodeURIComponent(persona.threads_app_secret)}&access_token=${encodeURIComponent(shortToken)}`,
+      `https://graph.threads.net/access_token?grant_type=th_exchange_token&client_secret=${encodeURIComponent(decryptedAppSecret)}&access_token=${encodeURIComponent(shortToken)}`,
       { method: 'GET' }
     )
 
