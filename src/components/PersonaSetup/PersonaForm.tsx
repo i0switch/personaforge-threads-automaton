@@ -6,7 +6,8 @@ import { SecureInput, SecureTextarea } from "@/components/SecureInput";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
-import { Bot, MessageSquare, Settings, User, Clock } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Bot, MessageSquare, Settings, User, Clock, AlertTriangle } from "lucide-react";
 import { AvatarUpload } from "./AvatarUpload";
 import { ThreadsOAuthButton } from "./ThreadsOAuthButton";
 import type { Persona, PersonaFormData } from "@/types/persona";
@@ -305,6 +306,17 @@ export const PersonaForm = ({ editingPersona, onSubmit, onCancel }: PersonaFormP
                   手動入力、またはOAuth認証で自動取得できます。
                 </p>
               </div>
+
+              {/* threads_user_id未設定警告 */}
+              {editingPersona && editingPersona.threads_access_token && !editingPersona.threads_user_id && (
+                <Alert variant="destructive" className="border-destructive/50">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertDescription>
+                    <span className="font-medium">⚠️ Threads User IDが未設定です。</span>
+                    自動返信・リプライ監視が正常に動作しません。OAuth認証を再実行するか、管理者に問い合わせてください。
+                  </AlertDescription>
+                </Alert>
+              )}
 
               {/* OAuth認証ボタン（常に表示） */}
               <ThreadsOAuthButton
