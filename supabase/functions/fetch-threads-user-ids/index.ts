@@ -67,7 +67,8 @@ Deno.serve(async (req) => {
 
       try {
         const res = await fetch(
-          `https://graph.threads.net/v1.0/me?fields=id,username&access_token=${encodeURIComponent(token)}`
+          `https://graph.threads.net/v1.0/me?fields=id,username`,
+          { headers: { 'Authorization': `Bearer ${token}` } }
         )
 
         if (res.ok) {

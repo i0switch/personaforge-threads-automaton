@@ -164,7 +164,8 @@ async function checkRepliesForPersona(persona: any, accessToken: string): Promis
     
     // Threads APIからペルソナの全スレッドを取得（リプライを含む）
     const response = await fetch(
-      `https://graph.threads.net/v1.0/me/threads?fields=id,text,username,timestamp,reply_to_id&access_token=${accessToken}`
+      `https://graph.threads.net/v1.0/me/threads?fields=id,text,username,timestamp,reply_to_id`,
+      { headers: { 'Authorization': `Bearer ${accessToken}` } }
     );
     
     if (!response.ok) {

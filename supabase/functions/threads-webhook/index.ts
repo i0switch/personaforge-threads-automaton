@@ -381,25 +381,40 @@ serve(async (req) => {
 
     // 各リプライを処理
     let processedCount = 0;
+    let failedCount = 0;
+    const errors: string[] = [];
     for (const reply of replies) {
-      const success = await processReply(persona, reply);
-      if (success) processedCount++;
+      const result = await processReply(persona, reply);
+      if (result.processed) {
+        processedCount++;
+      }
+      if (result.failed) {
+        failedCount++;
+        if (result.error) errors.push(result.error);
+      }
     }
 
-    console.log(`✅ 処理完了 - ${processedCount}/${replies.length}件処理しました`);
+    console.log(`✅ 処理完了 - 成功:${processedCount} 失敗:${failedCount} / 合計:${replies.length}`);
     
     // 🔍 DEBUG: 処理完了ログ
     await logWebhookRequest(personaId, 'POST', 'processing_complete', {
       personaName: persona.name,
       totalReplies: replies.length,
-      processedCount
+      processedCount,
+      failedCount,
+      errors: errors.length > 0 ? errors : undefined
     });
 
+    // 全件失敗の場合は success: false を返す
+    const allFailed = processedCount === 0 && failedCount > 0;
     return new Response(JSON.stringify({ 
-      success: true, 
+      success: !allFailed, 
       processed: processedCount,
-      total: replies.length 
+      failed: failedCount,
+      total: replies.length,
+      ...(errors.length > 0 ? { errors } : {})
     }), {
+      status: allFailed ? 207 : 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
 
@@ -475,21 +490,21 @@ function extractRepliesFromPayload(payload: any): any[] {
 }
 
 // リプライを処理
-async function processReply(persona: any, reply: any): Promise<boolean> {
+async function processReply(persona: any, reply: any): Promise<{ processed: boolean; failed: boolean; error?: string }> {
   try {
     console.log(`\n🔄 リプライ処理開始: ${reply.id} - "${reply.text}" by ${reply.username}`);
 
     // 自分自身のリプライをスキップ
     if (reply.username === persona.threads_username || reply.username === persona.name) {
       console.log(`⏭️ 自分のリプライをスキップ: ${reply.id}`);
-      return false;
+      return { processed: false, failed: false };
     }
 
     // Step 1: リプライをデータベースに保存（重複チェックも兼ねる）
     const saveResult = await saveReplyToDatabaseSafe(persona, reply);
     if (!saveResult.isNew) {
       console.log(`⏭️ 既に処理済みのリプライ: ${reply.id}`);
-      return false;
+      return { processed: false, failed: false };
     }
 
     // Step 2: アクティビティログを記録
@@ -501,27 +516,23 @@ async function processReply(persona: any, reply: any): Promise<boolean> {
       });
 
     // Step 3: 自動返信処理（定型文またはAI自動返信が有効な場合のみ）
-    // キーワード自動返信は auto_replies テーブルの is_active で判断するため、ここでは ai_auto_reply_enabled のみチェック
     if (!persona.ai_auto_reply_enabled) {
-      // AI自動返信が無効でも、キーワード自動返信の可能性があるため処理を続行
       console.log(`ℹ️ AI自動返信OFF - キーワード自動返信のみチェック - persona: ${persona.name}`);
     }
 
     console.log(`🤖 自動返信処理開始 - persona: ${persona.name}`);
     
     try {
-      // Step 4: トリガー自動返信（定型文）をチェック（auto_repliesテーブルのis_activeで判断）
+      // Step 4: トリガー自動返信（定型文）をチェック
       const templateResult = await processTemplateAutoReply(persona, reply);
       if (templateResult.sent) {
-        // スケジュールされた場合（template_scheduled）は、auto_reply_sentを更新しない
-        // 即時送信された場合（template）のみ、auto_reply_sentフラグを更新
         if (templateResult.method === 'template_scheduled') {
           console.log(`⏰ 定型文自動返信スケジュール成功 - reply: ${reply.id} (送信時刻待ち)`);
         } else {
           console.log(`✅ 定型文自動返信即時送信成功 - reply: ${reply.id}`);
           await updateAutoReplySentFlag(reply.id, true);
         }
-        return true;
+        return { processed: true, failed: false };
       }
 
       // Step 5: AI自動返信をチェック（AI自動返信ON、またはキーワード不一致時のAIフォールバック）
@@ -535,20 +546,40 @@ async function processReply(persona: any, reply: any): Promise<boolean> {
             console.log(`✅ AI自動返信即時送信成功 - reply: ${reply.id}`);
             await updateAutoReplySentFlag(reply.id, true);
           }
-          return true;
+          return { processed: true, failed: false };
+        }
+        // AI返信が sent=false で返ってきた場合は失敗
+        if (aiResult.error) {
+          return { processed: false, failed: true, error: aiResult.error };
         }
       }
 
       console.log(`ℹ️ 自動返信条件に該当なし - persona: ${persona.name}`);
-      return true;
+      return { processed: true, failed: false };
     } catch (error) {
+      const errMsg = error instanceof Error ? error.message : String(error);
       console.error(`❌ 自動返信処理エラー - reply: ${reply.id}:`, error);
-      return false;
+      
+      // DB にエラー詳細を記録
+      await supabase
+        .from('thread_replies')
+        .update({ 
+          reply_status: 'failed',
+          error_details: {
+            error_type: 'auto_reply_processing_error',
+            error_message: errMsg,
+            timestamp: new Date().toISOString()
+          }
+        })
+        .eq('reply_id', reply.id);
+      
+      return { processed: false, failed: true, error: errMsg };
     }
 
   } catch (error) {
+    const errMsg = error instanceof Error ? error.message : String(error);
     console.error(`❌ リプライ処理エラー (${reply.id}):`, error);
-    return false;
+    return { processed: false, failed: true, error: errMsg };
   }
 }
 
@@ -765,7 +796,7 @@ async function processTemplateAutoReply(persona: any, reply: any): Promise<{ sen
 }
 
 // AI自動返信を処理
-async function processAIAutoReply(persona: any, reply: any): Promise<{ sent: boolean, method?: string }> {
+async function processAIAutoReply(persona: any, reply: any): Promise<{ sent: boolean, method?: string, error?: string }> {
   console.log(`🧠 AI自動返信処理開始 - persona: ${persona.name}`);
 
   try {
@@ -773,7 +804,6 @@ async function processAIAutoReply(persona: any, reply: any): Promise<{ sent: boo
     let originalPostContent = '';
     if (reply.root_post?.id) {
       try {
-        // まず、データベースから元投稿を探す
         const { data: existingPost } = await supabase
           .from('posts')
           .select('content')
@@ -790,11 +820,15 @@ async function processAIAutoReply(persona: any, reply: any): Promise<{ sent: boo
           if (accessToken) {
             try {
               console.log(`🔍 Fetching root post data for reply processing`);
-              const response = await fetch(`https://graph.threads.net/v1.0/${reply.root_post.id}?fields=text&access_token=${accessToken}`);
+              const response = await fetch(`https://graph.threads.net/v1.0/${reply.root_post.id}?fields=text`, {
+                headers: { 'Authorization': `Bearer ${accessToken}` }
+              });
               if (response.ok) {
                 const postData = await response.json();
                 originalPostContent = postData.text || '';
                 console.log(`📄 Threads APIから元投稿取得: "${originalPostContent.substring(0, 50)}..."`);
+              } else {
+                await response.text(); // consume body
               }
             } catch (error) {
               console.log(`⚠️ Threads APIからの投稿取得失敗:`, error);
@@ -818,21 +852,67 @@ async function processAIAutoReply(persona: any, reply: any): Promise<{ sent: boo
     });
 
     if (aiError) {
+      const errMsg = `AI auto-reply invocation failed: ${aiError.message || String(aiError)}`;
       console.error(`❌ AI自動返信エラー:`, aiError);
-      return { sent: false };
+      
+      // DB にエラー詳細を記録
+      await supabase
+        .from('thread_replies')
+        .update({ 
+          reply_status: 'failed',
+          error_details: {
+            error_type: 'ai_reply_invocation_failed',
+            error_message: errMsg,
+            timestamp: new Date().toISOString()
+          }
+        })
+        .eq('reply_id', reply.id);
+      
+      return { sent: false, error: errMsg };
     }
 
     if (!aiResponse?.success) {
+      const errMsg = `AI reply returned failure: ${JSON.stringify(aiResponse?.error || aiResponse)}`;
       console.error(`❌ AI返信処理失敗:`, aiResponse);
-      return { sent: false };
+      
+      // DB にエラー詳細を記録
+      await supabase
+        .from('thread_replies')
+        .update({ 
+          reply_status: 'failed',
+          error_details: {
+            error_type: 'ai_reply_processing_failed',
+            error_message: errMsg,
+            ai_response: aiResponse,
+            timestamp: new Date().toISOString()
+          }
+        })
+        .eq('reply_id', reply.id);
+      
+      return { sent: false, error: errMsg };
     }
 
     console.log(`✅ AI返信処理成功: ${aiResponse.scheduled ? 'スケジュール' : '即時送信'}`);
     return { sent: true, method: aiResponse.scheduled ? 'ai_scheduled' : 'ai' };
 
   } catch (error) {
+    const errMsg = error instanceof Error ? error.message : String(error);
     console.error(`❌ AI自動返信処理エラー:`, error);
-    return { sent: false };
+    
+    // DB にエラー詳細を記録
+    await supabase
+      .from('thread_replies')
+      .update({ 
+        reply_status: 'failed',
+        error_details: {
+          error_type: 'ai_reply_exception',
+          error_message: errMsg,
+          timestamp: new Date().toISOString()
+        }
+      })
+      .eq('reply_id', reply.id);
+    
+    return { sent: false, error: errMsg };
   }
 }
 
