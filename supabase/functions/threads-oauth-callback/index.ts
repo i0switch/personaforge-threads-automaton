@@ -1,63 +1,18 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { decryptIfNeeded } from '../_shared/crypto.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// 暗号化されたApp Secretを復号化する関数
-async function decryptAppSecret(encryptedValue: string, personaId: string, supabase: any): Promise<string> {
-  // THAAで始まる場合は非暗号化トークン
-  if (encryptedValue.startsWith('THAA')) {
-    return encryptedValue
+// 暗号化されたApp Secretを復号化する関数（共通モジュール使用）
+async function decryptAppSecret(encryptedValue: string, personaId: string, _supabase: any): Promise<string> {
+  const result = await decryptIfNeeded(encryptedValue, `app_secret:persona_${personaId}`);
+  if (result) {
+    return result;
   }
-
-  // 32文字以下の場合は平文のApp Secretと判断
-  if (encryptedValue.length <= 40) {
-    return encryptedValue
-  }
-
-  // 暗号化されている場合はretrieve-secretと同じロジックで復号化
-  const encryptionKey = Deno.env.get('ENCRYPTION_KEY')
-  if (!encryptionKey) {
-    console.error('❌ ENCRYPTION_KEY not set, cannot decrypt app_secret')
-    throw new Error('Encryption key not configured')
-  }
-
-  try {
-    const encoder = new TextEncoder()
-    const decoder = new TextDecoder()
-
-    // Base64デコード
-    const encryptedData = Uint8Array.from(atob(encryptedValue), c => c.charCodeAt(0))
-
-    // IVと暗号化されたデータを分離
-    const iv = encryptedData.slice(0, 12)
-    const ciphertext = encryptedData.slice(12)
-
-    // 暗号化キーをCryptoKeyに変換
-    const keyMaterial = await crypto.subtle.importKey(
-      'raw',
-      encoder.encode(encryptionKey.padEnd(32, '0').slice(0, 32)),
-      { name: 'AES-GCM' },
-      false,
-      ['decrypt']
-    )
-
-    // データを復号化
-    const decryptedData = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv: iv },
-      keyMaterial,
-      ciphertext
-    )
-
-    const decrypted = decoder.decode(decryptedData)
-    console.log(`✅ App Secret decrypted successfully for persona ${personaId}`)
-    return decrypted
-  } catch (err) {
-    console.error(`❌ Failed to decrypt app_secret:`, err)
-    throw new Error('Failed to decrypt App Secret. Please re-enter it in persona settings.')
-  }
+  throw new Error('Failed to decrypt App Secret. Please re-enter it in persona settings.');
 }
 
 Deno.serve(async (req) => {
