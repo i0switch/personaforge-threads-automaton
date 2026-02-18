@@ -707,6 +707,26 @@ async function processTemplateAutoReply(persona: any, reply: any): Promise<{ sen
           } else {
             // 遅延時間が0分の場合は即座に送信
             console.log(`📤 定型文返信を即座に送信 - reply: ${reply.id}`);
+
+            // ★ アトミックロック: auto_reply_sent=falseの場合のみtrueに更新（重複送信防止）
+            const { data: lockResult, error: lockError } = await supabase
+              .from('thread_replies')
+              .update({ auto_reply_sent: true, updated_at: new Date().toISOString() })
+              .eq('reply_id', reply.id)
+              .eq('auto_reply_sent', false)
+              .select('id');
+            
+            if (lockError) {
+              console.error(`❌ ロック取得エラー - reply: ${reply.id}:`, lockError);
+              return { sent: false };
+            }
+            
+            if (!lockResult || lockResult.length === 0) {
+              console.log(`⏭️ 既に返信送信済み（重複スキップ） - reply: ${reply.id}`);
+              return { sent: true, method: 'template' }; // 既に送信済みとして扱う
+            }
+            
+            console.log(`🔒 ロック取得成功 - reply: ${reply.id}、送信開始`);
             const sendResult = await sendThreadsReply(persona, reply.id, setting.response_template);
             
             if (sendResult.success) {
@@ -722,6 +742,12 @@ async function processTemplateAutoReply(persona: any, reply: any): Promise<{ sen
               return { sent: true, method: 'template' };
             } else {
               console.error(`❌ 定型文返信送信失敗:`, sendResult.error);
+              
+              // 送信失敗時はロックを解放（auto_reply_sentをfalseに戻す）
+              await supabase
+                .from('thread_replies')
+                .update({ auto_reply_sent: false, updated_at: new Date().toISOString() })
+                .eq('reply_id', reply.id);
               
               // Update reply status to failed with error details
               const errorDetails = sendResult.errorDetails || {
