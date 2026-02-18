@@ -194,6 +194,30 @@ ${replyContent}`;
 
   } catch (error) {
     console.error('❌ AI自動返信処理エラー:', error);
+    
+    // エラー時はDBのステータスをfailedに更新
+    try {
+      const body = await req.clone().json().catch(() => ({}));
+      const { replyId } = body as any;
+      if (replyId) {
+        await supabase
+          .from('thread_replies')
+          .update({
+            reply_status: 'failed',
+            auto_reply_sent: false,
+            error_details: {
+              error_type: 'threads_auto_reply_error',
+              error_message: error instanceof Error ? error.message : String(error),
+              timestamp: new Date().toISOString()
+            }
+          })
+          .eq('reply_id', replyId)
+          .eq('reply_status', 'processing');
+      }
+    } catch (dbErr) {
+      console.error('❌ エラー時DBステータス更新失敗:', dbErr);
+    }
+    
     return new Response(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
