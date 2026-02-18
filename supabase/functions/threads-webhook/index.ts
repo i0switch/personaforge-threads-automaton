@@ -500,9 +500,10 @@ async function processReply(persona: any, reply: any): Promise<{ processed: bool
         return { processed: true, failed: false };
       }
 
-      // Step 5: AI自動返信をチェック（AI自動返信ON、またはキーワード不一致時のAIフォールバック）
-      if (persona.ai_auto_reply_enabled || persona.auto_reply_enabled) {
-        console.log(`🔄 AIフォールバック: ai=${persona.ai_auto_reply_enabled}, keyword=${persona.auto_reply_enabled}`);
+      // Step 5: AI自動返信をチェック（AI自動返信ONの場合のみ）
+      // キーワード返信(auto_reply_enabled)のみONの場合、キーワード不一致時はAIフォールバックしない
+      if (persona.ai_auto_reply_enabled) {
+        console.log(`🔄 AI自動返信実行: ai=${persona.ai_auto_reply_enabled}, keyword=${persona.auto_reply_enabled}`);
         const aiResult = await processAIAutoReply(persona, reply);
         if (aiResult.sent) {
           if (aiResult.method === 'ai_scheduled') {

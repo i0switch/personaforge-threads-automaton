@@ -385,9 +385,9 @@ async function checkRepliesForPost(persona: any, postId: string): Promise<number
                   replySent = true;
                 }
 
-                // AI自動返信をチェック（定型文が送信されなかった場合のみ）
-                // キーワード不一致時のAIフォールバック: auto_reply_enabledがONでもAI返信を試行
-                if (!replySent && (persona.ai_auto_reply_enabled || persona.auto_reply_enabled)) {
+                // AI自動返信をチェック（定型文が送信されなかった場合のみ、AI自動返信ONの場合のみ）
+                // auto_reply_enabled=trueでもai_auto_reply_enabled=falseならAIフォールバックしない
+                if (!replySent && persona.ai_auto_reply_enabled) {
                  const autoReplyResult = await supabase.functions.invoke('threads-auto-reply', {
                    body: {
                      postContent: 'Original post content',
