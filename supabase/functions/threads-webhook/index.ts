@@ -988,6 +988,31 @@ async function sendThreadsReply(
           timestamp: new Date().toISOString()
         };
         
+        // error_code 613: Threads API 返信レート制限
+        if (errorData.error?.code === 613) {
+          console.warn('🚨 Threads API 返信レート制限 (error 613) 検出');
+          
+          // activity_logs に記録してUIが通知できるようにする
+          await supabase
+            .from('activity_logs')
+            .insert({
+              user_id: persona.user_id,
+              persona_id: persona.id,
+              action_type: 'threads_reply_rate_limited',
+              description: `Threads APIの返信レート制限に達しました (error 613): ペルソナ「${persona.name}」`,
+              metadata: {
+                error_code: 613,
+                error_subcode: errorData.error?.error_subcode,
+                error_message: errorData.error?.message,
+                persona_name: persona.name,
+                timestamp: new Date().toISOString()
+              }
+            });
+          
+          errorDetails.rate_limited_613 = true;
+          console.log(`✅ error 613 を activity_logs に記録しました`);
+        }
+        
         if (errorData.error?.error_subcode === 2207051) {
           console.warn('🚨 スパム検出/レート制限を検出 - ペルソナを制限状態に設定');
           
