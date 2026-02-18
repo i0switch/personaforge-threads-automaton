@@ -156,19 +156,39 @@ serve(async (req) => {
     const retryableReplies = await getRetryableFailedReplies();
 
     // 未処理のリプライを取得
-    // pending: auto_reply_sent=false のみ
-    // scheduled: scheduled_reply_atが過去なら auto_reply_sent に関係なく取得
+    // pending: auto_reply_sent=false のみ（24時間以内）
+    // scheduled: scheduled_reply_atが過去なら作成日時に関係なく取得（古いscheduledも処理する）
     // completed: scheduled_reply_atが過去かつ auto_reply_sent=false のみ
     const now = new Date().toISOString();
     const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     
-    const { data: unprocessedReplies, error: fetchError } = await supabase
-      .from('thread_replies')
-      .select('*')
-      .or(`and(reply_status.eq.pending,auto_reply_sent.eq.false),and(reply_status.eq.scheduled,scheduled_reply_at.lte.${now}),and(reply_status.eq.completed,auto_reply_sent.eq.false,scheduled_reply_at.lte.${now})`)
-      .gte('created_at', twoHoursAgo)
-      .order('created_at', { ascending: true })
-      .limit(50);
+    // pending/completedは2時間以内、scheduledは期限切れならいつでも処理
+    const [unprocessedResult, scheduledResult] = await Promise.all([
+      supabase
+        .from('thread_replies')
+        .select('*')
+        .or(`and(reply_status.eq.pending,auto_reply_sent.eq.false),and(reply_status.eq.completed,auto_reply_sent.eq.false,scheduled_reply_at.lte.${now})`)
+        .gte('created_at', twoHoursAgo)
+        .order('created_at', { ascending: true })
+        .limit(30),
+      // scheduled: created_atに関係なく、scheduled_reply_atが過去のもの全て（またはnullで長期放置）
+      supabase
+        .from('thread_replies')
+        .select('*')
+        .eq('reply_status', 'scheduled')
+        .eq('auto_reply_sent', false)
+        .or(`scheduled_reply_at.lte.${now},scheduled_reply_at.is.null`)
+        .gte('created_at', twentyFourHoursAgo)
+        .order('scheduled_reply_at', { ascending: true, nullsFirst: false })
+        .limit(20)
+    ]);
+
+    const fetchError = unprocessedResult.error || scheduledResult.error;
+    const unprocessedReplies = [
+      ...(unprocessedResult.data || []),
+      ...(scheduledResult.data || [])
+    ];
 
     if (fetchError) {
       console.error('❌ リプライ取得エラー:', fetchError);
