@@ -316,10 +316,10 @@ serve(async (req) => {
           replySent = true;
         }
 
-        // AI自動返信をチェック（定型文が送信されなかった場合のみ）
-        // キーワード不一致時のAIフォールバック: auto_reply_enabledがONでもキーワードが一致しなかった場合、AI返信を試行
-        if (!replySent && (persona.ai_auto_reply_enabled || persona.auto_reply_enabled)) {
-          console.log(`🔄 AIフォールバック: キーワード不一致のためAI返信を試行 (ai=${persona.ai_auto_reply_enabled}, keyword=${persona.auto_reply_enabled})`);
+        // AI自動返信をチェック（定型文が送信されなかった場合のみ、AI自動返信ONの場合のみ）
+        // auto_reply_enabled=trueでもai_auto_reply_enabled=falseならAIフォールバックしない
+        if (!replySent && persona.ai_auto_reply_enabled) {
+          console.log(`🔄 AI自動返信実行 (ai=${persona.ai_auto_reply_enabled}, keyword=${persona.auto_reply_enabled})`);
           try {
             // 既にAI返信が生成済みかチェック
             if (reply.ai_response) {

@@ -225,8 +225,8 @@ async function checkRepliesForPersona(persona: any, accessToken: string): Promis
       console.log(`Saved new reply: ${thread.id} from ${thread.username}`);
       newRepliesCount++;
 
-      // AI自動返信またはキーワード返信が有効な場合
-      if (persona.ai_auto_reply_enabled || persona.auto_reply_enabled) {
+      // AI自動返信が有効な場合のみ（キーワード返信のみONの場合はAIを呼ばない）
+      if (persona.ai_auto_reply_enabled) {
         try {
           console.log(`Triggering auto-reply for persona ${persona.id}`);
           
