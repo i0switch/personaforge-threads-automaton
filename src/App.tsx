@@ -5,7 +5,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { ProtectedAdminRoute } from "./components/ProtectedAdminRoute";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { Toaster } from "@/components/ui/toaster"
+import { Toaster } from "@/components/ui/toaster";
+import { useThreadsRateLimitAlert } from "@/hooks/useThreadsRateLimitAlert";
 import ReplyMonitoring from "@/pages/ReplyMonitoring";
 import Index from "@/pages/Index";
 import Auth from "@/pages/Auth";
@@ -34,15 +35,15 @@ import ThreadsOAuthCallback from "@/pages/ThreadsOAuthCallback";
 
 const queryClient = new QueryClient();
 
-function App() {
+// フック使用のための内部コンポーネント
+function AppInner() {
+  useThreadsRateLimitAlert();
   return (
-    <AuthProvider>
-      <QueryClientProvider client={queryClient}>
-        <div className="min-h-screen bg-gray-50">
-          <Router>
-            <div className="flex h-screen">
-              <main className="flex-1 overflow-auto">
-                <ErrorBoundary>
+    <div className="min-h-screen bg-background">
+      <Router>
+        <div className="flex h-screen">
+          <main className="flex-1 overflow-auto">
+            <ErrorBoundary>
                   <Routes>
                     <Route path="/auth" element={<Auth />} />
                     <Route path="/auth/reset-password" element={<PasswordReset />} />
@@ -221,7 +222,15 @@ function App() {
               </main>
             </div>
           </Router>
-        </div>
+    </div>
+  );
+}
+
+function App() {
+  return (
+    <AuthProvider>
+      <QueryClientProvider client={queryClient}>
+        <AppInner />
         <Toaster />
       </QueryClientProvider>
     </AuthProvider>

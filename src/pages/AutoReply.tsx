@@ -11,6 +11,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
+import { ThreadsRateLimitBanner } from "@/components/ThreadsRateLimitBanner";
 
 type Persona = Database['public']['Tables']['personas']['Row'];
 type AutoReply = Database['public']['Tables']['auto_replies']['Row'];
@@ -235,6 +236,9 @@ const AutoReply = () => {
   return (
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-4xl mx-auto space-y-6">
+        {/* Threads API error 613 レート制限通知バナー */}
+        <ThreadsRateLimitBanner />
+
         <div className="flex items-center gap-4">
           <Button variant="outline" size="sm" onClick={() => navigate("/")}>
             <ArrowLeft className="h-4 w-4 mr-2" />
