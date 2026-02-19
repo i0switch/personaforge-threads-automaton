@@ -139,6 +139,26 @@ ${replyContent}`;
     } else {
       // 遅延時間が0分の場合は即座に送信
       console.log(`📤 AI自動返信を即座に送信 - reply: ${replyId}`);
+
+      // ★ アトミックロック: auto_reply_sent=falseの場合のみtrueに更新（重複送信防止）
+      const { data: lockResult, error: lockError } = await supabase
+        .from('thread_replies')
+        .update({ auto_reply_sent: true, updated_at: new Date().toISOString() })
+        .eq('reply_id', replyId)
+        .eq('auto_reply_sent', false)
+        .select('id');
+
+      if (lockError) {
+        console.error(`❌ ロック取得エラー - reply: ${replyId}:`, lockError);
+        return new Response(JSON.stringify({ error: 'Lock acquisition failed' }), { status: 500 });
+      }
+
+      if (!lockResult || lockResult.length === 0) {
+        console.log(`⏭️ 既に返信送信済み（重複スキップ） - reply: ${replyId}`);
+        return new Response(JSON.stringify({ success: true, skipped: true, reason: 'already_sent' }), { status: 200 });
+      }
+
+      console.log(`🔒 ロック取得成功 - reply: ${replyId}、送信開始`);
       const success = await sendThreadsReply(persona, accessToken, replyId, aiReplyText);
       
       if (success) {
