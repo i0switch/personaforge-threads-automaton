@@ -289,23 +289,32 @@ serve(async (req) => {
 
         processedCount++;
 
-        // 🔒 処理開始時にステータスを'processing'に更新（楽観的ロック）
-        // scheduled状態からの処理: auto_reply_sentに関係なくロック可能
-        // その他の状態: auto_reply_sent=falseのみロック可能
-        const { error: lockError } = await supabase
+        // 🔒 アトミックロック: reply_status + auto_reply_sent を同時に更新
+        // auto_reply_sent=false かつ 対象ステータスのみロック取得可能
+        // → threads-webhook / threads-auto-reply との二重送信を防止
+        const { data: lockResult, error: lockError } = await supabase
           .from('thread_replies')
           .update({ 
-            reply_status: 'processing'
+            reply_status: 'processing',
+            auto_reply_sent: true,  // ★ 同時にtrueに設定（二重送信防止の核心）
+            updated_at: new Date().toISOString()
           })
           .eq('reply_id', reply.reply_id)
-          .in('reply_status', ['pending', 'scheduled', 'completed']);
+          .eq('auto_reply_sent', false)  // ★ auto_reply_sent=falseのみロック可能
+          .in('reply_status', ['pending', 'scheduled', 'completed'])
+          .select('id');
         
         if (lockError) {
           console.error(`❌ リプライロック失敗: ${reply.reply_id}`, lockError);
           continue;
         }
         
-        console.log(`🔒 ロック成功: ${reply.id} (${reply.reply_status} → processing, auto_reply_sent=${reply.auto_reply_sent})`)
+        if (!lockResult || lockResult.length === 0) {
+          console.log(`⏭️ 既に他プロセスが処理中（重複スキップ） - reply: ${reply.reply_id}`);
+          continue;
+        }
+        
+        console.log(`🔒 アトミックロック取得成功: ${reply.id} (${reply.reply_status} → processing, auto_reply_sent: false→true)`)
         
         let replySent = false;
 
@@ -330,12 +339,11 @@ serve(async (req) => {
               if (sendResult.success) {
                 console.log(`✅ 保存済みAI返信送信成功: ${reply.id}`);
                 
-                // 送信成功時にステータスを'sent'に更新
+                // 送信成功時にステータスを'sent'に更新（auto_reply_sentは既にtrueなのでそのまま）
                 await supabase
                   .from('thread_replies')
                   .update({ 
-                    reply_status: 'sent',
-                    auto_reply_sent: true
+                    reply_status: 'sent'
                   })
                   .eq('reply_id', reply.reply_id);
                 
@@ -362,11 +370,12 @@ serve(async (req) => {
                   timestamp: new Date().toISOString()
                 };
                 
+                // ★ 送信失敗時はauto_reply_sentをfalseに戻してリトライ可能にする
                 await supabase
                   .from('thread_replies')
                   .update({ 
-                    reply_status: (newRetryCount >= maxRetries || isInvalidPost) ? 'failed' : 'failed',
-                    auto_reply_sent: false,
+                    reply_status: 'failed',
+                    auto_reply_sent: false,  // ★ ロール解放（リトライ可能に）
                     retry_count: newRetryCount,
                     last_retry_at: new Date().toISOString(),
                     error_details: errorDetails
