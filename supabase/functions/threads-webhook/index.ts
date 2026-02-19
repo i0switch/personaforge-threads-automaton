@@ -639,9 +639,37 @@ function isKeywordMatch(replyText: string, keyword: string): boolean {
   return normalizedReply === normalizedKeyword;
 }
 
+// 同一ユーザーへの返信クールダウンチェック（24時間以内に同じペルソナから返信済みならスキップ）
+async function checkUserReplyCooldown(personaId: string, authorUsername: string): Promise<boolean> {
+  const cooldownHours = 24;
+  const cooldownSince = new Date(Date.now() - cooldownHours * 60 * 60 * 1000).toISOString();
+  
+  const { data: recentReply } = await supabase
+    .from('thread_replies')
+    .select('id, created_at')
+    .eq('persona_id', personaId)
+    .eq('reply_author_username', authorUsername)
+    .eq('auto_reply_sent', true)
+    .gte('updated_at', cooldownSince)
+    .limit(1)
+    .maybeSingle();
+  
+  if (recentReply) {
+    console.log(`⏸️ クールダウン中: @${authorUsername} には ${cooldownHours}時間以内に返信済み (${recentReply.created_at}) - スキップ`);
+    return false; // 送信不可
+  }
+  return true; // 送信可
+}
+
 // トリガー自動返信（定型文）を処理
 async function processTemplateAutoReply(persona: any, reply: any): Promise<{ sent: boolean, method?: string }> {
   console.log(`🎯 定型文自動返信チェック開始`);
+
+  // ★ 同一ユーザークールダウンチェック（24時間以内に返信済みならスキップ）
+  const canReply = await checkUserReplyCooldown(persona.id, reply.username || reply.author_username || '');
+  if (!canReply) {
+    return { sent: false };
+  }
 
   // 自動返信設定を取得
   const { data: autoRepliesSettings } = await supabase
@@ -790,6 +818,13 @@ async function processTemplateAutoReply(persona: any, reply: any): Promise<{ sen
 // AI自動返信を処理
 async function processAIAutoReply(persona: any, reply: any): Promise<{ sent: boolean, method?: string, error?: string }> {
   console.log(`🧠 AI自動返信処理開始 - persona: ${persona.name}`);
+
+  // ★ 同一ユーザークールダウンチェック（24時間以内に返信済みならスキップ）
+  const authorUsername = reply.username || reply.author_username || '';
+  const canReply = await checkUserReplyCooldown(persona.id, authorUsername);
+  if (!canReply) {
+    return { sent: false };
+  }
 
   try {
     // 元投稿の内容を取得
