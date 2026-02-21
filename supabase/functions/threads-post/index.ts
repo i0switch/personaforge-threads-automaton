@@ -20,6 +20,10 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // catchブロックからもpostIdにアクセスできるよう外部スコープに保持
+  let _postId: string | null = null;
+  let _personaId: string | null = null;
+
   try {
     console.log('Starting Threads post function...');
 
@@ -27,10 +31,7 @@ serve(async (req) => {
     console.log('Request body:', JSON.stringify(requestBody, null, 2));
 
     const { postId, userId } = requestBody;
-    
-    // catchブロックからもpostIdにアクセスできるよう外部スコープに保持
-    let _postId = postId;
-    let _personaId: string | null = null;
+    _postId = postId;
 
     if (!postId || !userId) {
       const error = 'Missing required fields: postId, userId';
