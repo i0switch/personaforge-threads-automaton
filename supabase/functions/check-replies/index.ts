@@ -355,19 +355,22 @@ async function checkRepliesForPost(persona: any, postId: string): Promise<number
            if (shouldProcessAutoReply) {
              console.log(`🤖 自動返信処理開始: ${thread.id} for persona ${persona.name}`);
              
-             // 🔒 処理開始前に即座にステータスを更新（楽観的ロック）
-             const { error: lockError } = await supabase
+             // 🔒 処理開始前にステータスのみ更新（楽観的ロック）
+             // auto_reply_sent は各処理パスで個別に管理（threads-auto-replyとの競合を回避）
+             const { data: lockResult, error: lockError } = await supabase
                .from('thread_replies')
                .update({ 
-                 auto_reply_sent: true,
-                 reply_status: 'processing'
+                 reply_status: 'processing',
+                 updated_at: new Date().toISOString()
                })
                .eq('reply_id', thread.id)
-               .eq('auto_reply_sent', false); // 既に処理済みでないことを確認
+               .eq('auto_reply_sent', false) // 既に処理済みでないことを確認
+               .neq('reply_status', 'processing') // 既にprocessingのものはスキップ
+               .select('id');
              
-             if (lockError) {
-               console.error(`❌ リプライロック失敗（既に処理中の可能性）: ${thread.id}`, lockError);
-               continue; // 既に他の処理が走っている可能性があるのでスキップ
+             if (lockError || !lockResult || lockResult.length === 0) {
+               console.log(`⏭️ リプライロック取得失敗（既に処理中の可能性）: ${thread.id}`);
+               continue;
              }
              
              const replyObject = {
@@ -424,12 +427,18 @@ async function checkRepliesForPost(persona: any, postId: string): Promise<number
                  }
                }
                
-               // 両方とも送信されなかった場合
+               // 両方とも送信されなかった場合（設定無効・条件不一致）
                if (!replySent) {
                  console.log(`⚠️ 自動返信なし（設定無効または条件不一致） - reply: ${thread.id}`);
+                 // ★ reply_statusをskippedに設定（pendingに戻すとcheck-repliesで再トリガーされる）
+                 // auto_reply_sentはfalseのまま（lockでprocessingにしただけ）なので
+                 // 設定変更後にprocess-unhandled-repliesが再試行可能
                  await supabase
                    .from('thread_replies')
-                   .update({ reply_status: 'pending' })
+                   .update({ 
+                     reply_status: 'skipped',
+                     auto_reply_sent: true  // ★ これ以上自動処理しない
+                   })
                    .eq('reply_id', thread.id);
                }
              } catch (error) {
@@ -535,7 +544,8 @@ async function processTemplateAutoReply(persona: any, reply: any): Promise<{ sen
               .update({ 
                 ai_response: setting.response_template,  // 定型文を保存
                 scheduled_reply_at: scheduledTime.toISOString(),
-                reply_status: 'scheduled'  // 遅延送信のためscheduledステータスを使用
+                reply_status: 'scheduled',  // 遅延送信のためscheduledステータスを使用
+                auto_reply_sent: false  // ★ スケジュール時はまだ未送信
               })
               .eq('reply_id', reply.id);
             
@@ -555,12 +565,14 @@ async function processTemplateAutoReply(persona: any, reply: any): Promise<{ sen
             // 遅延時間が0分の場合は即座に送信
             console.log(`📤 定型文返信を即座に送信 - reply: ${reply.id}`);
             const accessToken = await getAccessToken(persona);
-            if (!accessToken) {
+             if (!accessToken) {
               console.error('❌ アクセストークン取得失敗');
-              // エラー時はステータスを更新
               await supabase
                 .from('thread_replies')
-                .update({ reply_status: 'failed' })
+                .update({ 
+                  reply_status: 'failed',
+                  auto_reply_sent: false  // ★ リトライ可能にする
+                })
                 .eq('reply_id', reply.id);
               return { sent: false };
             }
@@ -571,7 +583,10 @@ async function processTemplateAutoReply(persona: any, reply: any): Promise<{ sen
               // 送信成功時にステータスを更新
               await supabase
                 .from('thread_replies')
-                .update({ reply_status: 'sent' })
+                .update({ 
+                  reply_status: 'sent',
+                  auto_reply_sent: true  // ★ 送信完了を記録
+                })
                 .eq('reply_id', reply.id);
               
               // アクティビティログを記録
@@ -588,7 +603,10 @@ async function processTemplateAutoReply(persona: any, reply: any): Promise<{ sen
               // 送信失敗時はステータスを更新
               await supabase
                 .from('thread_replies')
-                .update({ reply_status: 'failed' })
+                .update({ 
+                  reply_status: 'failed',
+                  auto_reply_sent: false  // ★ リトライ可能にする
+                })
                 .eq('reply_id', reply.id);
             }
           }
