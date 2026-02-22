@@ -526,11 +526,12 @@ async function processReply(persona: any, reply: any): Promise<{ processed: bool
       const errMsg = error instanceof Error ? error.message : String(error);
       console.error(`❌ 自動返信処理エラー - reply: ${reply.id}:`, error);
       
-      // DB にエラー詳細を記録
+      // DB にエラー詳細を記録 + auto_reply_sent管理
       await supabase
         .from('thread_replies')
         .update({ 
           reply_status: 'failed',
+          auto_reply_sent: false,  // ★ リトライ可能にする（エラー時のみ）
           error_details: {
             error_type: 'auto_reply_processing_error',
             error_message: errMsg,

@@ -777,10 +777,35 @@ async function processScheduledReplies(): Promise<void> {
       }
       
       try {
+        // ★ CRITICAL: アトミックロック - 二重送信防止
+        const { data: lockResult, error: lockError } = await supabase
+          .from('thread_replies')
+          .update({ 
+            auto_reply_sent: true,
+            reply_status: 'processing',
+            updated_at: new Date().toISOString()
+          })
+          .eq('reply_id', reply.reply_id)
+          .eq('auto_reply_sent', false)
+          .eq('reply_status', 'scheduled')
+          .select('id');
+        
+        if (lockError || !lockResult || lockResult.length === 0) {
+          console.log(`⏭️ スケジュール返信ロック取得失敗（既に処理中）: ${reply.reply_id}`);
+          continue;
+        }
+        
+        console.log(`🔒 スケジュール返信ロック取得成功: ${reply.reply_id}`);
+
         // アクセストークンを取得
         const accessToken = await getAccessToken(persona);
         if (!accessToken) {
           console.error(`❌ アクセストークン取得失敗 - persona: ${persona.name}`);
+          // ロック解放
+          await supabase
+            .from('thread_replies')
+            .update({ auto_reply_sent: false, reply_status: 'scheduled' })
+            .eq('reply_id', reply.reply_id);
           continue;
         }
 
@@ -811,6 +836,11 @@ async function processScheduledReplies(): Promise<void> {
 
         if (!responseContent) {
           console.error(`❌ 返信内容が見つかりません - reply: ${reply.reply_id}`);
+          // ロック解放
+          await supabase
+            .from('thread_replies')
+            .update({ auto_reply_sent: false, reply_status: 'failed' })
+            .eq('reply_id', reply.reply_id);
           continue;
         }
 
@@ -819,12 +849,11 @@ async function processScheduledReplies(): Promise<void> {
         const success = await sendThreadsReply(persona, accessToken, reply.reply_id, responseContent);
 
         if (success) {
-          // 成功時：reply_statusを更新し、auto_reply_sentをtrueに
+          // 成功時：reply_statusを'sent'に（auto_reply_sentは既にtrue）
           await supabase
             .from('thread_replies')
             .update({ 
               reply_status: 'sent',
-              auto_reply_sent: true,
               scheduled_reply_at: null
             })
             .eq('reply_id', reply.reply_id);
@@ -839,24 +868,27 @@ async function processScheduledReplies(): Promise<void> {
 
           console.log(`✅ スケジュール返信送信成功: ${reply.reply_id}`);
         } else {
-          // 失敗時：retry_countを増やす（3回まで）
-          const retryCount = (reply.metadata?.retry_count || 0) + 1;
+          // 失敗時：ロック解放 + retry_countを増やす（3回まで）
+          const retryCount = (reply.retry_count || 0) + 1;
           if (retryCount >= 3) {
             await supabase
               .from('thread_replies')
               .update({ 
-                reply_status: 'failed'
+                reply_status: 'failed',
+                auto_reply_sent: true  // ★ 最大リトライ到達 → 再トリガー防止
               })
               .eq('reply_id', reply.reply_id);
             console.error(`❌ スケジュール返信送信失敗（最大リトライ到達）: ${reply.reply_id}`);
           } else {
-            // 5分後に再試行
+            // 5分後に再試行 - ★ ロック解放して再試行可能に
             const nextRetry = new Date(Date.now() + 5 * 60 * 1000);
             await supabase
               .from('thread_replies')
               .update({ 
+                reply_status: 'scheduled',
+                auto_reply_sent: false,  // ★ ロック解放
                 scheduled_reply_at: nextRetry.toISOString(),
-                metadata: { ...reply.metadata, retry_count: retryCount }
+                retry_count: retryCount
               })
               .eq('reply_id', reply.reply_id);
             console.log(`🔄 スケジュール返信リトライ設定: ${reply.reply_id} (${retryCount}/3)`);
