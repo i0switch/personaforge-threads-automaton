@@ -72,6 +72,7 @@ async function cleanupStuckProcessing(): Promise<number> {
     .from('thread_replies')
     .update({ 
       reply_status: 'failed',
+      auto_reply_sent: false,  // ★ リトライ可能にするためfalseに戻す
       error_details: { 
         error: 'Processing timeout',
         message: 'Reply stuck in processing state for more than 10 minutes',
