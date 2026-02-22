@@ -342,10 +342,13 @@ async function checkRepliesForPost(persona: any, postId: string): Promise<number
              } else {
                console.error(`❌ リプライ保存エラー: ${thread.id}`, insertError);
              }
-           } else if (!existingReply.auto_reply_sent && existingReply.reply_status !== 'processing') {
-             // 既存のリプライで、まだ自動返信が送信されていない、かつ処理中でない場合
+           } else if (!existingReply.auto_reply_sent && existingReply.reply_status === 'pending') {
+             // 既存のリプライで、まだ自動返信が送信されていない、かつpending状態のみ再処理
+             // failed/sent/scheduled/completedは process-unhandled-replies 側で適切にリトライされるためスキップ
              shouldProcessAutoReply = true;
              console.log(`🔄 未送信自動返信を処理: ${thread.id}`);
+           } else {
+             console.log(`⏭️ Already handled reply (status=${existingReply.reply_status}, sent=${existingReply.auto_reply_sent}): ${thread.id}`);
            }
 
            // 自動返信の処理（キーワード自動返信 + AI自動返信）
