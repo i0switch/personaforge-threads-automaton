@@ -140,14 +140,16 @@ ${replyContent}`;
       // 遅延時間が0分の場合は即座に送信
       console.log(`📤 AI自動返信を即座に送信 - reply: ${replyId}`);
 
-      // ★ アトミックロック: auto_reply_sent=false かつ reply_status NOT IN (processing, sent) のみ許可
-      // process-unhandled-replies が processing+auto_reply_sent=true でロックしている場合は必ずスキップ
+      // ★ アトミックロック: auto_reply_sent=false のみ許可
+      // process-unhandled-replies は auto_reply_sent=true でロックするため、
+      // auto_reply_sent=false 条件だけで二重送信を完全に防止できる
+      // reply_statusの除外条件は不要（check-repliesがprocessingに設定してから呼び出すため）
       const { data: lockResult, error: lockError } = await supabase
         .from('thread_replies')
-        .update({ auto_reply_sent: true, updated_at: new Date().toISOString() })
+        .update({ auto_reply_sent: true, reply_status: 'processing', updated_at: new Date().toISOString() })
         .eq('reply_id', replyId)
         .eq('auto_reply_sent', false)
-        .not('reply_status', 'in', '("processing","sent")')  // ★ processing/sent状態はロック不可
+        .neq('reply_status', 'sent')  // ★ sent状態のみ除外（既に送信済み）
         .select('id');
 
       if (lockError) {
