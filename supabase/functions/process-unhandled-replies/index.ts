@@ -100,7 +100,7 @@ async function getRetryableFailedReplies(): Promise<any[]> {
     .from('thread_replies')
     .select('*')
     .eq('reply_status', 'failed')
-    .eq('auto_reply_sent', false)
+    .eq('auto_reply_sent', false)  // ★ auto_reply_sent=false のみ（trueはmax_retries到達済み）
     .gte('created_at', new Date(now - 24 * 60 * 60 * 1000).toISOString());
   
   if (error || !failedReplies) {
@@ -460,13 +460,14 @@ serve(async (req) => {
         }
 
         // 処理されなかった場合（自動返信無効など）
+        // ★ CRITICAL FIX: skipped + auto_reply_sent=true で完全に再トリガーを防止
         if (!replySent && !persona.auto_reply_enabled && !persona.ai_auto_reply_enabled) {
-          console.log(`ℹ️ 自動返信無効のためスキップ: ${reply.id}`);
+          console.log(`ℹ️ 自動返信無効のためスキップ（再トリガーなし）: ${reply.id}`);
           await supabase
             .from('thread_replies')
             .update({ 
-              reply_status: 'pending',
-              auto_reply_sent: false,  // 処理されなかったのでfalse
+              reply_status: 'skipped',
+              auto_reply_sent: true,  // ★ trueにして二度と拾わない
               error_details: {
                 error: 'Auto Reply Disabled',
                 message: 'Both template and AI auto-reply are disabled for this persona',
@@ -477,28 +478,48 @@ serve(async (req) => {
             .eq('reply_id', reply.reply_id);
         } else if (!replySent) {
           // 自動返信は有効だが送信されなかった場合
-          console.log(`⚠️ 自動返信有効だが送信されず: ${reply.id}`);
-          const newRetryCount = (reply.retry_count || 0) + 1;
-          const maxRetries = reply.max_retries || 3;
+          // キーワードのみ有効でAI無効 → キーワード不一致は「条件不一致」であり再試行不要
+          const isKeywordOnlyNoMatch = persona.auto_reply_enabled && !persona.ai_auto_reply_enabled;
           
-          await supabase
-            .from('thread_replies')
-            .update({ 
-              reply_status: newRetryCount >= maxRetries ? 'failed' : 'failed',
-              auto_reply_sent: false,
-              retry_count: newRetryCount,
-              last_retry_at: new Date().toISOString(),
-              error_details: {
-                error: 'Reply Not Sent',
-                message: 'Auto-reply enabled but reply was not sent (no matching keywords, no AI response)',
+          if (isKeywordOnlyNoMatch) {
+            console.log(`⚠️ キーワード不一致（AIフォールバック無効）→ スキップ: ${reply.id}`);
+            await supabase
+              .from('thread_replies')
+              .update({ 
+                reply_status: 'skipped',
+                auto_reply_sent: true,  // ★ 再トリガー防止
+                error_details: {
+                  error: 'No Keyword Match',
+                  message: 'Keyword auto-reply enabled but no keywords matched. AI fallback is disabled.',
+                  timestamp: new Date().toISOString(),
+                  context: 'keyword-only no match'
+                }
+              })
+              .eq('reply_id', reply.reply_id);
+          } else {
+            // AI有効だが何らかの理由で送信されなかった → failedでリトライ
+            console.log(`⚠️ 自動返信有効だが送信されず（リトライ対象）: ${reply.id}`);
+            const newRetryCount = (reply.retry_count || 0) + 1;
+            const maxRetries = reply.max_retries || 3;
+            
+            await supabase
+              .from('thread_replies')
+              .update({ 
+                reply_status: newRetryCount >= maxRetries ? 'failed' : 'failed',
+                auto_reply_sent: newRetryCount >= maxRetries,  // ★ max_retries到達時はtrueにして永久リトライ防止
                 retry_count: newRetryCount,
-                timestamp: new Date().toISOString(),
-                context: 'reply not sent despite auto-reply enabled',
-                persona_auto_reply: persona.auto_reply_enabled,
-                persona_ai_reply: persona.ai_auto_reply_enabled
-              }
-            })
-            .eq('reply_id', reply.reply_id);
+                last_retry_at: new Date().toISOString(),
+                error_details: {
+                  error: 'Reply Not Sent',
+                  message: 'Auto-reply enabled but reply was not sent',
+                  retry_count: newRetryCount,
+                  max_retries_reached: newRetryCount >= maxRetries,
+                  timestamp: new Date().toISOString(),
+                  context: 'reply not sent despite auto-reply enabled'
+                }
+              })
+              .eq('reply_id', reply.reply_id);
+          }
         }
         
         // 送信失敗の場合はエラーハンドリングで処理されているのでここでは何もしない
