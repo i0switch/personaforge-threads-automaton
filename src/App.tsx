@@ -1,5 +1,5 @@
 import React from "react";
-import { BrowserRouter as Router, Route, Routes } from "react-router-dom";
+import { BrowserRouter as Router, Route, Routes, Navigate } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ProtectedRoute } from "./components/ProtectedRoute";
@@ -200,6 +200,7 @@ function AppInner() {
                         </ProtectedRoute>
                       }
                     />
+                  <Route path="/login" element={<Navigate to="/auth" replace />} />
                     <Route path="/development-guide" element={<DevelopmentGuide />} />
                     <Route
                       path="/rate-limit-test"
