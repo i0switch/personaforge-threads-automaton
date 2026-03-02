@@ -341,40 +341,36 @@ async function generateWithGeminiRotation(prompt: string, userId: string): Promi
   throw lastError || new Error('All Gemini API keys failed');
 }
 
-// アクセストークンを取得
+// アクセストークンを取得（直接復号 - cryptoモジュール使用）
 async function getAccessToken(persona: any): Promise<string | null> {
   try {
-    console.log('🔑 アクセストークン取得開始 - ペルソナ:', persona.name);
+    console.log('🔑 アクセストークン取得開始（直接復号方式） - ペルソナ:', persona.name);
 
-    // retrieve-secret関数を使用してトークンを取得
-    try {
-      const { data: tokenData, error: tokenError } = await supabase.functions.invoke('retrieve-secret', {
-        body: { 
-          key: `threads_access_token_${persona.id}`,
-          fallback: persona.threads_access_token
-        }
-      });
+    // Step 1: user_api_keysから暗号化キーを取得して直接復号
+    const decryptedFromDb = await getUserApiKeyDecrypted(
+      supabase, persona.user_id, 'threads_access_token'
+    );
+    
+    if (decryptedFromDb) {
+      console.log('✅ user_api_keysから復号成功 - persona:', persona.name);
+      return decryptedFromDb;
+    }
 
-      if (tokenData?.secret && !tokenError) {
-        console.log('✅ 暗号化トークン復号化成功 - persona:', persona.name);
-        return tokenData.secret;
-      } else if (tokenError) {
-        console.error('❌ retrieve-secret エラー:', tokenError);
+    // Step 2: personasテーブルのトークンを直接復号
+    const { decryptIfNeeded } = await import('../_shared/crypto.ts');
+    
+    if (persona.threads_access_token) {
+      const token = await decryptIfNeeded(
+        persona.threads_access_token,
+        `threads-auto-reply:getAccessToken:${persona.id}`
+      );
+      if (token) {
+        console.log('✅ personasテーブルから復号成功 - persona:', persona.name);
+        return token;
       }
-    } catch (error) {
-      console.error('🔄 retrieve-secret方式エラー:', error);
     }
 
-    // 暗号化されていないトークンかチェック
-    if (persona.threads_access_token?.startsWith('THAA')) {
-      console.log('✅ 非暗号化トークン使用 - persona:', persona.name);
-      return persona.threads_access_token;
-    }
-
-    console.error('❌ 全ての方式でアクセストークン取得失敗 - persona:', persona.name, {
-      hasToken: !!persona.threads_access_token,
-      tokenPrefix: persona.threads_access_token?.substring(0, 8) + '...'
-    });
+    console.error('❌ 全ての方式でアクセストークン取得失敗 - persona:', persona.name);
     return null;
 
   } catch (error) {

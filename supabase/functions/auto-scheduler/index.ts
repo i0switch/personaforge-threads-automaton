@@ -50,8 +50,10 @@ serve(async (req) => {
 
     // 現在時刻より前（厳守）にスケジュールされた投稿のみを対象
     const cutoffTime = now; // 早発禁止のためバッファなし
+    // 古すぎる投稿は無視（7日以上前のスケジュールは陳腐化しているため除外）
+    const staleThreshold = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     
-    console.log(`Searching for posts scheduled before or at: ${cutoffTime.toISOString()}`);
+    console.log(`Searching for posts scheduled between ${staleThreshold.toISOString()} and ${cutoffTime.toISOString()}`);
     
     // キューにある投稿を優先的に処理（重複を避けるため）
     const { data: queueItems, error: queueError } = await supabase
@@ -64,6 +66,7 @@ serve(async (req) => {
         )
       `)
       .eq('status', 'queued')
+      .gte('scheduled_for', staleThreshold.toISOString())
       .lte('scheduled_for', cutoffTime.toISOString())
       .order('queue_position', { ascending: true })
       .limit(10);
@@ -86,6 +89,7 @@ serve(async (req) => {
       `)
       .eq('status', 'scheduled')
       .not('scheduled_for', 'is', null)
+      .gte('scheduled_for', staleThreshold.toISOString())
       .lte('scheduled_for', cutoffTime.toISOString())
       .order('scheduled_for', { ascending: true })
       .limit(20);

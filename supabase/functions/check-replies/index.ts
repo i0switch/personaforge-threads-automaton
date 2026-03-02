@@ -2,6 +2,7 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
+import { decryptIfNeeded, getUserApiKeyDecrypted } from '../_shared/crypto.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -123,42 +124,35 @@ serve(async (req) => {
 
       console.log(`🚀 リプライチェック開始 - persona: ${persona.name} (ID: ${persona.id})`);
       
-      // アクセストークンを取得
+      // アクセストークンを取得（直接復号 - retrieve-secret経由ではなくcryptoモジュール使用）
       let accessToken = null;
       try {
-        // retrieve-secret関数を使用してアクセストークンを復号化
-        const tokenResult = await supabase.functions.invoke('retrieve-secret', {
-          body: {
-            key: `threads_access_token_${persona.id}`,
-            fallback: personaWithToken.threads_access_token
-          }
-        });
+        // まずuser_api_keysから暗号化キーを取得して直接復号
+        const decryptedFromDb = await getUserApiKeyDecrypted(
+          supabase, persona.user_id, 'threads_access_token'
+        );
         
-        if (tokenResult.data?.secret) {
-          accessToken = tokenResult.data.secret;
-          console.log(`✅ 暗号化トークン復号化成功 - persona: ${persona.name}`);
-        } else if (personaWithToken.threads_access_token.startsWith('THAA')) {
-          // 暗号化されていないトークンをそのまま使用
-          accessToken = personaWithToken.threads_access_token;
-          console.log(`✅ 非暗号化トークン使用 - persona: ${persona.name}`);
+        if (decryptedFromDb) {
+          accessToken = decryptedFromDb;
+          console.log(`✅ user_api_keysから復号成功 - persona: ${persona.name}`);
         } else {
-          console.error(`❌ アクセストークン取得失敗 - persona: ${persona.name}`, {
-            hasToken: !!personaWithToken.threads_access_token,
-            tokenPrefix: personaWithToken.threads_access_token?.substring(0, 8) + '...',
-            retrieveError: tokenResult.error
-          });
+          // user_api_keysになければpersonasテーブルのトークンを直接復号
+          accessToken = await decryptIfNeeded(
+            personaWithToken.threads_access_token,
+            `check-replies:persona:${persona.id}`
+          );
+          if (accessToken) {
+            console.log(`✅ personasテーブルから復号成功 - persona: ${persona.name}`);
+          }
+        }
+        
+        if (!accessToken) {
+          console.error(`❌ アクセストークン取得失敗 - persona: ${persona.name}`);
           continue;
         }
       } catch (error) {
         console.error(`❌ アクセストークン処理エラー - persona: ${persona.name}:`, error);
-        // フォールバック：暗号化されていないトークンを試す
-        if (personaWithToken.threads_access_token?.startsWith('THAA')) {
-          accessToken = personaWithToken.threads_access_token;
-          console.log(`🔄 フォールバック成功 - persona: ${persona.name}`);
-        } else {
-          console.log(`Skipping persona ${persona.id} - token decryption failed`);
-          continue;
-        }
+        continue;
       }
 
       // ペルソナオブジェクトにアクセストークンを追加
@@ -622,30 +616,22 @@ async function processTemplateAutoReply(persona: any, reply: any): Promise<{ sen
 }
 
 
-// アクセストークンを取得
+// アクセストークンを取得（直接復号 - cryptoモジュール使用）
 async function getAccessToken(persona: any): Promise<string | null> {
   try {
-    console.log('🔑 アクセストークン取得開始');
+    console.log('🔑 アクセストークン取得開始（直接復号方式）');
 
-    // Step 1: 新しい方法でトークンを取得（キー名を統一）
-    try {
-      const { data: tokenData, error: tokenError } = await supabase.functions.invoke('retrieve-secret', {
-        body: { 
-          key: `threads_access_token_${persona.id}`,
-          fallback: persona.threads_access_token
-        }
-      });
-
-      if ((tokenData?.secret || tokenData?.value) && !tokenError) {
-        console.log('✅ トークン取得成功（新方式）');
-        return tokenData.secret || tokenData.value;
-      }
-      console.log('🔄 新方式でトークン取得失敗、従来方式を試行');
-    } catch (error) {
-      console.log('🔄 新方式エラー、従来方式を試行:', error);
+    // Step 1: user_api_keysから暗号化キーを取得して直接復号
+    const decryptedFromDb = await getUserApiKeyDecrypted(
+      supabase, persona.user_id, 'threads_access_token'
+    );
+    
+    if (decryptedFromDb) {
+      console.log('✅ user_api_keysから復号成功');
+      return decryptedFromDb;
     }
 
-    // Step 2: 従来方式のフォールバック
+    // Step 2: personasテーブルのトークンを直接復号
     const { data: personaWithToken } = await supabase
       .from('personas')
       .select('threads_access_token')
@@ -657,40 +643,14 @@ async function getAccessToken(persona: any): Promise<string | null> {
       return null;
     }
 
-    // Step 3: retrieve-secret関数を使用してトークンを取得
-    try {
-      const { data: tokenData, error: tokenError } = await supabase.functions.invoke('retrieve-secret', {
-        body: { 
-          key: `threads_access_token_${persona.id}`,
-          fallback: personaWithToken.threads_access_token
-        }
-      });
-
-      if (tokenData?.secret && !tokenError) {
-        console.log('✅ トークン取得成功（retrieve-secret）');
-        return tokenData.secret;
-      }
-    } catch (error) {
-      console.log('🔄 retrieve-secret方式エラー:', error);
-    }
-
-    // Step 4: 暗号化されていないトークンかチェック
-    if (personaWithToken.threads_access_token.startsWith('THAA')) {
-      console.log('✅ 非暗号化トークン使用');
-      return personaWithToken.threads_access_token;
-    }
-
-    // Step 5: 従来の復号化方式を試行
-    try {
-      const { data: decryptedToken, error: decryptError } = await supabase
-        .rpc('decrypt_access_token', { encrypted_token: personaWithToken.threads_access_token });
-
-      if (decryptedToken && !decryptError) {
-        console.log('✅ トークン復号化成功（従来方式）');
-        return decryptedToken;
-      }
-    } catch (error) {
-      console.error('❌ 復号化処理エラー:', error);
+    const token = await decryptIfNeeded(
+      personaWithToken.threads_access_token,
+      `check-replies:getAccessToken:${persona.id}`
+    );
+    
+    if (token) {
+      console.log('✅ personasテーブルから復号成功');
+      return token;
     }
 
     console.error('❌ 全ての方式でアクセストークン取得失敗');
