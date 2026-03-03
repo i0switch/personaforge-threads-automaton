@@ -2,10 +2,21 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { Client } from "https://esm.sh/@gradio/client@1.15.3";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.50.0';
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') ?? 'https://threads-genius-ai.lovable.app',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
 };
 
 serve(async (req) => {
@@ -18,6 +29,27 @@ serve(async (req) => {
   }
 
   try {
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader?.startsWith('Bearer ')) {
+      return new Response(JSON.stringify({ success: false, error: 'Authentication required' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const supabaseAuth = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+    );
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: authError } = await supabaseAuth.auth.getUser(token);
+    if (authError || !user) {
+      return new Response(JSON.stringify({ success: false, error: 'Invalid authentication token' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     console.log('Parsing request body...');
     const requestBody = await req.json();
     console.log('Request body keys:', Object.keys(requestBody));
@@ -152,7 +184,7 @@ serve(async (req) => {
       }
       
       const imageBuffer = await imageResponse.arrayBuffer();
-      const base64Image = btoa(String.fromCharCode(...new Uint8Array(imageBuffer)));
+      const base64Image = arrayBufferToBase64(imageBuffer);
       imageData = `data:image/png;base64,${base64Image}`;
       console.log('Successfully converted image to base64');
       
@@ -167,7 +199,7 @@ serve(async (req) => {
         }
         
         const imageBuffer = await imageResponse.arrayBuffer();
-        const base64Image = btoa(String.fromCharCode(...new Uint8Array(imageBuffer)));
+        const base64Image = arrayBufferToBase64(imageBuffer);
         imageData = `data:image/png;base64,${base64Image}`;
         console.log('Successfully converted image to base64');
         

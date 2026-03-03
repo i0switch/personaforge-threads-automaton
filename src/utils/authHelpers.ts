@@ -16,9 +16,14 @@ export const validateToken = (token: string): boolean => {
       console.error('Invalid token: wrong structure (expected 3 parts)');
       return false;
     }
-    
-    const payload = JSON.parse(atob(parts[1]));
-    
+
+    // base64url対応デコード
+    let base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    while (base64.length % 4) {
+      base64 += '=';
+    }
+    const payload = JSON.parse(atob(base64));
+
     // subクレーム（ユーザーID）が必須
     if (!payload.sub) {
       console.error('Invalid token: missing sub claim');

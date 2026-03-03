@@ -128,14 +128,19 @@ export const validatePassword = (
 };
 
 export const generatePasswordSuggestion = (): string => {
-  const adjectives = ['Strong', 'Secure', 'Safe', 'Smart', 'Quick'];
-  const nouns = ['Tiger', 'Eagle', 'Dragon', 'Phoenix', 'Wolf'];
-  const symbols = ['!', '@', '#', '$', '%'];
+  const charset = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()_+~`|}{[]:;?><,./-=';
+  const validateResult = { isValid: false, errors: [], strength: 'weak', score: 0 } as PasswordValidationResult;
+  let attempt = '';
   
-  const adjective = adjectives[Math.floor(Math.random() * adjectives.length)];
-  const noun = nouns[Math.floor(Math.random() * nouns.length)];
-  const number = Math.floor(Math.random() * 100);
-  const symbol = symbols[Math.floor(Math.random() * symbols.length)];
+  // 要件を満たす強力なパスワードが生成されるまでループ
+  while (validateResult.strength !== 'strong') {
+    attempt = Array.from(crypto.getRandomValues(new Uint32Array(16)))
+      .map((x) => charset[x % charset.length])
+      .join('');
+    
+    // M-09: 高エントロピーなランダム生成により推測困難化
+    const check = validatePassword(attempt);
+    validateResult.strength = check.strength;
+  }
   
-  return `${adjective}${noun}${number}${symbol}`;
-};
+  return attempt;

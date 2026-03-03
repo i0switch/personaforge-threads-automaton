@@ -16,12 +16,27 @@ const ThreadsOAuthCallback = () => {
 
   useEffect(() => {
     const code = searchParams.get('code');
-    const personaId = localStorage.getItem('threads_oauth_persona_id');
-    const redirectUri = localStorage.getItem('threads_oauth_redirect_uri');
+    const returnedState = searchParams.get('state');
+    const savedState = sessionStorage.getItem('threads_oauth_state');
+    const personaId = sessionStorage.getItem('threads_oauth_persona_id');
+    const redirectUri = sessionStorage.getItem('threads_oauth_redirect_uri');
+
+    // URLからcodeパラメータを除去（ブラウザ履歴・Referer漏洩防止）
+    window.history.replaceState({}, '', '/auth/callback');
 
     if (!code) {
       setStatus('error');
       setMessage('認証コードが見つかりません。Threads認証画面からリダイレクトされていません。');
+      return;
+    }
+
+    // CSRF検証: stateパラメータの一致確認
+    if (!returnedState || !savedState || returnedState !== savedState) {
+      setStatus('error');
+      setMessage('セキュリティ検証に失敗しました。ペルソナ設定画面からやり直してください。');
+      sessionStorage.removeItem('threads_oauth_state');
+      sessionStorage.removeItem('threads_oauth_persona_id');
+      sessionStorage.removeItem('threads_oauth_redirect_uri');
       return;
     }
 
@@ -34,7 +49,7 @@ const ThreadsOAuthCallback = () => {
     const exchangeToken = async () => {
       try {
         const { data, error } = await supabase.functions.invoke('threads-oauth-callback', {
-          body: { code, persona_id: personaId, redirect_uri: redirectUri },
+          body: { code, state: returnedState, persona_id: personaId, redirect_uri: redirectUri },
         });
 
         if (error) throw error;
@@ -53,15 +68,17 @@ const ThreadsOAuthCallback = () => {
       } catch (err) {
         console.error('OAuth callback error:', err);
         setStatus('error');
-        setMessage(err instanceof Error ? err.message : 'トークンの取得に失敗しました');
+        // 内部エラーメッセージの漏洩を防ぐため、汎用メッセージを表示
+        setMessage('Threadsトークンの取得に失敗しました。しばらく待ってからやり直してください。');
         toast({
           title: 'エラー',
           description: 'Threads認証に失敗しました',
           variant: 'destructive',
         });
       } finally {
-        localStorage.removeItem('threads_oauth_persona_id');
-        localStorage.removeItem('threads_oauth_redirect_uri');
+        sessionStorage.removeItem('threads_oauth_state');
+        sessionStorage.removeItem('threads_oauth_persona_id');
+        sessionStorage.removeItem('threads_oauth_redirect_uri');
       }
     };
 

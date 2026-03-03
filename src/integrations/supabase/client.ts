@@ -3,10 +3,10 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
-// Direct configuration (recommended for Lovable)
+// Direct configuration (updated to use environment variables)
 const supabaseConfig = {
-  url: 'https://tqcgbsnoiarnawnppwia.supabase.co',
-  anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRxY2dic25vaWFybmF3bnBwd2lhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk5MTUxODEsImV4cCI6MjA2NTQ5MTE4MX0.5_mXobtncEbIHyigC_EqP-z1cr7AWYepR7L2CZwjBvI'
+  url: import.meta.env.VITE_SUPABASE_URL,
+  anonKey: import.meta.env.VITE_SUPABASE_ANON_KEY
 };
 
 // iOS Safari対応の安全なストレージラッパー
@@ -89,14 +89,39 @@ const createSafeStorage = () => {
 
 const safeStorage = createSafeStorage();
 
+const clearSupabaseStorageKeys = () => {
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i);
+      if (key?.startsWith('sb-')) {
+        localStorage.removeItem(key);
+      }
+    }
+  } catch {}
+
+  try {
+    for (let i = sessionStorage.length - 1; i >= 0; i--) {
+      const key = sessionStorage.key(i);
+      if (key?.startsWith('sb-')) {
+        sessionStorage.removeItem(key);
+      }
+    }
+  } catch {}
+};
+
 // トークン検証ヘルパー
 const validateToken = (token: string): boolean => {
   try {
     const parts = token.split('.');
     if (parts.length !== 3) return false;
-    
-    const payload = JSON.parse(atob(parts[1]));
-    
+
+    // H-11: base64url対応デコーダー
+    let base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    while (base64.length % 4) {
+      base64 += '=';
+    }
+    const payload = JSON.parse(atob(base64));
+
     // subクレーム（ユーザーID）が必須
     if (!payload.sub) {
       console.error('Invalid token: missing sub claim');
@@ -169,8 +194,7 @@ export const supabase = createClient<Database>(
         if (!isValid) {
           console.warn('⚠️ Invalid session detected on startup, clearing...');
           await supabase.auth.signOut({ scope: 'local' });
-          localStorage.clear();
-          sessionStorage.clear();
+          clearSupabaseStorageKeys();
           console.log('🧹 Cleared invalid session');
         } else {
           console.log('✅ Valid session confirmed on startup');
@@ -183,8 +207,7 @@ export const supabase = createClient<Database>(
       // エラーが発生した場合も念のためクリーンアップ
       try {
         await supabase.auth.signOut({ scope: 'local' });
-        localStorage.clear();
-        sessionStorage.clear();
+        clearSupabaseStorageKeys();
       } catch (cleanupError) {
         console.error('Cleanup error:', cleanupError);
       }

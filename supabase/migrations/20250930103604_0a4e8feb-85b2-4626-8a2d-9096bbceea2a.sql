@@ -9,7 +9,7 @@ SELECT cron.schedule(
   SELECT
     net.http_post(
         url:='https://tqcgbsnoiarnawnppwia.supabase.co/functions/v1/auto-post-generator',
-        headers:='{"Content-Type": "application/json", "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRxY2dic25vaWFybmF3bnBwd2lhIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0OTkxNTE4MSwiZXhwIjoyMDY1NDkxMTgxfQ.WQJTEWyaLFUo4TBDCWwfJXJgOBmXVUoE_yNLFKP_k4g"}'::jsonb,
+        headers:='{"Content-Type": "application/json", "Authorization": "Bearer ' || COALESCE(current_setting('app.settings.service_role_key', true), current_setting('app.service_role_key', true), current_setting('app.jwt_secret', true), current_setting('app.settings.jwt_secret', true)) || '"}'::jsonb,
         body:='{"source": "cron"}'::jsonb
     ) as request_id;
   $$
@@ -24,7 +24,7 @@ SELECT cron.schedule(
   SELECT
     net.http_post(
         url:='https://tqcgbsnoiarnawnppwia.supabase.co/functions/v1/auto-scheduler',
-        headers:='{"Content-Type": "application/json", "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRxY2dic25vaWFybmF3bnBwd2lhIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0OTkxNTE4MSwiZXhwIjoyMDY1NDkxMTgxfQ.WQJTEWyaLFUo4TBDCWwfJXJgOBmXVUoE_yNLFKP_k4g"}'::jsonb,
+        headers:='{"Content-Type": "application/json", "Authorization": "Bearer ' || COALESCE(current_setting('app.settings.service_role_key', true), current_setting('app.service_role_key', true), current_setting('app.jwt_secret', true), current_setting('app.settings.jwt_secret', true)) || '"}'::jsonb,
         body:='{"source": "cron"}'::jsonb
     ) as request_id;
   $$

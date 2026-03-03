@@ -5,13 +5,65 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.0";
 const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") ?? "https://threads-genius-ai.lovable.app",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type",
 };
 
 interface PasswordResetRequest {
   email: string;
+}
+
+async function checkPasswordResetRateLimit(
+  supabase: any,
+  email: string
+): Promise<{ blocked: boolean; retryAfter?: number; reason: 'allowed' | 'rate_limited' | 'check_failed' | 'update_failed' }> {
+  const identifier = email.trim().toLowerCase();
+  const endpoint = 'password-reset';
+  const windowMs = 15 * 60 * 1000;
+  const windowStart = new Date(Date.now() - windowMs).toISOString();
+
+  try {
+    const { data: existing, error } = await supabase
+      .from('rate_limits')
+      .select('request_count, window_start')
+      .eq('endpoint', endpoint)
+      .eq('identifier', identifier)
+      .gte('window_start', windowStart)
+      .maybeSingle();
+
+    if (error) {
+      console.error('Rate limit read error:', error);
+      return { blocked: true, retryAfter: 60, reason: 'check_failed' };
+    }
+
+    const nextCount = (existing?.request_count || 0) + 1;
+    if (nextCount > 3) {
+      const retryAfter = existing?.window_start
+        ? Math.max(1, Math.ceil((new Date(existing.window_start).getTime() + windowMs - Date.now()) / 1000))
+        : 60;
+      return { blocked: true, retryAfter, reason: 'rate_limited' };
+    }
+
+    const { error: upsertError } = await supabase
+      .from('rate_limits')
+      .upsert({
+        endpoint,
+        identifier,
+        request_count: nextCount,
+        window_start: existing?.window_start || new Date().toISOString(),
+      }, { onConflict: 'endpoint,identifier' });
+
+    if (upsertError) {
+      console.error('Rate limit upsert error:', upsertError);
+      return { blocked: true, retryAfter: 60, reason: 'update_failed' };
+    }
+
+    return { blocked: false, reason: 'allowed' };
+  } catch (error) {
+    console.error('Rate limit check unexpected error:', error);
+    return { blocked: true, retryAfter: 60, reason: 'check_failed' };
+  }
 }
 
 const handler = async (req: Request): Promise<Response> => {
@@ -39,8 +91,24 @@ const handler = async (req: Request): Promise<Response> => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     console.log("Supabase client initialized");
 
+    const rateLimitResult = await checkPasswordResetRateLimit(supabase, email);
+    if (rateLimitResult.blocked) {
+      console.warn('Password reset blocked by rate-limit policy', {
+        reason: rateLimitResult.reason,
+        retryAfter: rateLimitResult.retryAfter ?? null,
+      });
+      return new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          ...corsHeaders,
+        },
+      });
+    }
+
     // Generate password reset link using Supabase
-    const redirectTo = "https://threads-genius-ai.lovable.app/auth/reset-password";
+    const redirectTo = Deno.env.get("PASSWORD_RESET_REDIRECT_URL")
+      || `${Deno.env.get("ALLOWED_ORIGIN") ?? "https://threads-genius-ai.lovable.app"}/auth/reset-password`;
     console.log("Generating reset link for:", email);
     
     const { data, error: resetError } = await supabase.auth.admin.generateLink({

@@ -1,9 +1,10 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
+import { encryptValue } from '../_shared/crypto.ts';
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') ?? 'https://threads-genius-ai.lovable.app',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
@@ -14,7 +15,7 @@ serve(async (req) => {
   }
 
   try {
-    const supabaseClient = createClient(
+    const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
@@ -25,8 +26,13 @@ serve(async (req) => {
       throw new Error('認証が必要です');
     }
 
+    const supabaseAuth = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+    );
+
     const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
+    const { data: { user }, error: authError } = await supabaseAuth.auth.getUser(token);
     
     if (authError || !user) {
       throw new Error('認証に失敗しました');
@@ -38,43 +44,23 @@ serve(async (req) => {
       throw new Error('キー名とキー値は必須です');
     }
 
+    if (!/^[A-Z0-9_]{3,64}$/.test(keyName)) {
+      throw new Error('無効なキー名です');
+    }
+
     // Supabase Secretsから暗号化キーを取得
     const encryptionKey = Deno.env.get('ENCRYPTION_KEY');
     if (!encryptionKey) {
       throw new Error('暗号化キーが設定されていません');
     }
 
-    // 暗号化処理（AES-GCM）
-    const encoder = new TextEncoder();
-    const data = encoder.encode(keyValue);
-    
-    // 暗号化キーをCryptoKeyに変換
-    const keyMaterial = await crypto.subtle.importKey(
-      'raw',
-      encoder.encode(encryptionKey.padEnd(32, '0').slice(0, 32)),
-      { name: 'AES-GCM' },
-      false,
-      ['encrypt']
-    );
-
-    // ランダムなIVを生成
-    const iv = crypto.getRandomValues(new Uint8Array(12));
-    
-    // データを暗号化
-    const encryptedData = await crypto.subtle.encrypt(
-      { name: 'AES-GCM', iv: iv },
-      keyMaterial,
-      data
-    );
-
-    // IVと暗号化されたデータを結合してBase64エンコード
-    const combined = new Uint8Array(iv.length + encryptedData.byteLength);
-    combined.set(iv);
-    combined.set(new Uint8Array(encryptedData), iv.length);
-    const encryptedKey = btoa(String.fromCharCode(...combined));
+    const encryptedKey = await encryptValue(keyValue, `save-secret:${keyName}`);
+    if (!encryptedKey) {
+      throw new Error('APIキーの暗号化に失敗しました');
+    }
 
     // データベースに保存（upsertを使用して既存レコードを更新）
-    const { error: dbError } = await supabaseClient
+    const { error: dbError } = await supabaseAdmin
       .from('user_api_keys')
       .upsert({
         user_id: user.id,

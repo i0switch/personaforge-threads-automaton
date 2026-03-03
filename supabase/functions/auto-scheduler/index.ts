@@ -4,7 +4,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') ?? 'https://threads-genius-ai.lovable.app',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
@@ -16,6 +16,15 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey);
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
+  }
+
+  const cronSecret = Deno.env.get('CRON_SECRET');
+  const provided = req.headers.get('x-cron-secret');
+  if (!cronSecret || !provided || provided !== cronSecret) {
+    return new Response(JSON.stringify({ success: false, error: 'Unauthorized' }), {
+      status: 401,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
   }
 
   try {
@@ -81,7 +90,7 @@ serve(async (req) => {
     // キューにない直接スケジュール済みの投稿を取得（重複を避けるため）
     const queuePostIds = queueItems?.map(item => item.post_id) || [];
     
-    const { data: scheduledPostsRaw, error: scheduledError } = await supabase
+    let scheduledQuery = supabase
       .from('posts')
       .select(`
         *,
@@ -94,8 +103,12 @@ serve(async (req) => {
       .order('scheduled_for', { ascending: true })
       .limit(20);
 
-    // キューに存在するpost_idを除外（クライアント側で安全にフィルタ）
-    const scheduledPosts = (scheduledPostsRaw || []).filter(post => !queuePostIds.includes(post.id));
+    if (queuePostIds.length > 0) {
+      const quotedIds = queuePostIds.map(id => `"${id}"`).join(',');
+      scheduledQuery = scheduledQuery.not('id', 'in', `(${quotedIds})`);
+    }
+
+    const { data: scheduledPosts, error: scheduledError } = await scheduledQuery;
 
     if (scheduledError) {
       console.error('Error fetching scheduled posts:', scheduledError);

@@ -3,7 +3,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') ?? 'https://threads-genius-ai.lovable.app',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-hub-signature-256',
 }
 
@@ -169,7 +169,12 @@ async function verifyWebhookSignature(signature: string, payload: string, secret
       .join('')
     
     const providedSignature = signature.replace('sha256=', '')
-    return expectedHex === providedSignature
+    if (expectedHex.length !== providedSignature.length) return false
+    let mismatch = 0
+    for (let i = 0; i < expectedHex.length; i++) {
+      mismatch |= expectedHex.charCodeAt(i) ^ providedSignature.charCodeAt(i)
+    }
+    return mismatch === 0
   } catch (error) {
     console.error('Signature verification error:', error)
     return false

@@ -201,7 +201,14 @@ function AppInner() {
                       }
                     />
                   <Route path="/login" element={<Navigate to="/auth" replace />} />
-                    <Route path="/development-guide" element={<DevelopmentGuide />} />
+                    <Route
+                      path="/development-guide"
+                      element={
+                        <ProtectedRoute>
+                          <DevelopmentGuide />
+                        </ProtectedRoute>
+                      }
+                    />
                     <Route
                       path="/rate-limit-test"
                       element={

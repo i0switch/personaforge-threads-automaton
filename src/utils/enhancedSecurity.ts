@@ -42,25 +42,19 @@ export const enhancedSecurity = {
   // Enhanced brute force protection
   checkBruteForceAttempts: async (email: string): Promise<boolean> => {
     try {
-      const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000);
-      
-      const { data: recentFailures, error } = await supabase
-        .from('security_events')
-        .select('*')
-        .eq('event_type', 'login_failed')
-        .gte('created_at', fifteenMinutesAgo.toISOString())
-        .filter('details->email', 'eq', email);
+      const { data, error } = await supabase.rpc('check_login_attempts', {
+        user_email: email,
+      });
 
       if (error) {
         console.error('Error checking brute force attempts:', error);
-        return false;
+        return true;
       }
 
-      // Block if more than 5 failed attempts in 15 minutes
-      return (recentFailures?.length || 0) >= 5;
+      return !Boolean(data);
     } catch (error) {
       console.error('Brute force check error:', error);
-      return false;
+      return true;
     }
   },
 
@@ -166,7 +160,12 @@ export const enhancedSecurity = {
         .join('');
       
       const providedSignature = signature.replace('sha256=', '');
-      return expectedHex === providedSignature;
+      if (expectedHex.length !== providedSignature.length) return false;
+      let mismatch = 0;
+      for (let i = 0; i < expectedHex.length; i++) {
+        mismatch |= expectedHex.charCodeAt(i) ^ providedSignature.charCodeAt(i);
+      }
+      return mismatch === 0;
     } catch (error) {
       console.error('Webhook verification error:', error);
       return false;

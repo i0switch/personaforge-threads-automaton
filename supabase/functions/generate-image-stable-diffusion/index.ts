@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.50.0'
 import { corsHeaders, defaultValues } from './config.ts'
 import { validateRequest, formatApiUrl } from './validation.ts'
 import { getPersonaAvatar } from './image-utils.ts'
@@ -12,6 +13,27 @@ serve(async (req) => {
   }
 
   try {
+    const authHeader = req.headers.get('Authorization')
+    if (!authHeader?.startsWith('Bearer ')) {
+      return new Response(
+        JSON.stringify({ error: 'Authentication required' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+      )
+    }
+
+    const authClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+    )
+    const token = authHeader.replace('Bearer ', '')
+    const { data: { user }, error: authError } = await authClient.auth.getUser(token)
+    if (authError || !user) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid authentication token' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+      )
+    }
+
     const requestData: Partial<GenerateImageRequest> = await req.json()
     console.log('Received request data:', JSON.stringify(requestData, null, 2))
     
@@ -36,7 +58,7 @@ serve(async (req) => {
     } = requestData as GenerateImageRequest
 
     // Get persona avatar
-    const avatarResult = await getPersonaAvatar(persona_id)
+    const avatarResult = await getPersonaAvatar(persona_id, user.id)
     if (avatarResult instanceof Response) {
       return avatarResult
     }

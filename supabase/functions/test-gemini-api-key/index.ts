@@ -3,13 +3,20 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') ?? 'https://threads-genius-ai.lovable.app',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
+  }
+
+  if (Deno.env.get('ENABLE_TEST_FUNCTIONS') !== 'true') {
+    return new Response(JSON.stringify({ success: false, error: 'Disabled in production' }), {
+      status: 403,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
   }
 
   try {
@@ -78,11 +85,12 @@ serve(async (req) => {
     console.log('📡 Sending test request to Gemini API...');
     
     const geminiResponse = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`,
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent',
       {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey,
         },
         body: JSON.stringify({
           contents: [{

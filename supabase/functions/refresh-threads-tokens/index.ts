@@ -1,13 +1,50 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') ?? 'https://threads-genius-ai.lovable.app',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
+async function updateTokenAtomically(
+  supabase: any,
+  personaId: string,
+  expectedToken: string,
+  expectedExpiresAt: string | null,
+  newToken: string,
+  newExpiresAt: string,
+) {
+  let query = supabase
+    .from('personas')
+    .update({
+      threads_access_token: newToken,
+      token_expires_at: newExpiresAt,
+      token_refreshed_at: new Date().toISOString(),
+    })
+    .eq('id', personaId)
+    .eq('threads_access_token', expectedToken)
+
+  query = expectedExpiresAt === null
+    ? query.is('token_expires_at', null)
+    : query.eq('token_expires_at', expectedExpiresAt)
+
+  const { data, error } = await query.select('id').limit(1)
+
+  if (error) throw error
+  return (data?.length || 0) > 0
 }
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
+  }
+
+  const cronSecret = Deno.env.get('CRON_SECRET')
+  const provided = req.headers.get('x-cron-secret')
+  if (!cronSecret || !provided || provided !== cronSecret) {
+    return new Response(JSON.stringify({ success: false, error: 'Unauthorized' }), {
+      status: 401,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
   }
 
   try {
@@ -29,6 +66,7 @@ Deno.serve(async (req) => {
       .is('token_expires_at', null)
 
     let nullFixedCount = 0
+    let nullRefreshSkippedByRace = 0
     if (nullExpiryPersonas && nullExpiryPersonas.length > 0) {
       console.log(`🔍 token_expires_at未設定: ${nullExpiryPersonas.length}件を検証中...`)
       
@@ -45,7 +83,7 @@ Deno.serve(async (req) => {
           continue
         }
 
-        // 有効な形式のトークン→1件だけリフレッシュ試行
+        // 有効な形式のトークン→1件だけリフレッシュ試行（成功時のみ原子的に反映）
         try {
           const refreshRes = await fetch(
             `https://graph.threads.net/refresh_access_token?grant_type=th_refresh_token&access_token=${encodeURIComponent(token)}`,
@@ -55,29 +93,27 @@ Deno.serve(async (req) => {
           if (refreshRes.ok) {
             const data = await refreshRes.json()
             const expiresAt = new Date(Date.now() + (data.expires_in || 5184000) * 1000).toISOString()
-            await supabase
-              .from('personas')
-              .update({
-                threads_access_token: data.access_token,
-                token_expires_at: expiresAt,
-                token_refreshed_at: new Date().toISOString(),
-              })
-              .eq('id', p.id)
-            console.log(`✅ ${p.name}: トークン更新+期限設定成功 (${expiresAt})`)
+            const updated = await updateTokenAtomically(
+              supabase,
+              p.id,
+              token,
+              null,
+              data.access_token,
+              expiresAt,
+            )
+
+            if (updated) {
+              console.log(`✅ ${p.name}: トークン更新+期限設定成功 (${expiresAt})`)
+            } else {
+              nullRefreshSkippedByRace++
+              console.log(`ℹ️ ${p.name}: 競合により更新スキップ（他処理で更新済み）`)
+            }
           } else {
             await refreshRes.text() // consume body
-            await supabase
-              .from('personas')
-              .update({ token_expires_at: new Date(0).toISOString() })
-              .eq('id', p.id)
-            nullFixedCount++
+            console.warn(`⚠️ ${p.name}: null期限トークンの更新失敗（状態は変更せず次回再試行）`)
           }
         } catch {
-          await supabase
-            .from('personas')
-            .update({ token_expires_at: new Date(0).toISOString() })
-            .eq('id', p.id)
-          nullFixedCount++
+          console.warn(`⚠️ ${p.name}: null期限トークンの更新例外（状態は変更せず次回再試行）`)
         }
 
         await new Promise(r => setTimeout(r, 300))
@@ -85,6 +121,9 @@ Deno.serve(async (req) => {
 
       if (nullFixedCount > 0) {
         console.log(`📌 ${nullFixedCount}件の期限切れペルソナをマーク済み（次回以降スキップ）`)
+      }
+      if (nullRefreshSkippedByRace > 0) {
+        console.log(`ℹ️ null期限トークン: 競合スキップ=${nullRefreshSkippedByRace}`)
       }
     }
 
@@ -139,17 +178,17 @@ Deno.serve(async (req) => {
           const data = await refreshRes.json()
           const expiresAt = new Date(Date.now() + (data.expires_in || 5184000) * 1000).toISOString()
 
-          const { error: updateError } = await supabase
-            .from('personas')
-            .update({
-              threads_access_token: data.access_token,
-              token_expires_at: expiresAt,
-              token_refreshed_at: new Date().toISOString(),
-            })
-            .eq('id', persona.id)
+          const updated = await updateTokenAtomically(
+            supabase,
+            persona.id,
+            token,
+            persona.token_expires_at,
+            data.access_token,
+            expiresAt,
+          )
 
-          if (updateError) {
-            results.push({ id: persona.id, name: persona.name, success: false, error: updateError.message })
+          if (!updated) {
+            results.push({ id: persona.id, name: persona.name, success: false, error: '競合により更新スキップ（他処理で更新済み）' })
           } else {
             console.log(`✅ ${persona.name}: トークン更新成功, 新期限: ${expiresAt}`)
             results.push({ id: persona.id, name: persona.name, success: true, new_expires_at: expiresAt })

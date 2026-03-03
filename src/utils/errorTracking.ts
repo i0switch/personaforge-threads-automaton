@@ -129,7 +129,8 @@ class ErrorTracker {
       // ページ離脱時にCLSを記録
       window.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'hidden') {
-          this.trackPerformance('CLS', clsValue * 1000); // スコアをms換算
+          // L-10: CLSはスコア値なのでms換算せずそのまま送る（判定側がms前提なら閾値を修正すべきだが、まずは値をそのまま送る）
+          this.trackPerformance('CLS', clsValue);
         }
       });
     }

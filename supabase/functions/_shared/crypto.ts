@@ -2,7 +2,7 @@
  * 統一暗号化/復号ユーティリティ
  * 
  * 全Edge Functionはこのモジュールを通じて復号を行う。
- * 暗号方式: AES-256-GCM (raw key padded to 32 bytes)
+ * 暗号方式: AES-256-GCM (raw key / SHA-256 normalized)
  * フォールバック: PBKDF2-derived AES-256-GCM (レガシー)
  * 
  * IMPORTANT: DB RPCによる復号は禁止。全ての復号はこのモジュールで行う。
@@ -10,6 +10,8 @@
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
+const LEGACY_PBKDF2_SALT = encoder.encode('salt');
+const V2_PREFIX = 'v2:';
 
 export type DecryptResult = {
   success: true;
@@ -36,19 +38,64 @@ async function decryptWithRawKey(
   ciphertext: Uint8Array,
   encryptionKey: string
 ): Promise<string> {
-  const keyMaterial = await crypto.subtle.importKey(
+  const keyBytes = encoder.encode(encryptionKey);
+  const keyCandidates: Uint8Array[] = [];
+
+  if (keyBytes.length === 32) {
+    keyCandidates.push(keyBytes);
+  } else {
+    const digest = await crypto.subtle.digest('SHA-256', keyBytes);
+    keyCandidates.push(new Uint8Array(digest));
+
+    const legacyPadded = new Uint8Array(32);
+    legacyPadded.set(keyBytes.slice(0, 32));
+    keyCandidates.push(legacyPadded);
+  }
+
+  let lastError: unknown;
+  for (const candidate of keyCandidates) {
+    try {
+      const keyMaterial = await crypto.subtle.importKey(
+        'raw',
+        candidate,
+        { name: 'AES-GCM' },
+        false,
+        ['decrypt']
+      );
+      const decrypted = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv },
+        keyMaterial,
+        ciphertext
+      );
+      return decoder.decode(decrypted);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError ?? new Error('AES-GCM raw key decryption failed');
+}
+
+async function derivePBKDF2Key(
+  encryptionKey: string,
+  salt: Uint8Array,
+  usages: KeyUsage[]
+): Promise<CryptoKey> {
+  const baseKey = await crypto.subtle.importKey(
     'raw',
-    encoder.encode(encryptionKey.padEnd(32, '0').slice(0, 32)),
-    { name: 'AES-GCM' },
+    encoder.encode(encryptionKey),
+    { name: 'PBKDF2' },
     false,
-    ['decrypt']
+    ['deriveKey']
   );
-  const decrypted = await crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv },
-    keyMaterial,
-    ciphertext
+
+  return crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' },
+    baseKey,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    usages
   );
-  return decoder.decode(decrypted);
 }
 
 /**
@@ -57,22 +104,10 @@ async function decryptWithRawKey(
 async function decryptWithPBKDF2(
   iv: Uint8Array,
   ciphertext: Uint8Array,
-  encryptionKey: string
+  encryptionKey: string,
+  salt: Uint8Array = LEGACY_PBKDF2_SALT
 ): Promise<string> {
-  const baseKey = await crypto.subtle.importKey(
-    'raw',
-    encoder.encode(encryptionKey),
-    { name: 'PBKDF2' },
-    false,
-    ['deriveKey']
-  );
-  const derivedKey = await crypto.subtle.deriveKey(
-    { name: 'PBKDF2', salt: encoder.encode('salt'), iterations: 100000, hash: 'SHA-256' },
-    baseKey,
-    { name: 'AES-GCM', length: 256 },
-    false,
-    ['decrypt']
-  );
+  const derivedKey = await derivePBKDF2Key(encryptionKey, salt, ['decrypt']);
   const decrypted = await crypto.subtle.decrypt(
     { name: 'AES-GCM', iv },
     derivedKey,
@@ -96,6 +131,25 @@ export async function decryptValue(
   if (!encryptionKey) {
     console.error(`❌ [decrypt] ENCRYPTION_KEY未設定 - context: ${context}`);
     return { success: false, error: 'ENCRYPTION_KEY not configured', errorType: 'no_encryption_key' };
+  }
+
+  if (encryptedValue.startsWith(V2_PREFIX)) {
+    try {
+      const payload = encryptedValue.slice(V2_PREFIX.length);
+      const v2Data = Uint8Array.from(atob(payload), c => c.charCodeAt(0));
+      if (v2Data.length < 29) {
+        return { success: false, error: 'V2 encrypted data too short', errorType: 'decrypt_failed' };
+      }
+      const iv = v2Data.slice(0, 12);
+      const salt = v2Data.slice(12, 28);
+      const ciphertext = v2Data.slice(28);
+      const value = await decryptWithPBKDF2(iv, ciphertext, encryptionKey, salt);
+      console.log(`🔓 [decrypt] 成功 (PBKDF2 v2) - context: ${context}`);
+      return { success: true, value, method: 'aes-gcm-pbkdf2' };
+    } catch (e) {
+      console.error(`❌ [decrypt] V2復号失敗 - context: ${context}, error: ${e}`);
+      return { success: false, error: 'V2 decryption failed', errorType: 'decrypt_failed' };
+    }
   }
 
   // Base64デコード
@@ -132,6 +186,39 @@ export async function decryptValue(
   } catch (e) {
     console.error(`❌ [decrypt] 両方式で復号失敗 - context: ${context}, error: ${e}`);
     return { success: false, error: 'Decryption failed with both methods', errorType: 'decrypt_failed' };
+  }
+}
+
+export async function encryptValue(
+  plainValue: string,
+  context: string = 'unknown'
+): Promise<string | null> {
+  const encryptionKey = getEncryptionKey();
+  if (!encryptionKey) {
+    console.error(`❌ [encrypt] ENCRYPTION_KEY未設定 - context: ${context}`);
+    return null;
+  }
+
+  try {
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const key = await derivePBKDF2Key(encryptionKey, salt, ['encrypt']);
+
+    const encrypted = await crypto.subtle.encrypt(
+      { name: 'AES-GCM', iv },
+      key,
+      encoder.encode(plainValue)
+    );
+
+    const combined = new Uint8Array(iv.length + salt.length + encrypted.byteLength);
+    combined.set(iv, 0);
+    combined.set(salt, iv.length);
+    combined.set(new Uint8Array(encrypted), iv.length + salt.length);
+
+    return `${V2_PREFIX}${btoa(String.fromCharCode(...combined))}`;
+  } catch (error) {
+    console.error(`❌ [encrypt] 暗号化失敗 - context: ${context}, error: ${error}`);
+    return null;
   }
 }
 

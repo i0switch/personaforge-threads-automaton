@@ -3,7 +3,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') ?? 'https://threads-genius-ai.lovable.app',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
@@ -34,9 +34,18 @@ async function getUserApiKey(userId: string, keyName: string): Promise<string | 
     const ciphertext = encryptedData.slice(12);
 
     try {
+      const keyBytes = encoder.encode(encryptionKey);
+      let materialBytes: Uint8Array;
+      if (keyBytes.length === 32) {
+        materialBytes = keyBytes;
+      } else {
+        const digest = await crypto.subtle.digest('SHA-256', keyBytes);
+        materialBytes = new Uint8Array(digest);
+      }
+
       const keyMaterial = await crypto.subtle.importKey(
         'raw',
-        encoder.encode(encryptionKey.padEnd(32, '0').slice(0, 32)),
+        materialBytes,
         { name: 'AES-GCM' },
         false,
         ['decrypt']
@@ -142,7 +151,7 @@ async function generateWithGeminiRotation(prompt: string, userId: string): Promi
 
 async function generateWithGemini(prompt: string, apiKey: string): Promise<string> {
   if (!apiKey) throw new Error('Gemini API key is not configured');
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+  const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
 
   const body = {
     contents: [
@@ -155,7 +164,10 @@ async function generateWithGemini(prompt: string, apiKey: string): Promise<strin
 
   const res = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'x-goog-api-key': apiKey,
+    },
     body: JSON.stringify(body),
   });
 
@@ -192,6 +204,13 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') {
     console.log('📋 CORS preflight request');
     return new Response(null, { headers: corsHeaders });
+  }
+
+  if (Deno.env.get('ENABLE_TEST_FUNCTIONS') !== 'true') {
+    return new Response(JSON.stringify({ success: false, error: 'Disabled in production' }), {
+      status: 403,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
   }
 
   try {

@@ -13,6 +13,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { PasswordInput } from "@/components/Auth/PasswordInput";
 import { enhancedSecurity } from "@/utils/enhancedSecurity";
+import { useSecureAuth } from "@/hooks/useSecureAuth";
 
 const Auth = () => {
   const navigate = useNavigate();
@@ -27,6 +28,8 @@ const Auth = () => {
   const [isBlocked, setIsBlocked] = useState(false);
   const [resetEmail, setResetEmail] = useState("");
   const [resetSent, setResetSent] = useState(false);
+  const [activeTab, setActiveTab] = useState("signin");
+  const { secureSignIn, secureSignUp } = useSecureAuth();
 
   useEffect(() => {
     if (user) {
@@ -53,20 +56,17 @@ const Auth = () => {
         return;
       }
 
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      const signInResult = await secureSignIn(email, password);
 
       // Log login attempt
       await enhancedSecurity.logLoginAttempt({
         email,
-        success: !signInError,
+        success: signInResult.success,
         timestamp: new Date()
       });
 
-      if (signInError) {
-        throw signInError;
+      if (!signInResult.success) {
+        throw new Error(signInResult.error || "ログインに失敗しました。");
       }
 
       toast({
@@ -98,26 +98,12 @@ const Auth = () => {
       return;
     }
 
-    if (password.length < 6) {
-      setError("パスワードは6文字以上で入力してください。");
-      return;
-    }
-
     setIsLoading(true);
 
     try {
-      const { error: signUpError } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            display_name: displayName,
-          },
-        },
-      });
-
-      if (signUpError) {
-        throw signUpError;
+      const signUpResult = await secureSignUp(email, password, displayName);
+      if (!signUpResult.success) {
+        throw new Error(signUpResult.error || "アカウント作成に失敗しました。");
       }
 
       // Log successful signup
@@ -196,7 +182,7 @@ const Auth = () => {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Tabs defaultValue="signin" className="w-full">
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
               <TabsList className="grid w-full grid-cols-3">
                 <TabsTrigger value="signin">ログイン</TabsTrigger>
                 <TabsTrigger value="signup">新規登録</TabsTrigger>
@@ -255,10 +241,7 @@ const Auth = () => {
                       variant="link"
                       className="text-sm"
                       onClick={() => {
-                        // Switch to reset tab and set email if provided
-                        const tabs = document.querySelector('[role="tablist"]') as HTMLElement;
-                        const resetTab = tabs?.querySelector('[value="reset"]') as HTMLElement;
-                        resetTab?.click();
+                        setActiveTab("reset");
                         if (email) setResetEmail(email);
                       }}
                     >

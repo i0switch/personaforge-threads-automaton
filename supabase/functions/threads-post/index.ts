@@ -4,7 +4,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') ?? 'https://threads-genius-ai.lovable.app',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
@@ -832,13 +832,18 @@ serve(async (req) => {
       .eq('post_id', postId);
 
     if (updateQueueError) {
-      console.error('Critical: Failed to update queue status after successful publication:', updateQueueError);
-      // Try to revert post status to prevent inconsistency
-      await supabase
-        .from('posts')
-        .update({ status: 'scheduled', published_at: null })
-        .eq('id', postId);
-      throw new Error(`Post published but failed to update queue status: ${updateQueueError.message}`);
+      console.error('Queue sync warning: post was published but queue status update failed:', updateQueueError);
+
+      await supabase.from('security_events').insert({
+        event_type: 'post_queue_sync_failed_after_publish',
+        user_id: userId,
+        details: {
+          post_id: postId,
+          persona_id: post.persona_id,
+          queue_error: updateQueueError.message,
+          published_at: publishedAt,
+        }
+      });
     }
 
     console.log('Post and queue status updated successfully');

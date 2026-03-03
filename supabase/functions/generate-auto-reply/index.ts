@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
 import { z } from 'https://deno.land/x/zod@v3.22.4/mod.ts';
 import { getUserApiKeyDecrypted } from '../_shared/crypto.ts';
+import { requireAuthenticatedUser } from '../_shared/auth.ts';
 
 // Phase 2 Security: Rate limiting function
 async function checkRateLimit(
@@ -52,7 +53,7 @@ async function checkRateLimit(
 }
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') ?? 'https://threads-genius-ai.lovable.app',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
@@ -62,7 +63,7 @@ const AutoReplyRequestSchema = z.object({
   replyContent: z.string().min(1).max(5000),
   persona: z.object({
     id: z.string().uuid().optional(),
-    user_id: z.string().uuid(), // 必須: APIキー取得に必要
+    user_id: z.string().uuid().optional(),
     name: z.string().max(100),
     age: z.string().max(50).optional(),
     personality: z.string().max(1000).optional(),
@@ -82,6 +83,13 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
+    const authResult = await requireAuthenticatedUser(req, corsHeaders);
+    if (!authResult.ok) {
+      return authResult.response;
+    }
+
+    const requesterUserId = authResult.userId;
+
     // Phase 1 Security: Parse and validate request body
     let rawBody;
     try {
@@ -99,6 +107,41 @@ serve(async (req) => {
 
     const { postContent, replyContent, persona } = validationResult.data;
     console.log(`✅ Input validation passed for persona: ${persona.name}`);
+
+    if (persona.user_id && persona.user_id !== requesterUserId) {
+      return new Response(
+        JSON.stringify({ error: 'Forbidden: persona user mismatch' }),
+        {
+          status: 403,
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json',
+          },
+        },
+      );
+    }
+
+    if (persona.id) {
+      const { data: ownedPersona, error: ownershipError } = await supabase
+        .from('personas')
+        .select('id, user_id')
+        .eq('id', persona.id)
+        .eq('user_id', requesterUserId)
+        .maybeSingle();
+
+      if (ownershipError || !ownedPersona) {
+        return new Response(
+          JSON.stringify({ error: 'Forbidden: persona ownership required' }),
+          {
+            status: 403,
+            headers: {
+              ...corsHeaders,
+              'Content-Type': 'application/json',
+            },
+          },
+        );
+      }
+    }
 
     // Phase 2 Security: Rate limit check
     const personaId = persona.id || 'unknown';
@@ -130,9 +173,6 @@ serve(async (req) => {
     if (!encryptionKey) {
       throw new Error('暗号化キーが設定されていません');
     }
-
-    // Get authorization header to identify the user
-    const authHeader = req.headers.get('Authorization');
 
     // Get all Gemini API keys for the user
     async function getUserApiKey(userId: string, keyName: string): Promise<string | null> {
@@ -176,10 +216,11 @@ serve(async (req) => {
         
         try {
           // Updated model name from gemini-pro to gemini-1.5-flash
-          const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+          const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
+              'x-goog-api-key': apiKey,
             },
             body: JSON.stringify({
               contents: [{
@@ -229,10 +270,6 @@ serve(async (req) => {
       throw lastError || new Error('All Gemini API keys failed');
     }
 
-    if (!authHeader || !persona?.user_id) {
-      throw new Error('認証情報またはペルソナ情報が不足しています');
-    }
-
     const prompt = `あなたは${persona.name}です。
 年齢: ${persona.age || '未設定'}
 性格: ${persona.personality || 'フレンドリー'}
@@ -244,7 +281,7 @@ serve(async (req) => {
 元の投稿: ${postContent}
 リプライ: ${replyContent}`;
 
-    const generatedReply = await generateWithGeminiRotation(prompt, persona.user_id);
+  const generatedReply = await generateWithGeminiRotation(prompt, requesterUserId);
 
     return new Response(
       JSON.stringify({ success: true, reply: generatedReply }),

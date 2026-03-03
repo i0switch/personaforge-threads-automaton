@@ -21,7 +21,7 @@ export const authSecurity = {
 
       if (error) {
         console.error('Login eligibility check failed:', error);
-        return { allowed: true }; // エラー時はログインを許可（可用性優先）
+        return { allowed: false, reason: 'ログイン制限チェックに失敗しました。しばらくしてから再試行してください。' };
       }
 
       if (!data) {
@@ -34,7 +34,7 @@ export const authSecurity = {
       return { allowed: true };
     } catch (error) {
       console.error('Login eligibility check error:', error);
-      return { allowed: true };
+      return { allowed: false, reason: 'ログイン制限チェックに失敗しました。しばらくしてから再試行してください。' };
     }
   },
 
@@ -110,17 +110,27 @@ export const authSecurity = {
       // セッションクリア
       await supabase.auth.signOut();
       
-      // ローカルストレージ/セッションストレージのクリア（iOS Safari保護）
+      // ローカルストレージ/セッションストレージのクリア（プレフィックス判定）
       try {
         if (typeof window !== 'undefined' && 'localStorage' in window) {
-          localStorage.removeItem('supabase.auth.token');
+          for (let i = localStorage.length - 1; i >= 0; i--) {
+            const key = localStorage.key(i);
+            if (key?.startsWith('sb-')) {
+              localStorage.removeItem(key);
+            }
+          }
         }
       } catch (e) {
-        console.warn('localStorage remove failed (ignored):', e);
+        console.warn('localStorage clear failed (ignored):', e);
       }
       try {
         if (typeof window !== 'undefined' && 'sessionStorage' in window) {
-          sessionStorage.clear();
+          for (let i = sessionStorage.length - 1; i >= 0; i--) {
+            const key = sessionStorage.key(i);
+            if (key?.startsWith('sb-')) {
+              sessionStorage.removeItem(key);
+            }
+          }
         }
       } catch (e) {
         console.warn('sessionStorage clear failed (ignored):', e);

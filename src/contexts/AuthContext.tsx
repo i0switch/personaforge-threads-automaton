@@ -58,7 +58,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     let mounted = true;
     let initialLoadComplete = false;
     let pollTimer: number | null = null;
-    console.log('Setting up auth state listener');
+    if (import.meta.env.DEV) console.log('Setting up auth state listener');
 
     const ua = navigator.userAgent;
     const isIpadOS13Plus = navigator.platform === 'MacIntel' && (navigator as any).maxTouchPoints > 1;
@@ -70,7 +70,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     let subscription: any = null;
 
     if (isIOSSafari) {
-      console.warn('iOS Safari 環境のため、auth監視をポーリングに切り替えます');
+      if (import.meta.env.DEV) console.warn('iOS Safari 環境のため、auth監視をポーリングに切り替えます');
       
       // iOS Safariではポーリングで認証状態をチェック
       const checkAuthState = async () => {
@@ -116,7 +116,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           
           // Handle token revoked or signed out events
           if (event === 'TOKEN_REFRESHED' && !session) {
-            console.log('Token refresh failed, clearing session');
+            if (import.meta.env.DEV) console.log('Token refresh failed, clearing session');
             setSession(null);
             setUser(null);
             setLoading(false);
@@ -124,7 +124,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           }
           
           if (event === 'SIGNED_OUT' || !session) {
-            console.log('User signed out or session invalid, clearing state');
+            if (import.meta.env.DEV) console.log('User signed out or session invalid, clearing state');
             setSession(null);
             setUser(null);
             setLoading(false);
@@ -149,7 +149,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       const currentUrl = window.location.href;
       
       if (currentHost.includes('preview--threads-genius-ai.lovable.app')) {
-        console.log('プレビュー環境を検出。本番環境にリダイレクトします...');
+        if (import.meta.env.DEV) console.log('プレビュー環境を検出。本番環境にリダイレクトします...');
         const targetUrl = currentUrl.replace('preview--threads-genius-ai.lovable.app', 'threads-genius-ai.lovable.app');
         window.location.replace(targetUrl);
         return true; // リダイレクト実行
@@ -165,7 +165,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           return; // リダイレクト中のため処理中断
         }
 
-        console.log('🔍 Checking for existing session...');
+        if (import.meta.env.DEV) console.log('🔍 Checking for existing session...');
         const { data: { session }, error } = await supabase.auth.getSession();
         if (error) {
           console.error('❌ Error getting session:', error);
@@ -191,7 +191,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
               throw new Error('Invalid token structure');
             }
 
-            const payload = JSON.parse(atob(parts[1]));
+              // base64url対応デコード
+              let base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+              while (base64.length % 4) {
+                base64 += '=';
+              }
+              const payload = JSON.parse(atob(base64));
             if (!payload.sub) {
               console.error('❌ Token missing sub claim');
               throw new Error('Token missing sub claim');
@@ -209,7 +214,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
               throw new Error('Session token invalid');
             }
 
-            console.log('✅ Session token valid');
+            if (import.meta.env.DEV) console.log('✅ Session token valid');
           } catch (tokenError) {
             console.error('❌ Token validation failed, clearing session:', tokenError);
             clearSupabaseStorage();
@@ -225,7 +230,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         }
         
         if (mounted && !initialLoadComplete) {
-          console.log(session ? '✅ Found existing valid session' : 'ℹ️ No session found');
+          if (import.meta.env.DEV) console.log(session ? '✅ Found existing valid session' : 'ℹ️ No session found');
           setSession(session);
           setUser(session?.user ?? null);
           setLoading(false);
@@ -253,7 +258,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     initializeAuth();
 
     return () => {
-      console.log('Cleaning up auth listener');
+      if (import.meta.env.DEV) console.log('Cleaning up auth listener');
       mounted = false;
       if (subscription) {
         subscription.unsubscribe();
@@ -266,7 +271,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const signUp = async (email: string, password: string, displayName?: string) => {
     try {
-      console.log('Attempting signup for:', email);
+      if (import.meta.env.DEV) console.log('Attempting signup for:', email);
       const redirectUrl = 'https://threads-genius-ai.lovable.app/';
       const { data, error } = await supabase.auth.signUp({
         email,
@@ -278,7 +283,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           }
         }
       });
-      console.log('Signup result:', error ? 'error' : 'success');
+      if (import.meta.env.DEV) console.log('Signup result:', error ? 'error' : 'success');
       
       // プロファイル・アカウントステータスはDBトリガー(handle_new_user)で自動作成
       // フロントからの二重作成は行わない
@@ -292,12 +297,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const signIn = async (email: string, password: string) => {
     try {
-      console.log('Attempting signin for:', email); // デバッグ用ログ追加
+      if (import.meta.env.DEV) console.log('Attempting signin for:', email);
       const { error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
-      console.log('Signin result:', error ? 'error' : 'success'); // デバッグ用ログ追加
+      if (import.meta.env.DEV) console.log('Signin result:', error ? 'error' : 'success');
 
       if (!error) {
         // セッション監視（ログイン）
@@ -318,7 +323,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
   const signOut = async () => {
     try {
-      console.log('Attempting signout'); // デバッグ用ログ追加
+      if (import.meta.env.DEV) console.log('Attempting signout');
 
       // セッション監視（ログアウト）
       try {
@@ -379,7 +384,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     retryAuth,
   };
 
-  console.log('AuthProvider rendering with user:', !!user, 'loading:', loading); // デバッグ用ログ追加
+  if (import.meta.env.DEV) console.log('AuthProvider rendering with user:', !!user, 'loading:', loading);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

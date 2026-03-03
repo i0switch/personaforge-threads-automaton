@@ -276,6 +276,8 @@ export class ErrorBoundary extends Component<Props, State> {
               )}
             </p>
                 <div className="space-y-2">
+                  {(debug || import.meta.env.DEV) && (
+                  <>
                   <div className="text-left bg-destructive/10 border border-destructive/30 p-3 rounded">
                     <p className="text-sm font-semibold">エラー詳細</p>
                     <p className="text-sm break-words">{this.state.error?.message || '不明なエラー'}</p>
@@ -283,6 +285,8 @@ export class ErrorBoundary extends Component<Props, State> {
                   <div className="text-xs text-left bg-muted p-3 rounded overflow-auto max-h-60">
                     <pre className="whitespace-pre-wrap">{this.state.error?.stack || 'no stack'}</pre>
                   </div>
+                  </>
+                  )}
                   {(debug || import.meta.env.DEV) && (
                     <div className="text-xs text-left bg-muted p-3 rounded overflow-auto max-h-40">
                       <p className="font-semibold mb-1">__lastErrorInfo (JSON)</p>
@@ -307,9 +311,20 @@ export class ErrorBoundary extends Component<Props, State> {
                     });
                   }
                   
-                  // セッション/ローカルストレージクリア
-                  sessionStorage.clear();
-                  try { localStorage.clear(); } catch {}
+                  // Supabase関連のストレージのみクリア
+                  const keysToRemove: string[] = [];
+                  for (let i = 0; i < sessionStorage.length; i++) {
+                    const key = sessionStorage.key(i);
+                    if (key?.startsWith('sb-')) keysToRemove.push(key);
+                  }
+                  keysToRemove.forEach(k => sessionStorage.removeItem(k));
+                  
+                  const localKeysToRemove: string[] = [];
+                  for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    if (key?.startsWith('sb-')) localKeysToRemove.push(key);
+                  }
+                  localKeysToRemove.forEach(k => localStorage.removeItem(k));
                   
                   console.log('iOS Safari向けキャッシュクリア実行（SW/Storage cleared）');
                 } catch (clearError) {

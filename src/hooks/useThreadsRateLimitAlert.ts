@@ -43,38 +43,12 @@ export const useThreadsRateLimitAlert = () => {
 
     checkRecentErrors();
 
-    // リアルタイム: activity_logsに新しいレート制限ログが来たら通知
-    const channel = supabase
-      .channel("threads-rate-limit-alert")
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "activity_logs",
-          filter: `user_id=eq.${user.id}`,
-        },
-        (payload) => {
-          const record = payload.new as any;
-          if (
-            record.action_type === "threads_reply_rate_limited" &&
-            !notifiedIds.current.has(record.id)
-          ) {
-            notifiedIds.current.add(record.id);
-            const meta = record.metadata as any;
-            toast({
-              title: "⚠️ Threads 返信レート制限",
-              description: `ペルソナ「${meta?.persona_name || "不明"}」がThreads APIの返信レート制限(error 613)に達しました。返信の送信間隔を空けるか、しばらく待ってから再試行してください。`,
-              variant: "destructive",
-              duration: 10000,
-            });
-          }
-        }
-      )
-      .subscribe();
+    // CSP制約によりSupabase Realtimeが無効化されているため、
+    // 代わりに30秒ごとのポーリングでエラーを監視
+    const intervalId = setInterval(checkRecentErrors, 30000);
 
     return () => {
-      supabase.removeChannel(channel);
+      clearInterval(intervalId);
     };
   }, [user]);
 };

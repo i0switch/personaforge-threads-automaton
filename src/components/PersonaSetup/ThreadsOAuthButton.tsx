@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { ExternalLink, AlertCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
 import {
   Dialog,
   DialogContent,
@@ -31,7 +32,7 @@ export const ThreadsOAuthButton = ({ personaId, appId, disabled, missingFields }
 
   const hasMissing = missingFields?.appId || missingFields?.appSecret || missingFields?.notSaved;
 
-  const handleOAuth = () => {
+  const handleOAuth = async () => {
     if (hasMissing) {
       setShowMissingDialog(true);
       return;
@@ -46,10 +47,33 @@ export const ThreadsOAuthButton = ({ personaId, appId, disabled, missingFields }
       return;
     }
 
-    localStorage.setItem('threads_oauth_persona_id', personaId);
-    localStorage.setItem('threads_oauth_redirect_uri', REDIRECT_URI);
+    // CSRF対策: ランダムなstateパラメータを生成しsessionStorageに保存
+    const oauthState = crypto.randomUUID();
+    const stateExpiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
 
-    const authUrl = `https://threads.net/oauth/authorize?client_id=${encodeURIComponent(appId)}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=threads_basic,threads_content_publish,threads_manage_replies,threads_read_replies&response_type=code`;
+    const { error: stateSaveError } = await supabase
+      .from('personas')
+      .update({
+        oauth_state: oauthState,
+        oauth_state_expires_at: stateExpiresAt,
+        oauth_redirect_uri: REDIRECT_URI,
+      })
+      .eq('id', personaId);
+
+    if (stateSaveError) {
+      toast({
+        title: 'エラー',
+        description: 'OAuth準備に失敗しました。しばらく待ってから再試行してください。',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    sessionStorage.setItem('threads_oauth_state', oauthState);
+    sessionStorage.setItem('threads_oauth_persona_id', personaId);
+    sessionStorage.setItem('threads_oauth_redirect_uri', REDIRECT_URI);
+
+    const authUrl = `https://threads.net/oauth/authorize?client_id=${encodeURIComponent(appId)}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=threads_basic,threads_content_publish,threads_manage_replies,threads_read_replies&response_type=code&state=${encodeURIComponent(oauthState)}`;
     
     // iframe内ではリダイレクトがブロックされるため、新しいウィンドウで開く
     const newWindow = window.open(authUrl, '_blank', 'width=600,height=700,scrollbars=yes');

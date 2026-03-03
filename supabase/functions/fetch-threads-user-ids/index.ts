@@ -1,13 +1,19 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { requireInternalRequest } from '../_shared/auth.ts'
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') ?? 'https://threads-genius-ai.lovable.app',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
+  }
+
+  const internalAuth = requireInternalRequest(req, corsHeaders)
+  if (!internalAuth.ok) {
+    return internalAuth.response
   }
 
   try {

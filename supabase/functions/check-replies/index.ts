@@ -3,9 +3,10 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
 import { decryptIfNeeded, getUserApiKeyDecrypted } from '../_shared/crypto.ts';
+import { normalizeEmojiAndText, isKeywordMatch } from '../_shared/keyword-matcher.ts';
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') ?? 'https://threads-genius-ai.lovable.app',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
@@ -14,10 +15,8 @@ const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-// 無限ループ防止：処理済みペルソナをトラッキング
-const processedPersonas = new Set<string>();
 const MAX_PROCESS_COUNT = 100; // 最大処理数制限
-let processCount = 0;
+const MAX_AUTO_REPLY_DEPTH = 3;
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -26,6 +25,8 @@ serve(async (req) => {
 
   try {
     console.log('Starting reply check...');
+    const processedPersonas = new Set<string>();
+    let processCount = 0;
     
     // 処理数制限チェック
     if (processCount >= MAX_PROCESS_COUNT) {
@@ -287,10 +288,22 @@ async function checkRepliesForPost(persona: any, postId: string): Promise<number
             continue;
           }
 
+          const safety = await evaluateReplyRoutingSafety(persona, {
+            id: thread.id,
+            username: thread.username,
+            replied_to: { id: thread.reply_to_id },
+            root_post: { id: thread.reply_to_id }
+          });
+
+          if (safety.skip) {
+            console.log(`⏭️ ループ防止によりスキップ: ${thread.id} (${safety.reason})`);
+            continue;
+          }
+
           // すでに保存されているかチェック
           const { data: existingReply } = await supabase
             .from('thread_replies')
-            .select('id, auto_reply_sent, reply_status')
+            .select('id, auto_reply_sent, reply_status, updated_at, error_details')
             .eq('reply_id', thread.id)
             .maybeSingle();
 
@@ -311,7 +324,12 @@ async function checkRepliesForPost(persona: any, postId: string): Promise<number
                  reply_author_username: thread.username,
                  reply_timestamp: new Date(thread.timestamp || Date.now()).toISOString(),
                  auto_reply_sent: false,
-                 reply_status: 'pending'
+                 reply_status: 'pending',
+                 error_details: {
+                   ingest_source: 'polling',
+                   reply_depth: safety.replyDepth,
+                   loop_guard_version: '2026-03-03'
+                 }
                });
 
              if (!insertError) {
@@ -339,8 +357,14 @@ async function checkRepliesForPost(persona: any, postId: string): Promise<number
            } else if (!existingReply.auto_reply_sent && existingReply.reply_status === 'pending') {
              // 既存のリプライで、まだ自動返信が送信されていない、かつpending状態のみ再処理
              // failed/sent/scheduled/completedは process-unhandled-replies 側で適切にリトライされるためスキップ
-             shouldProcessAutoReply = true;
-             console.log(`🔄 未送信自動返信を処理: ${thread.id}`);
+             const updatedAt = existingReply.updated_at ? new Date(existingReply.updated_at).getTime() : 0;
+             const isStalePending = Date.now() - updatedAt > 2 * 60 * 1000;
+             if (isStalePending) {
+               shouldProcessAutoReply = true;
+               console.log(`🔄 stale pending を再処理: ${thread.id}`);
+             } else {
+               console.log(`⏭️ pending 直後のため再処理保留: ${thread.id}`);
+             }
            } else {
              console.log(`⏭️ Already handled reply (status=${existingReply.reply_status}, sent=${existingReply.auto_reply_sent}): ${thread.id}`);
            }
@@ -359,7 +383,7 @@ async function checkRepliesForPost(persona: any, postId: string): Promise<number
                })
                .eq('reply_id', thread.id)
                .eq('auto_reply_sent', false) // 既に処理済みでないことを確認
-               .neq('reply_status', 'processing') // 既にprocessingのものはスキップ
+               .eq('reply_status', 'pending') // pendingのみをclaimし、scheduled/failedとの競合を回避
                .select('id');
              
              if (lockError || !lockResult || lockResult.length === 0) {
@@ -424,13 +448,13 @@ async function checkRepliesForPost(persona: any, postId: string): Promise<number
                // 両方とも送信されなかった場合（設定無効・条件不一致）
                if (!replySent) {
                  console.log(`⚠️ 自動返信なし（設定無効または条件不一致） - reply: ${thread.id}`);
-                 // ★ reply_statusをskippedに設定（pendingに戻すとcheck-repliesで再トリガーされる）
+                 // ★ reply_statusをcompletedに設定（pendingに戻すとcheck-repliesで再トリガーされる）
                  // auto_reply_sentはfalseのまま（lockでprocessingにしただけ）なので
                  // 設定変更後にprocess-unhandled-repliesが再試行可能
                  await supabase
                    .from('thread_replies')
                    .update({ 
-                     reply_status: 'skipped',
+                     reply_status: 'completed',
                      auto_reply_sent: true  // ★ これ以上自動処理しない
                    })
                    .eq('reply_id', thread.id);
@@ -465,31 +489,70 @@ async function checkRepliesForPost(persona: any, postId: string): Promise<number
    }
  }
 
+async function evaluateReplyRoutingSafety(
+  persona: any,
+  reply: any
+): Promise<{ skip: boolean; reason?: string; replyDepth: number }> {
+  const author = String(reply.username || '').toLowerCase();
+  const botUsernames = await getBotUsernamesForUser(persona.user_id);
+
+  if (author && botUsernames.has(author)) {
+    return { skip: true, reason: 'bot_author_detected', replyDepth: 0 };
+  }
+
+  const parentReplyId = reply.replied_to?.id || reply.root_post?.id;
+  if (!parentReplyId) {
+    return { skip: false, replyDepth: 0 };
+  }
+
+  const { data: parentReply } = await supabase
+    .from('thread_replies')
+    .select('persona_id, error_details')
+    .eq('reply_id', parentReplyId)
+    .maybeSingle();
+
+  if (!parentReply) {
+    return { skip: false, replyDepth: 0 };
+  }
+
+  const parentDepthRaw = Number(parentReply.error_details?.reply_depth ?? 0);
+  const parentDepth = Number.isFinite(parentDepthRaw) ? parentDepthRaw : 0;
+  const replyDepth = parentDepth + 1;
+
+  if (parentReply.persona_id && parentReply.persona_id !== persona.id) {
+    return { skip: true, reason: 'cross_persona_parent_detected', replyDepth };
+  }
+
+  if (replyDepth > MAX_AUTO_REPLY_DEPTH) {
+    return { skip: true, reason: 'reply_depth_limit_exceeded', replyDepth };
+  }
+
+  return { skip: false, replyDepth };
+}
+
+async function getBotUsernamesForUser(userId: string): Promise<Set<string>> {
+  const botUsernames = new Set<string>();
+
+  const { data: personas } = await supabase
+    .from('personas')
+    .select('name, threads_username')
+    .eq('user_id', userId)
+    .eq('is_active', true);
+
+  for (const persona of personas || []) {
+    if (persona.threads_username) {
+      botUsernames.add(String(persona.threads_username).toLowerCase());
+    }
+    if (persona.name) {
+      botUsernames.add(String(persona.name).toLowerCase());
+    }
+  }
+
+  return botUsernames;
+}
+
 // トリガー自動返信（定型文）を処理
 // 絵文字の正規化関数（threads-webhookと同じ実装）
-function normalizeEmojiAndText(text: string): string {
-  return text
-    .normalize('NFD')
-    .replace(/[\u200d\ufe0f]/g, '') // Zero Width Joiner と Variation Selector を削除
-    .replace(/\s+/g, ' ')
-    .trim()
-    .toLowerCase();
-}
-
-// キーワードマッチング判定（threads-webhookと同じ実装）
-function isKeywordMatch(replyText: string, keyword: string): boolean {
-  const normalizedReply = normalizeEmojiAndText(replyText);
-  const normalizedKeyword = normalizeEmojiAndText(keyword);
-  
-  // 複数文字のキーワードは部分一致
-  if (normalizedKeyword.length > 1) {
-    return normalizedReply.includes(normalizedKeyword);
-  }
-  
-  // 単一文字（絵文字など）の場合は厳密チェック
-  return normalizedReply === normalizedKeyword;
-}
-
 async function processTemplateAutoReply(persona: any, reply: any): Promise<{ sent: boolean, method?: string }> {
   console.log(`🎯 定型文自動返信チェック開始`);
 
@@ -727,8 +790,9 @@ async function processScheduledReplies(): Promise<void> {
       // ペルソナ情報を個別に取得（重複FK回避）
       const { data: persona } = await supabase
         .from('personas')
-        .select('id, name, user_id, threads_access_token, ai_auto_reply_enabled, auto_reply_enabled, auto_reply_delay_minutes')
+        .select('id, name, user_id, threads_access_token, ai_auto_reply_enabled, auto_reply_enabled, auto_reply_delay_minutes, is_active')
         .eq('id', reply.persona_id)
+        .eq('is_active', true)
         .maybeSingle();
       
       if (!persona) {

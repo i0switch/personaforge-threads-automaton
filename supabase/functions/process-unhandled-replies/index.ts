@@ -2,9 +2,10 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
 import { decryptIfNeeded, getUserApiKeyDecrypted } from '../_shared/crypto.ts';
+import { normalizeEmojiAndText, matchKeywords } from '../_shared/keyword-matcher.ts';
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') ?? 'https://threads-genius-ai.lovable.app',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
@@ -16,7 +17,7 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey);
 // レート制限設定
 const RATE_LIMITS = {
   MAX_REPLIES_PER_PERSONA_PER_HOUR: 15, // 1時間あたり最大15件のリプライ
-  REPLY_DELAY_SECONDS: 10, // リプライ間隔10秒
+  REPLY_DELAY_SECONDS: 2, // リプライ間隔（固定10秒待機を短縮）
   RETRY_DELAY_MINUTES: 60 // 制限時の再試行まで60分
 };
 
@@ -122,19 +123,19 @@ async function getRetryableFailedReplies(): Promise<any[]> {
     return now >= nextRetryTime;
   });
   
-  // ペルソナ情報を個別に取得
-  const withPersonas = [];
-  for (const reply of retryable.slice(0, 20)) { // 最大20件
-    const { data: persona } = await supabase
-      .from('personas')
-      .select('id, name, user_id, auto_reply_enabled, ai_auto_reply_enabled, threads_access_token')
-      .eq('id', reply.persona_id)
-      .maybeSingle();
-    
-    if (persona) {
-      withPersonas.push({ ...reply, personas: persona });
-    }
-  }
+  // バッチ処理のため上限を厳格化
+  const targetReplies = retryable.slice(0, 5);
+  const personaIds = Array.from(new Set(targetReplies.map(r => r.persona_id).filter(Boolean)));
+
+  const { data: personaRows } = await supabase
+    .from('personas')
+    .select('id, name, user_id, auto_reply_enabled, ai_auto_reply_enabled, threads_access_token')
+    .in('id', personaIds);
+
+  const personaMap = new Map((personaRows || []).map((p: any) => [p.id, p]));
+  const withPersonas = targetReplies
+    .map((reply: any) => ({ ...reply, personas: personaMap.get(reply.persona_id) }))
+    .filter((reply: any) => Boolean(reply.personas));
   
   if (withPersonas.length > 0) {
     console.log(`🔄 リトライ可能な失敗リプライ: ${withPersonas.length}件`);
@@ -173,7 +174,7 @@ serve(async (req) => {
         .or(`and(reply_status.eq.pending,auto_reply_sent.eq.false),and(reply_status.eq.completed,auto_reply_sent.eq.false,scheduled_reply_at.lte.${now})`)
         .gte('created_at', twoHoursAgo)
         .order('created_at', { ascending: true })
-        .limit(30),
+        .limit(10), // バッチ処理のため上限を厳格化
       // scheduled: created_atに関係なく、scheduled_reply_atが過去のもの全て（またはnullで長期放置）
       supabase
         .from('thread_replies')
@@ -183,7 +184,7 @@ serve(async (req) => {
         .or(`scheduled_reply_at.lte.${now},scheduled_reply_at.is.null`)
         .gte('created_at', twentyFourHoursAgo)
         .order('scheduled_reply_at', { ascending: true, nullsFirst: false })
-        .limit(20)
+        .limit(5) // バッチ処理のため上限を厳格化
     ]);
 
     const fetchError = unprocessedResult.error || scheduledResult.error;
@@ -413,7 +414,7 @@ serve(async (req) => {
                 await supabase
                   .from('thread_replies')
                   .update({ 
-                    reply_status: newRetryCount >= maxRetries ? 'failed' : 'failed',
+                    reply_status: 'failed',
                     auto_reply_sent: false,
                     retry_count: newRetryCount,
                     last_retry_at: new Date().toISOString(),
@@ -443,7 +444,7 @@ serve(async (req) => {
             await supabase
               .from('thread_replies')
               .update({ 
-                reply_status: newRetryCount >= maxRetries ? 'failed' : 'failed',
+                reply_status: 'failed',
                 auto_reply_sent: false,
                 retry_count: newRetryCount,
                 last_retry_at: new Date().toISOString(),
@@ -506,7 +507,7 @@ serve(async (req) => {
             await supabase
               .from('thread_replies')
               .update({ 
-                reply_status: newRetryCount >= maxRetries ? 'failed' : 'failed',
+                reply_status: 'failed',
                 auto_reply_sent: newRetryCount >= maxRetries,  // ★ max_retries到達時はtrueにして永久リトライ防止
                 retry_count: newRetryCount,
                 last_retry_at: new Date().toISOString(),
@@ -539,7 +540,7 @@ serve(async (req) => {
         await supabase
           .from('thread_replies')
           .update({ 
-            reply_status: newRetryCount >= maxRetries ? 'failed' : 'failed',
+                reply_status: 'failed',
             auto_reply_sent: false,
             retry_count: newRetryCount,
             last_retry_at: new Date().toISOString(),
@@ -580,47 +581,9 @@ serve(async (req) => {
 });
 
 // 🔧 絵文字とテキストの正規化（threads-webhookと同じロジック）
-function normalizeEmojiAndText(text: string): string {
-  if (!text) return '';
-  
-  // 異体字セレクタを削除（U+FE0F: 絵文字スタイル、U+FE0E: テキストスタイル）
-  let normalized = text.replace(/[\uFE0E\uFE0F]/g, '');
-  
-  // Zero Width Joiner (ZWJ: U+200D) を削除
-  normalized = normalized.replace(/\u200D/g, '');
-  
-  // 空白文字と制御文字を正規化
-  normalized = normalized.replace(/\s+/g, ' ').trim();
-  
-  // 小文字化
-  normalized = normalized.toLowerCase();
-  
-  return normalized;
-}
 
-// キーワードマッチング判定（threads-webhookと同じロジック）
-function isKeywordMatch(replyText: string, keywords: string[]): { matched: boolean; keyword?: string } {
-  if (!keywords || keywords.length === 0) {
-    return { matched: false };
-  }
-  
-  const normalizedReply = normalizeEmojiAndText(replyText);
-  console.log(`🔍 正規化後のリプライテキスト: "${normalizedReply}"`);
-  
-  for (const keyword of keywords) {
-    const normalizedKeyword = normalizeEmojiAndText(keyword);
-    console.log(`🔑 正規化後のキーワード: "${normalizedKeyword}"`);
-    
-    if (normalizedReply.includes(normalizedKeyword)) {
-      console.log(`✅ キーワードマッチ: "${keyword}" → "${normalizedKeyword}"`);
-      return { matched: true, keyword };
-    }
-  }
-  
-  return { matched: false };
-}
 
-// トリガー自動返信（定型文）を処理
+  // トリガー自動返信（定型文）を処理
 async function processTemplateAutoReply(persona: any, reply: any): Promise<{ sent: boolean, method?: string }> {
   console.log(`🎯 定型文自動返信チェック開始`);
 
@@ -645,7 +608,7 @@ async function processTemplateAutoReply(persona: any, reply: any): Promise<{ sen
     const keywords = setting.trigger_keywords || [];
     console.log(`🔑 チェック中のキーワード:`, keywords);
 
-    const matchResult = isKeywordMatch(replyText, keywords);
+    const matchResult = matchKeywords(replyText, keywords);
     
     if (matchResult.matched) {
       console.log(`🎉 キーワードマッチ: "${matchResult.keyword}" → 返信: "${setting.response_template}"`);
@@ -709,7 +672,7 @@ async function processTemplateAutoReply(persona: any, reply: any): Promise<{ sen
           await supabase
             .from('thread_replies')
             .update({ 
-              reply_status: (newRetryCount >= maxRetries || isInvalidPost) ? 'failed' : 'failed',
+              reply_status: 'failed',
               retry_count: newRetryCount,
               last_retry_at: new Date().toISOString(),
               error_details: errorDetails

@@ -4,7 +4,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
 import { getUserApiKeyDecrypted } from '../_shared/crypto.ts';
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') ?? 'https://threads-genius-ai.lovable.app',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
@@ -41,6 +41,107 @@ const RATE_LIMITS = {
   GEMINI_RETRY_LIMIT: 3, // Reduced from 10
   COOLDOWN_AFTER_FAILURE: 60 * 60 * 1000 // 1 hour in ms
 };
+
+const AUTO_POST_CLAIM_TIMEOUT_MS = 10 * 60 * 1000;
+
+async function releaseExpiredAutoPostClaims(nowIso: string): Promise<number> {
+  const { data, error } = await supabase
+    .from('auto_post_configs')
+    .update({
+      processing_status: 'idle',
+      claim_token: null,
+      claim_expires_at: null,
+      processing_started_at: null,
+      updated_at: nowIso
+    })
+    .in('processing_status', ['claimed', 'processing'])
+    .lt('claim_expires_at', nowIso)
+    .select('id');
+
+  if (error) {
+    console.error('Failed to release expired auto-post claims:', error);
+    return 0;
+  }
+
+  return data?.length || 0;
+}
+
+async function claimAutoPostConfig(cfgId: string, expectedNextRunAt: string, workerId: string): Promise<string | null> {
+  const nowIso = new Date().toISOString();
+  const claimToken = `${workerId}:${crypto.randomUUID()}`;
+  const claimExpiresAt = new Date(Date.now() + AUTO_POST_CLAIM_TIMEOUT_MS).toISOString();
+
+  const { data, error } = await supabase
+    .from('auto_post_configs')
+    .update({
+      processing_status: 'claimed',
+      claim_token: claimToken,
+      claim_expires_at: claimExpiresAt,
+      processing_started_at: nowIso,
+      updated_at: nowIso
+    })
+    .eq('id', cfgId)
+    .eq('is_active', true)
+    .eq('next_run_at', expectedNextRunAt)
+    .or(`processing_status.is.null,processing_status.eq.idle,claim_expires_at.lt.${nowIso}`)
+    .select('id, claim_token')
+    .maybeSingle();
+
+  if (error) {
+    console.error(`Failed to claim auto-post config ${cfgId}:`, error);
+    return null;
+  }
+
+  if (!data?.claim_token) {
+    return null;
+  }
+
+  return data.claim_token;
+}
+
+async function moveClaimToProcessing(cfgId: string, claimToken: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('auto_post_configs')
+    .update({
+      processing_status: 'processing',
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', cfgId)
+    .eq('claim_token', claimToken)
+    .eq('processing_status', 'claimed')
+    .select('id')
+    .maybeSingle();
+
+  if (error) {
+    console.error(`Failed to move config ${cfgId} claim to processing:`, error);
+    return false;
+  }
+
+  return Boolean(data?.id);
+}
+
+async function finalizeAutoPostClaim(
+  cfgId: string,
+  claimToken: string,
+  updates: Record<string, unknown> = {}
+): Promise<void> {
+  const { error } = await supabase
+    .from('auto_post_configs')
+    .update({
+      ...updates,
+      processing_status: 'idle',
+      claim_token: null,
+      claim_expires_at: null,
+      processing_started_at: null,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', cfgId)
+    .eq('claim_token', claimToken);
+
+  if (error) {
+    console.error(`Failed to finalize claim for config ${cfgId}:`, error);
+  }
+}
 
 async function checkPersonaRateLimit(personaId: string): Promise<boolean> {
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
@@ -128,7 +229,7 @@ async function generateWithGeminiRotation(prompt: string, userId: string): Promi
 
 async function generateWithGemini(prompt: string, apiKey: string): Promise<string> {
   if (!apiKey) throw new Error('Gemini API key is not configured');
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+  const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
 
   const body = {
     contents: [
@@ -141,7 +242,10 @@ async function generateWithGemini(prompt: string, apiKey: string): Promise<strin
 
   const res = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'x-goog-api-key': apiKey,
+    },
     body: JSON.stringify(body),
   });
 
@@ -322,6 +426,13 @@ serve(async (req) => {
     console.log('✅ System posting allowed, proceeding with auto-post generation');
 
     const now = new Date();
+    const nowIso = now.toISOString();
+    const workerId = crypto.randomUUID();
+
+    const releasedClaims = await releaseExpiredAutoPostClaims(nowIso);
+    if (releasedClaims > 0) {
+      console.warn(`🔓 Released ${releasedClaims} expired auto-post claims before processing`);
+    }
 
     // 1. ランダムポスト設定がアクティブなペルソナIDを取得
     const { data: randomActivePersonas, error: randomPersonaError } = await supabase
@@ -339,7 +450,7 @@ serve(async (req) => {
       .from('auto_post_configs')
       .select('*')
       .eq('is_active', true)  // 🔒 アクティブな設定のみ対象
-      .lte('next_run_at', now.toISOString())
+      .lte('next_run_at', nowIso)
       .limit(RATE_LIMITS.MAX_TOTAL_POSTS_PER_RUN); // 🚨 CRITICAL: Global limit
 
     // ランダムポスト設定がアクティブなペルソナは除外
@@ -379,26 +490,27 @@ serve(async (req) => {
 
     // 4. 通常のオートポスト処理（厳格な制限付き）
     for (const cfg of configs || []) {
+      let claimToken: string | null = null;
+
       try {
-        // 🚨 CRITICAL: Rate limiting check
-        const rateLimitOk = await checkPersonaRateLimit(cfg.persona_id);
-        if (!rateLimitOk) {
-          console.log(`🛑 Rate limit exceeded for persona ${cfg.persona_id}, skipping`);
-          
-          // Skip but still update next_run_at to prevent infinite retries
-          await supabase
-            .from('auto_post_configs')
-            .update({ 
-              next_run_at: new Date(Date.now() + RATE_LIMITS.COOLDOWN_AFTER_FAILURE).toISOString(),
-              updated_at: new Date().toISOString()
-            })
-            .eq('id', cfg.id);
-          
-          processed++;
+        claimToken = await claimAutoPostConfig(cfg.id, cfg.next_run_at, workerId);
+        if (!claimToken) {
+          console.log(`⏭️ Config ${cfg.id} is already claimed or processed by another worker, skipping`);
           continue;
         }
 
         processed++;
+
+        // 🚨 CRITICAL: Rate limiting check
+        const rateLimitOk = await checkPersonaRateLimit(cfg.persona_id);
+        if (!rateLimitOk) {
+          console.log(`🛑 Rate limit exceeded for persona ${cfg.persona_id}, skipping`);
+
+          await finalizeAutoPostClaim(cfg.id, claimToken, {
+            next_run_at: new Date(Date.now() + RATE_LIMITS.COOLDOWN_AFTER_FAILURE).toISOString()
+          });
+          continue;
+        }
 
         // ペルソナ情報取得
         const { data: persona, error: personaError } = await supabase
@@ -410,7 +522,15 @@ serve(async (req) => {
           
         if (personaError || !persona) {
           console.log(`❌ Persona ${cfg.persona_id} not found or inactive, skipping config ${cfg.id}`);
-          processed++;
+          await finalizeAutoPostClaim(cfg.id, claimToken, {
+            next_run_at: new Date(Date.now() + RATE_LIMITS.COOLDOWN_AFTER_FAILURE).toISOString()
+          });
+          continue;
+        }
+
+        const movedToProcessing = await moveClaimToProcessing(cfg.id, claimToken);
+        if (!movedToProcessing) {
+          console.log(`⏭️ Claim for config ${cfg.id} was lost before processing step, skipping`);
           continue;
         }
 
@@ -490,7 +610,11 @@ serve(async (req) => {
             queue_position: 0,
             status: 'queued'
           });
-        if (queueErr) throw queueErr;
+        if (queueErr) {
+          console.error(`❌ Failed to enqueue post ${inserted.id}, deleting post for rollback`);
+          await supabase.from('posts').delete().eq('id', inserted.id);
+          throw queueErr;
+        }
 
         // 次回実行時刻を計算（複数時間対応）
         let nextRunAt: string;
@@ -574,105 +698,28 @@ serve(async (req) => {
           }
         }
 
-        // 🚨 CRITICAL: 排他制御と二重チェック（投稿作成前に実行）
-        const { data: preCreateCheck, error: preCheckError } = await supabase
-          .from('auto_post_configs')
-          .select('next_run_at, updated_at, is_active')
-          .eq('id', cfg.id)
-          .single();
-          
-        if (preCheckError || !preCreateCheck || !preCreateCheck.is_active) {
-          console.error(`🛑 Config ${cfg.id} is no longer active, aborting before post creation`);
-          failed++;
-          continue;
-        }
-        
-        // 次回実行時刻が変更されていないかチェック（重複実行防止）
-        if (preCreateCheck.next_run_at !== cfg.next_run_at) {
-          console.log(`⚠️ Config ${cfg.id} already processed by another instance. Safe abort.`);
-          continue;
-        }
+        await finalizeAutoPostClaim(cfg.id, claimToken, {
+          next_run_at: nextRunAt
+        });
 
-        // 🚨 CRITICAL: Post-creation validation and final check
-        const { data: currentConfig, error: checkError } = await supabase
-          .from('auto_post_configs')
-          .select('next_run_at, updated_at, is_active')
-          .eq('id', cfg.id)
-          .single();
-          
-        if (checkError || !currentConfig || !currentConfig.is_active) {
-          console.error(`🛑 Config ${cfg.id} is no longer active or accessible, aborting update`);
-          failed++;
-          continue;
-        }
-        
-        // 次回実行時刻が変更されていないかチェック（並行実行防止）
-        if (currentConfig.next_run_at !== cfg.next_run_at) {
-          console.log(`⚠️ Config ${cfg.id} next_run_at was already updated by another process. Safe abort.`);
-          continue;
-        }
+        console.log(`✅ Config ${cfg.id} finalized with next_run_at: ${nextRunAt}`);
 
-        // 設定を更新（楽観的排他制御 + is_active再確認）
-        const { data: updatedRows, error: updateErr } = await supabase
-          .from('auto_post_configs')
-          .update({ 
-            next_run_at: nextRunAt,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', cfg.id)
-          .eq('next_run_at', cfg.next_run_at) // 元の値と一致する場合のみ更新
-          .eq('is_active', true) // 🚨 CRITICAL: アクティブな場合のみ更新
-          .select('id');
-        
-        if (updateErr) {
-          console.error('Failed to update next_run_at for config', cfg.id, updateErr);
-        } else if (!updatedRows || updatedRows.length === 0) {
-          console.log(`⚠️ Config ${cfg.id} was not updated (likely deactivated by user)`);
-        } else {
-          console.log(`✅ Config ${cfg.id} updated with next_run_at: ${nextRunAt}`);
-        }
+        claimToken = null;
 
         posted++;
       } catch (e) {
         console.error('❌ Auto post generation failed for config', cfg.id, ':', e);
         failed++;
-        
-        // 🚨 CRITICAL: エラー時の安全な時刻更新（アクティブ状態をチェック）
-        try {
-          // First check if config is still active
-          const { data: activeCheck, error: activeCheckErr } = await supabase
-            .from('auto_post_configs')
-            .select('is_active')
-            .eq('id', cfg.id)
-            .single();
-            
-          if (activeCheckErr || !activeCheck || !activeCheck.is_active) {
-            console.log(`🛑 Config ${cfg.id} is no longer active, skipping failure backoff update`);
-            continue;
+        if (claimToken) {
+          try {
+            const cooldownNextRun = new Date(Date.now() + RATE_LIMITS.COOLDOWN_AFTER_FAILURE).toISOString();
+            await finalizeAutoPostClaim(cfg.id, claimToken, {
+              next_run_at: cooldownNextRun
+            });
+            console.log(`⏭️ Config ${cfg.id} failure cooldown applied: ${cooldownNextRun}`);
+          } catch (updateCatchErr) {
+            console.error('Unexpected error updating next_run_at after failure:', updateCatchErr);
           }
-          
-          // 長めのクールダウン時間を設定（API制限対策）
-          const cooldownNextRun = new Date(Date.now() + RATE_LIMITS.COOLDOWN_AFTER_FAILURE);
-          
-          const { data: backoffUpdate, error: updateErr } = await supabase
-            .from('auto_post_configs')
-            .update({ 
-              next_run_at: cooldownNextRun.toISOString(),
-              updated_at: new Date().toISOString()
-            })
-            .eq('id', cfg.id)
-            .eq('is_active', true) // 🚨 CRITICAL: Only update if still active
-            .select('id');
-            
-          if (updateErr) {
-            console.error('Failed to update next_run_at after failure for config', cfg.id, updateErr);
-          } else if (backoffUpdate && backoffUpdate.length > 0) {
-            console.log(`⏭️ Config ${cfg.id} failure cooldown: next_run_at -> ${cooldownNextRun.toISOString()}`);
-          } else {
-            console.log(`ℹ️ Config ${cfg.id} was deactivated during failure handling`);
-          }
-        } catch (updateCatchErr) {
-          console.error('Unexpected error updating next_run_at after failure:', updateCatchErr);
         }
       }
     }

@@ -2,7 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') ?? 'https://threads-genius-ai.lovable.app',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
@@ -97,7 +97,12 @@ async function verifyWebhookSignature(
 
     // タイミング攻撃を防ぐための定数時間比較
     const providedHex = signature.replace('sha256=', '');
-    return expectedHex === providedHex;
+    if (expectedHex.length !== providedHex.length) return false;
+    let mismatch = 0;
+    for (let i = 0; i < expectedHex.length; i++) {
+      mismatch |= expectedHex.charCodeAt(i) ^ providedHex.charCodeAt(i);
+    }
+    return mismatch === 0;
   } catch (error) {
     console.error('Signature verification error:', error);
     return false;

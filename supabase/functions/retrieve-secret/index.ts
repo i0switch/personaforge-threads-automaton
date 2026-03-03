@@ -3,7 +3,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
 import { decryptValue } from '../_shared/crypto.ts';
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') ?? 'https://threads-genius-ai.lovable.app',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
@@ -95,7 +95,7 @@ serve(async (req) => {
       .from('user_api_keys')
       .select('encrypted_key')
       .eq('user_id', userId)
-      .eq('key_name', key.replace(/^threads_access_token_/, 'threads_access_token'))
+      .eq('key_name', key)
       .single();
 
     if (dbError || !keyData) {

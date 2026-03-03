@@ -2,9 +2,10 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
 import { getUserApiKeyDecrypted } from '../_shared/crypto.ts';
+import { requireInternalRequest } from '../_shared/auth.ts';
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') ?? 'https://threads-genius-ai.lovable.app',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
@@ -18,6 +19,11 @@ serve(async (req) => {
 
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
+  }
+
+  const internalAuth = requireInternalRequest(req, corsHeaders);
+  if (internalAuth.ok === false) {
+    return internalAuth.response;
   }
 
   try {
@@ -36,6 +42,54 @@ serve(async (req) => {
       console.error('❌ ペルソナが見つかりません:', personaError);
       return new Response(JSON.stringify({ error: 'Persona not found' }), {
         status: 404,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
+    if (userId && userId !== persona.user_id) {
+      console.error(`❌ userId不一致: body=${userId}, persona.user_id=${persona.user_id}`);
+      return new Response(JSON.stringify({ error: 'Forbidden: userId mismatch' }), {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
+    const effectiveUserId = persona.user_id;
+    if (!effectiveUserId) {
+      return new Response(JSON.stringify({ error: 'Forbidden: persona user not found' }), {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
+    const { data: claimResult, error: claimError } = await supabase
+      .from('thread_replies')
+      .update({
+        auto_reply_sent: true,
+        reply_status: 'processing',
+        updated_at: new Date().toISOString()
+      })
+      .eq('reply_id', replyId)
+      .eq('auto_reply_sent', false)
+      .in('reply_status', ['pending', 'processing'])
+      .select('id');
+
+    if (claimError) {
+      console.error(`❌ 先行claim取得エラー - reply: ${replyId}:`, claimError);
+      return new Response(JSON.stringify({ error: 'Lock acquisition failed' }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
+    if (!claimResult || claimResult.length === 0) {
+      console.log(`⏭️ 既に処理中/処理済みのためスキップ - reply: ${replyId}`);
+      return new Response(JSON.stringify({
+        success: true,
+        skipped: true,
+        reason: 'already_claimed_or_non_pending'
+      }), {
+        status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
@@ -67,7 +121,7 @@ serve(async (req) => {
 ${contextInfo.originalPost ? `【元投稿】\n${contextInfo.originalPost}\n` : ''}${contextInfo.replyChain ? `【これまでの会話】\n${contextInfo.replyChain}\n` : ''}【今回のリプライ】
 ${replyContent}`;
 
-    const aiReplyText = await generateWithGeminiRotation(aiPrompt, userId);
+    const aiReplyText = await generateWithGeminiRotation(aiPrompt, effectiveUserId);
     console.log(`✅ AI返信生成完了: "${aiReplyText}"`);
 
     // アクセストークンを取得
@@ -96,7 +150,13 @@ ${replyContent}`;
           scheduled_reply_at: scheduledTime.toISOString(),
           reply_status: 'scheduled',
           ai_response: aiReplyText,  // AI生成済みの返信を保存（必須）
-          auto_reply_sent: false  // まだ送信していないのでfalse
+          auto_reply_sent: false,  // まだ送信していないのでfalse
+          error_details: {
+            bot_generated: true,
+            generation_mode: 'scheduled_ai',
+            loop_guard_version: '2026-03-03',
+            updated_at: new Date().toISOString()
+          }
         })
         .eq('reply_id', replyId);
       
@@ -108,7 +168,7 @@ ${replyContent}`;
       await supabase
         .from('activity_logs')
         .insert({
-          user_id: userId,
+            user_id: effectiveUserId,
           persona_id: personaId,
           action_type: 'ai_auto_reply_scheduled',
           description: `AI自動返信をスケジュール: "${aiReplyText.substring(0, 50)}..." (${delayMinutes}分後)`,
@@ -139,30 +199,7 @@ ${replyContent}`;
     } else {
       // 遅延時間が0分の場合は即座に送信
       console.log(`📤 AI自動返信を即座に送信 - reply: ${replyId}`);
-
-      // ★ アトミックロック: auto_reply_sent=false のみ許可
-      // process-unhandled-replies は auto_reply_sent=true でロックするため、
-      // auto_reply_sent=false 条件だけで二重送信を完全に防止できる
-      // reply_statusの除外条件は不要（check-repliesがprocessingに設定してから呼び出すため）
-      const { data: lockResult, error: lockError } = await supabase
-        .from('thread_replies')
-        .update({ auto_reply_sent: true, reply_status: 'processing', updated_at: new Date().toISOString() })
-        .eq('reply_id', replyId)
-        .eq('auto_reply_sent', false)
-        .neq('reply_status', 'sent')  // ★ sent状態のみ除外（既に送信済み）
-        .select('id');
-
-      if (lockError) {
-        console.error(`❌ ロック取得エラー - reply: ${replyId}:`, lockError);
-        return new Response(JSON.stringify({ error: 'Lock acquisition failed' }), { status: 500 });
-      }
-
-      if (!lockResult || lockResult.length === 0) {
-        console.log(`⏭️ 既に処理中または送信済み（重複スキップ） - reply: ${replyId}`);
-        return new Response(JSON.stringify({ success: true, skipped: true, reason: 'already_processing_or_sent' }), { status: 200 });
-      }
-
-      console.log(`🔒 ロック取得成功 - reply: ${replyId}、送信開始`);
+      console.log(`🔒 先行claim済み - reply: ${replyId}、送信開始`);
       const success = await sendThreadsReply(persona, accessToken, replyId, aiReplyText);
       
       if (success) {
@@ -173,7 +210,13 @@ ${replyContent}`;
           .from('thread_replies')
           .update({ 
             auto_reply_sent: true,
-            reply_status: 'sent'
+            reply_status: 'sent',
+            error_details: {
+              bot_generated: true,
+              generation_mode: 'immediate_ai',
+              loop_guard_version: '2026-03-03',
+              updated_at: new Date().toISOString()
+            }
           })
           .eq('reply_id', replyId);
 
@@ -181,7 +224,7 @@ ${replyContent}`;
         await supabase
           .from('activity_logs')
           .insert({
-            user_id: userId,
+            user_id: effectiveUserId,
             persona_id: personaId,
             action_type: 'ai_auto_reply_sent',
             description: `AI自動返信を送信: "${aiReplyText.substring(0, 50)}..."`,
@@ -285,10 +328,11 @@ async function generateWithGeminiRotation(prompt: string, userId: string): Promi
     console.log(`Trying Gemini API key ${i + 1}/${apiKeys.length}`);
     
     try {
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+      const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey,
         },
         body: JSON.stringify({
           contents: [

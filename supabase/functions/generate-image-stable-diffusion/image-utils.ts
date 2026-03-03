@@ -1,11 +1,11 @@
 import { supabase, corsHeaders } from './config.ts'
 
-export async function getPersonaAvatar(persona_id: string): Promise<{ avatarBase64: string } | Response> {
+export async function getPersonaAvatar(persona_id: string, userId: string): Promise<{ avatarBase64: string } | Response> {
   console.log('Getting persona avatar for ID:', persona_id)
   
   const { data: persona, error: personaError } = await supabase
     .from('personas')
-    .select('avatar_url')
+    .select('avatar_url, user_id')
     .eq('id', persona_id)
     .maybeSingle()
 
@@ -24,6 +24,14 @@ export async function getPersonaAvatar(persona_id: string): Promise<{ avatarBase
     return new Response(
       JSON.stringify({ error: 'Persona not found' }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 404 }
+    )
+  }
+
+  if (persona.user_id !== userId) {
+    console.error('Persona ownership mismatch')
+    return new Response(
+      JSON.stringify({ error: 'Access denied' }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 403 }
     )
   }
 

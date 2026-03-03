@@ -21,7 +21,7 @@ SELECT cron.schedule(
         url := 'https://tqcgbsnoiarnawnppwia.supabase.co/functions/v1/auto-scheduler',
         headers := jsonb_build_object(
           'Content-Type', 'application/json',
-          'Authorization', 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRxY2dic25vaWFybmF3bnBwd2lhIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0OTkxNTE4MSwiZXhwIjoyMDY1NDkxMTgxfQ.wruKKPGO3gTWu8GH8_O1TpEKNzWnHUkNKOmHH_GYBIQ'
+          'Authorization', 'Bearer ' || COALESCE(current_setting('app.settings.service_role_key', true), current_setting('app.service_role_key', true), current_setting('app.jwt_secret', true), current_setting('app.settings.jwt_secret', true))
         ),
         body := jsonb_build_object('scheduled_execution', true, 'timestamp', now())
       );

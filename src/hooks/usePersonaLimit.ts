@@ -114,70 +114,13 @@ export const usePersonaLimit = () => {
 
     checkPersonaLimit();
 
-    // Safari/WebKit環境ではRealtimeを無効化しポーリングにフォールバック
-    const isRestricted = isWebSocketRestricted();
-
-    let accountChannel: any = null;
-    let personasChannel: any = null;
-    let pollTimer: number | null = null;
-
-    if (isRestricted) {
-      console.warn('Safari/WebKit 環境のため、Realtime を無効化しポーリングにフォールバックします');
-      pollTimer = window.setInterval(checkPersonaLimit, 10000);
-    } else {
-      try {
-        const channelId = Math.random().toString(36).slice(2, 10);
-        // user_account_statusテーブルの変更をリアルタイムで監視
-        accountChannel = supabase
-          .channel(`user_account_status_changes_${user.id}_${channelId}`)
-          .on(
-            'postgres_changes',
-            {
-              event: '*',
-              schema: 'public',
-              table: 'user_account_status',
-              filter: `user_id=eq.${user.id}`
-            },
-            (payload) => {
-              console.log('Account status updated:', payload);
-              checkPersonaLimit();
-            }
-          )
-          .subscribe();
-
-        // personasテーブルの変更も監視
-        personasChannel = supabase
-          .channel(`personas_changes_${user.id}_${channelId}`)
-          .on(
-            'postgres_changes',
-            {
-              event: '*',
-              schema: 'public',
-              table: 'personas',
-              filter: `user_id=eq.${user.id}`
-            },
-            (payload) => {
-              console.log('Personas updated:', payload);
-              // ペルソナの変更時は少し遅延を入れてからチェック
-              setTimeout(checkPersonaLimit, 500);
-            }
-          )
-          .subscribe();
-      } catch (e) {
-        console.warn('Realtime 購読の初期化に失敗。ポーリングにフォールバックします:', e);
-        pollTimer = window.setInterval(checkPersonaLimit, 10000);
-      }
-    }
+    // CSP制約によりSupabase Realtimeが無効化されているため、
+    // 代わりに定期ポーリングでペルソナ制限情報を更新する
+    const pollTimer = window.setInterval(checkPersonaLimit, 30000);
 
     return () => {
       console.log('🧹 Cleaning up usePersonaLimit subscriptions');
-      try {
-        if (accountChannel) supabase.removeChannel(accountChannel);
-        if (personasChannel) supabase.removeChannel(personasChannel);
-      } catch (e) {
-        console.warn('Realtime チャネルのクリーンアップに失敗:', e);
-      }
-      if (pollTimer) window.clearInterval(pollTimer);
+      window.clearInterval(pollTimer);
     };
   }, [user]);
 

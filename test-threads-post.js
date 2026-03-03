@@ -1,15 +1,23 @@
 // Manual test for threads-post function
 const testPost = async () => {
   try {
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const postId = process.env.THREADS_TEST_POST_ID;
+    const userId = process.env.THREADS_TEST_USER_ID;
+
+    if (!serviceRoleKey || !postId || !userId) {
+      throw new Error('Missing required env vars: SUPABASE_SERVICE_ROLE_KEY, THREADS_TEST_POST_ID, THREADS_TEST_USER_ID');
+    }
+
     const response = await fetch('https://tqcgbsnoiarnawnppwia.supabase.co/functions/v1/threads-post', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRxY2dic25vaWFybmF3bnBwd2lhIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0OTkxNTE4MSwiZXhwIjoyMDY1NDkxMTgxfQ.WQJTEWyaLFUo4TBDCWwfJXJgOBmXVUoE_yNLFKP_k4g'
+        'Authorization': `Bearer ${serviceRoleKey}`
       },
       body: JSON.stringify({
-        postId: 'ad922075-b97c-4f65-94dc-81615e9f20c0', // 手動でpost IDを指定
-        userId: '3ca14017-07ca-423f-bce8-e73c75b8c9b4'   // user IDを指定
+        postId,
+        userId
       })
     });
     
@@ -18,6 +26,7 @@ const testPost = async () => {
     return result;
   } catch (error) {
     console.error('Error:', error);
+    process.exitCode = 1;
     return error;
   }
 };

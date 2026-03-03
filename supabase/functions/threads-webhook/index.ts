@@ -3,13 +3,14 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
 import { z } from 'https://deno.land/x/zod@v3.22.4/mod.ts';
 import { decryptIfNeeded, verifyHmacSignature } from '../_shared/crypto.ts';
+import { normalizeEmojiAndText, isKeywordMatch } from '../_shared/keyword-matcher.ts';
 
 // Phase 2 Security: Rate limiting function
 async function checkRateLimit(
   supabase: any,
   endpoint: string,
   identifier: string
-): Promise<{ allowed: boolean; retryAfter?: number }> {
+): Promise<{ allowed: boolean; retryAfter?: number; reason?: 'rate_limited' | 'check_failed' | 'update_failed' }> {
   try {
     const oneMinuteAgo = new Date(Date.now() - 60 * 1000).toISOString();
     
@@ -23,7 +24,7 @@ async function checkRateLimit(
 
     if (error && error.code !== 'PGRST116') {
       console.error('Rate limit check error:', error);
-      return { allowed: true }; // エラー時は通過させる（既存機能保護）
+      return { allowed: false, retryAfter: 60, reason: 'check_failed' };
     }
 
     const limit = 60; // 60 requests per minute
@@ -32,7 +33,7 @@ async function checkRateLimit(
       const retryAfter = Math.ceil(
         (new Date(recentRequests.window_start).getTime() + 60000 - Date.now()) / 1000
       );
-      return { allowed: false, retryAfter };
+      return { allowed: false, retryAfter, reason: 'rate_limited' };
     }
 
     // レート制限記録を更新
@@ -43,23 +44,25 @@ async function checkRateLimit(
       });
     } catch (err) {
       console.error('Failed to update rate limit:', err);
+      return { allowed: false, retryAfter: 60, reason: 'update_failed' };
     }
 
     return { allowed: true };
   } catch (error) {
     console.error('Rate limit error:', error);
-    return { allowed: true }; // エラー時は通過させる（既存機能保護）
+    return { allowed: false, retryAfter: 60, reason: 'check_failed' };
   }
 }
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') ?? 'https://threads-genius-ai.lovable.app',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
+const MAX_AUTO_REPLY_DEPTH = 3;
 
 // HMAC署名検証は共通モジュール (verifyHmacSignature) を使用
 
@@ -171,18 +174,28 @@ serve(async (req) => {
     
     if (!rateLimitResult.allowed) {
       console.warn(`⚠️ レート制限超過: persona_id=${personaId}`);
-      await logWebhookRequest(personaId, req.method, 'rate_limited', { retryAfter: rateLimitResult.retryAfter });
+      const retryAfter = rateLimitResult.retryAfter || 60;
+      const isRateLimitExceeded = rateLimitResult.reason === 'rate_limited';
+      const responseStatus = isRateLimitExceeded ? 429 : 503;
+
+      await logWebhookRequest(
+        personaId,
+        req.method,
+        isRateLimitExceeded ? 'rate_limited' : 'rate_limit_check_failed',
+        { retryAfter, reason: rateLimitResult.reason || 'unknown' }
+      );
+
       return new Response(
         JSON.stringify({ 
-          error: 'Rate limit exceeded',
-          retryAfter: rateLimitResult.retryAfter 
+          error: isRateLimitExceeded ? 'Rate limit exceeded' : 'Rate limit check temporarily unavailable',
+          retryAfter
         }),
         { 
-          status: 429, 
+          status: responseStatus,
           headers: { 
             ...corsHeaders, 
             'Content-Type': 'application/json',
-            'Retry-After': String(rateLimitResult.retryAfter || 60)
+            'Retry-After': String(retryAfter)
           } 
         }
       );
@@ -250,36 +263,44 @@ serve(async (req) => {
       });
     }
 
-    // HMAC署名検証（共通モジュール使用）
-    if (hubSignature) {
-      const appSecret = persona.threads_app_secret;
-      if (!appSecret) {
-        console.warn(`⚠️ threads_app_secret未設定 - 署名検証スキップ - persona: ${persona.name}`);
-      } else {
-        const secretForVerify = await decryptIfNeeded(appSecret, `app_secret:${persona.name}`);
-        if (!secretForVerify) {
-          console.error(`❌ app_secret復号失敗 - persona: ${persona.name}`);
-          await logWebhookRequest(personaId, 'POST', 'decrypt_failed', { personaName: persona.name });
-          return new Response(JSON.stringify({ error: 'App secret decryption failed' }), {
-            status: 500,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-          });
-        }
-        
-        const isValid = await verifyHmacSignature(rawBody, hubSignature, secretForVerify);
-        if (!isValid) {
-          console.error(`❌ HMAC署名検証失敗 - persona: ${persona.name}`);
-          await logWebhookRequest(personaId, 'POST', 'signature_invalid', { personaName: persona.name });
-          return new Response(JSON.stringify({ error: 'Invalid signature' }), {
-            status: 403,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-          });
-        }
-        console.log(`✅ HMAC署名検証成功 - persona: ${persona.name}`);
-      }
-    } else {
-      console.warn(`⚠️ X-Hub-Signature-256ヘッダーなし - 署名検証スキップ (persona: ${persona.name})`);
+    // HMAC署名検証（fail-closed）
+    if (!hubSignature) {
+      await logWebhookRequest(personaId, 'POST', 'signature_missing', { personaName: persona.name });
+      return new Response(JSON.stringify({ error: 'Missing X-Hub-Signature-256' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
     }
+
+    const appSecret = persona.threads_app_secret;
+    if (!appSecret) {
+      await logWebhookRequest(personaId, 'POST', 'app_secret_missing', { personaName: persona.name });
+      return new Response(JSON.stringify({ error: 'App secret is not configured' }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
+    const secretForVerify = await decryptIfNeeded(appSecret, `app_secret:${persona.name}`);
+    if (!secretForVerify) {
+      console.error(`❌ app_secret復号失敗 - persona: ${persona.name}`);
+      await logWebhookRequest(personaId, 'POST', 'decrypt_failed', { personaName: persona.name });
+      return new Response(JSON.stringify({ error: 'App secret decryption failed' }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
+    const isValid = await verifyHmacSignature(rawBody, hubSignature, secretForVerify);
+    if (!isValid) {
+      console.error(`❌ HMAC署名検証失敗 - persona: ${persona.name}`);
+      await logWebhookRequest(personaId, 'POST', 'signature_invalid', { personaName: persona.name });
+      return new Response(JSON.stringify({ error: 'Invalid signature' }), {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+    console.log(`✅ HMAC署名検証成功 - persona: ${persona.name}`);
 
     // Webhookペイロードを解析
     let rawPayload;
@@ -312,9 +333,14 @@ serve(async (req) => {
       console.log(`✅ Webhook payload validation passed`);
     } catch (validationError) {
       console.error('❌ Webhook payload validation failed:', validationError);
-      // Log but continue processing for backward compatibility
-      payload = rawPayload;
-      console.warn('⚠️ Processing unvalidated payload (backward compatibility mode)');
+      await logWebhookRequest(personaId, 'POST', 'payload_validation_failed', {
+        personaName: persona.name,
+        error: String(validationError),
+      });
+      return new Response(JSON.stringify({ error: 'Invalid payload schema' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
     }
     
     console.log(`📦 Webhookペイロード:`, JSON.stringify(payload, null, 2));
@@ -465,10 +491,32 @@ async function processReply(persona: any, reply: any): Promise<{ processed: bool
       return { processed: false, failed: false };
     }
 
+    const safety = await evaluateReplyRoutingSafety(persona, reply);
+    if (safety.skip) {
+      console.log(`⏭️ ループ防止によりスキップ: ${reply.id} (${safety.reason})`);
+      return { processed: false, failed: false };
+    }
+
     // Step 1: リプライをデータベースに保存（重複チェックも兼ねる）
-    const saveResult = await saveReplyToDatabaseSafe(persona, reply);
+    const saveResult = await saveReplyToDatabaseSafe(persona, reply, safety.replyDepth);
     if (!saveResult.isNew) {
       console.log(`⏭️ 既に処理済みのリプライ: ${reply.id}`);
+      return { processed: false, failed: false };
+    }
+
+    const { data: claimResult, error: claimError } = await supabase
+      .from('thread_replies')
+      .update({
+        reply_status: 'processing',
+        updated_at: new Date().toISOString()
+      })
+      .eq('reply_id', reply.id)
+      .eq('auto_reply_sent', false)
+      .eq('reply_status', 'pending')
+      .select('id');
+
+    if (claimError || !claimResult || claimResult.length === 0) {
+      console.log(`⏭️ Webhook claim失敗（他経路処理中の可能性）: ${reply.id}`);
       return { processed: false, failed: false };
     }
 
@@ -551,7 +599,7 @@ async function processReply(persona: any, reply: any): Promise<{ processed: bool
 }
 
 // リプライをデータベースに保存（重複チェック付き）
-async function saveReplyToDatabaseSafe(persona: any, reply: any): Promise<{ isNew: boolean }> {
+async function saveReplyToDatabaseSafe(persona: any, reply: any, replyDepth: number): Promise<{ isNew: boolean }> {
   console.log(`💾 リプライをデータベースに保存中: ${reply.id}`);
 
   try {
@@ -580,7 +628,12 @@ async function saveReplyToDatabaseSafe(persona: any, reply: any): Promise<{ isNe
         reply_author_username: reply.username,
         reply_timestamp: new Date(reply.timestamp || Date.now()).toISOString(),
         auto_reply_sent: false,
-        reply_status: 'pending'
+        reply_status: 'pending',
+        error_details: {
+          ingest_source: 'webhook',
+          reply_depth: replyDepth,
+          loop_guard_version: '2026-03-03'
+        }
       });
 
     if (error) {
@@ -603,44 +656,75 @@ async function saveReplyToDatabaseSafe(persona: any, reply: any): Promise<{ isNe
 
 // 既存の関数も保持（後方互換性のため）
 async function saveReplyToDatabase(persona: any, reply: any): Promise<void> {
-  const result = await saveReplyToDatabaseSafe(persona, reply);
+  const result = await saveReplyToDatabaseSafe(persona, reply, 0);
   if (!result.isNew) {
     throw new Error('Reply already exists');
   }
 }
 
-// 絵文字とテキストの正規化関数
-function normalizeEmojiAndText(text: string): string {
-  if (!text) return '';
-  
-  return text
-    .normalize('NFC') // Unicode正規化
-    .replace(/[\uFE0E\uFE0F]/g, '') // variation selector除去
-    .replace(/\s+/g, ' ') // 複数空白を単一空白に
-    .trim()
-    .toLowerCase();
+async function evaluateReplyRoutingSafety(
+  persona: any,
+  reply: any
+): Promise<{ skip: boolean; reason?: string; replyDepth: number }> {
+  const author = String(reply.username || '').toLowerCase();
+  const botUsernames = await getBotUsernamesForUser(persona.user_id);
+
+  if (author && botUsernames.has(author)) {
+    return { skip: true, reason: 'bot_author_detected', replyDepth: 0 };
+  }
+
+  const parentReplyId = reply.replied_to?.id || reply.root_post?.id;
+  if (!parentReplyId) {
+    return { skip: false, replyDepth: 0 };
+  }
+
+  const { data: parentReply } = await supabase
+    .from('thread_replies')
+    .select('persona_id, error_details')
+    .eq('reply_id', parentReplyId)
+    .maybeSingle();
+
+  if (!parentReply) {
+    return { skip: false, replyDepth: 0 };
+  }
+
+  const parentDepthRaw = Number(parentReply.error_details?.reply_depth ?? 0);
+  const parentDepth = Number.isFinite(parentDepthRaw) ? parentDepthRaw : 0;
+  const replyDepth = parentDepth + 1;
+
+  if (parentReply.persona_id && parentReply.persona_id !== persona.id) {
+    return { skip: true, reason: 'cross_persona_parent_detected', replyDepth };
+  }
+
+  if (replyDepth > MAX_AUTO_REPLY_DEPTH) {
+    return { skip: true, reason: 'reply_depth_limit_exceeded', replyDepth };
+  }
+
+  return { skip: false, replyDepth };
 }
 
-// より柔軟なキーワードマッチング
-function isKeywordMatch(replyText: string, keyword: string): boolean {
-  const normalizedReply = normalizeEmojiAndText(replyText);
-  const normalizedKeyword = normalizeEmojiAndText(keyword);
-  
-  // 完全一致チェック
-  if (normalizedReply === normalizedKeyword) {
-    return true;
+async function getBotUsernamesForUser(userId: string): Promise<Set<string>> {
+  const botUsernames = new Set<string>();
+
+  const { data: personas } = await supabase
+    .from('personas')
+    .select('name, threads_username')
+    .eq('user_id', userId)
+    .eq('is_active', true);
+
+  for (const persona of personas || []) {
+    if (persona.threads_username) {
+      botUsernames.add(String(persona.threads_username).toLowerCase());
+    }
+    if (persona.name) {
+      botUsernames.add(String(persona.name).toLowerCase());
+    }
   }
-  
-  // 部分一致チェック（絵文字の場合は完全一致を優先）
-  if (normalizedKeyword.length > 1) {
-    return normalizedReply.includes(normalizedKeyword);
-  }
-  
-  // 単一文字（絵文字など）の場合は厳密チェック
-  return normalizedReply === normalizedKeyword;
+
+  return botUsernames;
 }
 
-// トリガー自動返信（定型文）を処理
+  // トリガー自動返信（定型文）を処理
 async function processTemplateAutoReply(persona: any, reply: any): Promise<{ sent: boolean, method?: string }> {
   console.log(`🎯 定型文自動返信チェック開始`);
 
@@ -1156,7 +1240,18 @@ async function updateAutoReplySentFlag(replyId: string, sent: boolean): Promise<
       .from('thread_replies')
       .update({ 
         auto_reply_sent: sent,
-        reply_status: sent ? 'sent' : 'pending'
+        reply_status: sent ? 'sent' : 'pending',
+        error_details: sent
+          ? {
+              bot_generated: true,
+              generation_mode: 'webhook_auto_reply',
+              loop_guard_version: '2026-03-03',
+              updated_at: new Date().toISOString()
+            }
+          : {
+              loop_guard_version: '2026-03-03',
+              updated_at: new Date().toISOString()
+            }
       })
       .eq('reply_id', replyId);
     

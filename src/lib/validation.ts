@@ -84,12 +84,18 @@ export const isValidUUID = (uuid: string): boolean => {
   return uuidRegex.test(uuid);
 };
 
-// SQLインジェクション防止のための基本的なチェック
+// SQLインジェクション等の防止のための基本的なチェック（厳しすぎるため緩和）
 export const containsSqlInjection = (input: string): boolean => {
+  // 一般的な会話に出てくる単語（select, update等）をブロックしないよう、
+  // 決定的なSQLインジェクションやXSSの構文のみを対象にする
   const sqlPatterns = [
-    /('|(\\)|;|--|\/\*|\*\/|xp_|sp_)/i,
-    /(union|select|insert|update|delete|drop|create|alter|exec|execute)/i,
-    /(script|javascript|vbscript|onload|onerror|onclick)/i
+    /;\s*(?:DROP|DELETE|UPDATE|INSERT|ALTER|CREATE|EXEC|EXECUTE)\s+/i, // ;区切りの危険なSQL
+    /--\s*$/i, // 行末のコメントアウト（--のみの場合は除くように）
+    /\/\*.*?\*\//i, // /* */ 形式のコメント
+    /xp_cmdshell|sp_executesql/i, // 危険なストアドプロシージャ
+    /<script\b[^>]*>[\s\S]*?<\/script>/i, // scriptタグ
+    /\b(?:javascript|vbscript|data):.+/i, // javascript: 等のプロトコル
+    /\bon(load|error|click|mouseover|keydown|keyup)=/i // インラインイベントハンドラ
   ];
   
   return sqlPatterns.some(pattern => pattern.test(input));

@@ -18,67 +18,64 @@ email_double_confirm_changes = true
 enable_manual_linking = false
 
 [functions.auto-scheduler]
-verify_jwt = false
+verify_jwt = true
 
 [functions.check-replies]
-verify_jwt = false
+verify_jwt = true
 
 [functions.generate-auto-reply]
-verify_jwt = false
+verify_jwt = true
 
 [functions.threads-webhook]
-verify_jwt = false
+verify_jwt = true
 
 [functions.threads-auto-reply]
-verify_jwt = false
-
-[functions.test-auto-reply]
-verify_jwt = false
-
-[functions.test-ai-auto-reply]
-verify_jwt = false
+verify_jwt = true
 
 [functions.auto-post-generator]
-verify_jwt = false
+verify_jwt = true
 
 [functions.self-reply-processor]
-verify_jwt = false
-
-[functions.test-modified-features]
-verify_jwt = false
+verify_jwt = true
 
 [functions.process-unhandled-replies]
-verify_jwt = false
-
-[functions.comprehensive-auto-reply-test]
-verify_jwt = false
+verify_jwt = true
 
 [functions.send-password-reset]
-verify_jwt = false
-
-[functions.test-auto-post-generate]
 verify_jwt = true
 
 [functions.detect-rate-limited-personas]
-verify_jwt = false
+verify_jwt = true
 
 [functions.fix-stuck-ai-replies]
-verify_jwt = false
+verify_jwt = true
 
 [functions.reset-stuck-ai-replies]
-verify_jwt = false
+verify_jwt = true
 
 [functions.threads-oauth-callback]
-verify_jwt = false
+verify_jwt = true
 
 [functions.refresh-threads-tokens]
-verify_jwt = false
+verify_jwt = true
 
 [functions.webhook-reply-check]
-verify_jwt = false
+verify_jwt = true
 
 [functions.fetch-threads-user-ids]
-verify_jwt = false
+verify_jwt = true
 
 [functions.admin-reset-password]
-verify_jwt = false
+verify_jwt = true
+
+[functions.generate-image-gradio]
+verify_jwt = true
+
+[functions.generate-image-huggingface]
+verify_jwt = true
+
+[functions.generate-image-prompt]
+verify_jwt = true
+
+[functions.generate-image-stable-diffusion]
+verify_jwt = true

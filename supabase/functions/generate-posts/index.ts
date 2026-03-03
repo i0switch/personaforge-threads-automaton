@@ -4,7 +4,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
 import { getUserApiKeyDecrypted } from '../_shared/crypto.ts';
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') ?? 'https://threads-genius-ai.lovable.app',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
@@ -32,9 +32,7 @@ async function getAllGeminiApiKeys(userId: string): Promise<string[]> {
   return apiKeys;
 }
 
-async function generateWithGeminiRotation(prompt: string, userId: string): Promise<string> {
-  const apiKeys = await getAllGeminiApiKeys(userId);
-  
+async function generateWithGeminiRotation(prompt: string, apiKeys: string[]): Promise<string> {
   if (apiKeys.length === 0) {
     throw new Error('GEMINI_API_KEY_REQUIRED: Gemini API key is not configured. Please set your API key in Settings.');
   }
@@ -46,10 +44,11 @@ async function generateWithGeminiRotation(prompt: string, userId: string): Promi
     console.log(`Trying Gemini API key ${i + 1}/${apiKeys.length}`);
     
     try {
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+      const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey,
         },
         body: JSON.stringify({
           contents: [
@@ -193,6 +192,11 @@ serve(async (req) => {
 
     console.log(`Using persona: ${persona.name}`);
 
+    const apiKeys = await getAllGeminiApiKeys(user.id);
+    if (apiKeys.length === 0) {
+      throw new Error('GEMINI_API_KEY_REQUIRED: Gemini API key is not configured. Please set your API key in Settings.');
+    }
+
     // Generate time slots from selected dates and times
     const timeSlots = generateTimeSlots(selectedDates, selectedTimes);
 
@@ -212,15 +216,14 @@ serve(async (req) => {
       
       // Generate with API key rotation instead of retry loop
       try {
-        const generatedPost = await generateWithGeminiRotation(promptWithVariation, user.id);
+        const generatedPost = await generateWithGeminiRotation(promptWithVariation, apiKeys);
         
         if (!generatedPost || generatedPost.trim().length === 0) {
           console.error(`Empty generated content for post ${i + 1}`);
           lastError = new Error('Empty generated content');
         } else {
-          // Use generated content as is, without hashtag extraction
           const content = generatedPost.trim();
-          const hashtags: string[] = [];
+          const hashtags = extractHashtags(content);
 
           // Save post to database
           const { data: savedPost, error: saveError } = await supabase
@@ -296,8 +299,6 @@ function generateTimeSlots(selectedDates: string[], selectedTimes: string[]): st
   
   for (const dateStr of selectedDates) {
     for (const timeStr of selectedTimes) {
-      const [hour, minute] = timeStr.split(':').map(Number);
-      
       // 日本時間の日付時刻を作成
       const jstDate = new Date(`${dateStr}T${timeStr}:00+09:00`);
       
