@@ -18,64 +18,124 @@ email_double_confirm_changes = true
 enable_manual_linking = false
 
 [functions.auto-scheduler]
-verify_jwt = true
+verify_jwt = false
 
 [functions.check-replies]
-verify_jwt = true
+verify_jwt = false
 
 [functions.generate-auto-reply]
-verify_jwt = true
+verify_jwt = false
 
 [functions.threads-webhook]
-verify_jwt = true
+verify_jwt = false
 
 [functions.threads-auto-reply]
-verify_jwt = true
+verify_jwt = false
 
 [functions.auto-post-generator]
-verify_jwt = true
+verify_jwt = false
 
 [functions.self-reply-processor]
-verify_jwt = true
+verify_jwt = false
 
 [functions.process-unhandled-replies]
-verify_jwt = true
+verify_jwt = false
 
 [functions.send-password-reset]
-verify_jwt = true
+verify_jwt = false
 
 [functions.detect-rate-limited-personas]
-verify_jwt = true
+verify_jwt = false
 
 [functions.fix-stuck-ai-replies]
-verify_jwt = true
+verify_jwt = false
 
 [functions.reset-stuck-ai-replies]
-verify_jwt = true
+verify_jwt = false
 
 [functions.threads-oauth-callback]
-verify_jwt = true
+verify_jwt = false
 
 [functions.refresh-threads-tokens]
-verify_jwt = true
+verify_jwt = false
 
 [functions.webhook-reply-check]
-verify_jwt = true
+verify_jwt = false
 
 [functions.fetch-threads-user-ids]
-verify_jwt = true
+verify_jwt = false
 
 [functions.admin-reset-password]
-verify_jwt = true
+verify_jwt = false
 
 [functions.generate-image-gradio]
-verify_jwt = true
+verify_jwt = false
 
 [functions.generate-image-huggingface]
-verify_jwt = true
+verify_jwt = false
 
 [functions.generate-image-prompt]
-verify_jwt = true
+verify_jwt = false
 
 [functions.generate-image-stable-diffusion]
-verify_jwt = true
+verify_jwt = false
+
+[functions.check-token-health]
+verify_jwt = false
+
+[functions.save-secret]
+verify_jwt = false
+
+[functions.retrieve-secret]
+verify_jwt = false
+
+[functions.threads-post]
+verify_jwt = false
+
+[functions.secure-webhook-handler]
+verify_jwt = false
+
+[functions.enhanced-webhook-security]
+verify_jwt = false
+
+[functions.comprehensive-auto-reply-test]
+verify_jwt = false
+
+[functions.comprehensive-system-test]
+verify_jwt = false
+
+[functions.final-integration-test]
+verify_jwt = false
+
+[functions.fix-inactive-personas]
+verify_jwt = false
+
+[functions.auto-scheduler-fix]
+verify_jwt = false
+
+[functions.quality-assurance-test]
+verify_jwt = false
+
+[functions.test-ai-auto-reply]
+verify_jwt = false
+
+[functions.test-auto-post-generate]
+verify_jwt = false
+
+[functions.test-auto-reply]
+verify_jwt = false
+
+[functions.test-context-ai-reply]
+verify_jwt = false
+
+[functions.test-duplicate-post-prevention]
+verify_jwt = false
+
+[functions.test-gemini-api-key]
+verify_jwt = false
+
+[functions.test-modified-features]
+verify_jwt = false
+
+[functions.test-new-features]
+verify_jwt = false
