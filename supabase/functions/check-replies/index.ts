@@ -111,16 +111,34 @@ serve(async (req) => {
         break;
       }
 
-      // アクセストークンを個別に取得（復号化のため）
+      // アクセストークンとトークン期限を取得（復号化のため）
       const { data: personaWithToken } = await supabase
         .from('personas')
-        .select('threads_access_token')
+        .select('threads_access_token, token_expires_at, is_rate_limited, rate_limit_until')
         .eq('id', persona.id)
         .maybeSingle();
 
       if (!personaWithToken?.threads_access_token) {
         console.log(`Skipping persona ${persona.id} - no access token`);
         continue;
+      }
+
+      // トークン期限切れの事前チェック（API呼び出し前にスキップ）
+      if (personaWithToken.token_expires_at) {
+        const expiresAt = new Date(personaWithToken.token_expires_at).getTime();
+        if (expiresAt < Date.now()) {
+          console.log(`⏭️ トークン期限切れスキップ: ${persona.name} (期限: ${personaWithToken.token_expires_at})`);
+          continue;
+        }
+      }
+
+      // レート制限中のペルソナをスキップ
+      if (personaWithToken.is_rate_limited) {
+        const rateLimitUntil = personaWithToken.rate_limit_until ? new Date(personaWithToken.rate_limit_until).getTime() : 0;
+        if (!rateLimitUntil || rateLimitUntil > Date.now()) {
+          console.log(`⏭️ レート制限中スキップ: ${persona.name}`);
+          continue;
+        }
       }
 
       console.log(`🚀 リプライチェック開始 - persona: ${persona.name} (ID: ${persona.id})`);
@@ -252,6 +270,32 @@ async function checkRepliesForPost(persona: any, postId: string): Promise<number
     if (!response.ok) {
       const errorBody = await response.text().catch(() => 'Unknown');
       console.error(`Failed to fetch threads for persona ${persona.id}: ${response.status}`, errorBody);
+      
+      // 401(期限切れ) or 400(API無効化) の場合、ペルソナを自動的に非アクティブ化して無駄なリトライを防止
+      if (response.status === 401 || response.status === 400) {
+        const isExpired = response.status === 401;
+        const isDeactivated = response.status === 400;
+        
+        const updateData: Record<string, unknown> = {};
+        if (isExpired) {
+          // トークン期限切れ: token_expires_atを過去に設定して次回からスキップ
+          updateData.token_expires_at = new Date(Date.now() - 1000).toISOString();
+          console.log(`🔒 トークン期限切れマーク: ${persona.name}`);
+        }
+        if (isDeactivated) {
+          // API無効化: is_rate_limitedフラグで一時停止
+          updateData.is_rate_limited = true;
+          updateData.rate_limit_reason = 'API access deactivated';
+          updateData.rate_limit_detected_at = new Date().toISOString();
+          // 24時間後に再チェック
+          updateData.rate_limit_until = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+          console.log(`🔒 API無効化マーク: ${persona.name} (24時間スキップ)`);
+        }
+        
+        if (Object.keys(updateData).length > 0) {
+          await supabase.from('personas').update(updateData).eq('id', persona.id);
+        }
+      }
       
       // エラー詳細をsecurity_eventsに記録
       await supabase.from('security_events').insert({
