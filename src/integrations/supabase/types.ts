@@ -294,9 +294,6 @@ export type Database = {
           is_active: boolean
           is_rate_limited: boolean | null
           name: string
-          oauth_redirect_uri: string | null
-          oauth_state: string | null
-          oauth_state_expires_at: string | null
           personality: string | null
           rate_limit_detected_at: string | null
           rate_limit_reason: string | null
@@ -326,9 +323,6 @@ export type Database = {
           is_active?: boolean
           is_rate_limited?: boolean | null
           name: string
-          oauth_redirect_uri?: string | null
-          oauth_state?: string | null
-          oauth_state_expires_at?: string | null
           personality?: string | null
           rate_limit_detected_at?: string | null
           rate_limit_reason?: string | null
@@ -358,9 +352,6 @@ export type Database = {
           is_active?: boolean
           is_rate_limited?: boolean | null
           name?: string
-          oauth_redirect_uri?: string | null
-          oauth_state?: string | null
-          oauth_state_expires_at?: string | null
           personality?: string | null
           rate_limit_detected_at?: string | null
           rate_limit_reason?: string | null
