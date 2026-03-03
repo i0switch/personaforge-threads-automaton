@@ -1,4 +1,4 @@
-// Early WebSocket shim for iOS WebKit (executed before module scripts)
+// Early WebSocket shim for iOS WebKit only (executed before module scripts)
 (function(){
   try {
     if (typeof window === 'undefined') return;
@@ -8,9 +8,9 @@
     var isIpadOS13Plus = navigator.platform === 'MacIntel' && (navigator.maxTouchPoints || 0) > 1;
     var isIOS = /iPad|iPhone|iPod/.test(ua) || isIpadOS13Plus;
     var isWebKit = /AppleWebKit/.test(ua) && !/CriOS|FxiOS|OPiOS|EdgiOS|mercury/.test(ua);
-    var isSafariDesktop = /Safari\//.test(ua) && !/(Chrome|Chromium|Edg|OPR|CriOS|FxiOS|OPiOS|mercury)/.test(ua) && /Macintosh|Mac OS X/.test(ua);
-    // Always apply shim to avoid CSP-triggered WebSocket errors on any browser
-    
+
+    // Only apply shim on iOS WebKit (Safari) to prevent CSP WebSocket errors
+    if (!isIOS || !isWebKit) return;
 
     var OriginalWebSocket = window.WebSocket;
 
@@ -33,7 +33,6 @@
     NoopWebSocket.prototype.send = function(){};
     NoopWebSocket.prototype.close = function(){};
 
-    // Static readyState constants for compatibility
     NoopWebSocket.CONNECTING = 0;
     NoopWebSocket.OPEN = 1;
     NoopWebSocket.CLOSING = 2;
