@@ -144,3 +144,4 @@ export const generatePasswordSuggestion = (): string => {
   }
   
   return attempt;
+};
