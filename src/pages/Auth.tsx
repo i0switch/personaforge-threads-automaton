@@ -35,33 +35,13 @@ const Auth = () => {
     }
   }, [user, navigate]);
 
-  const checkBruteForce = async (email: string) => {
-    const blocked = await enhancedSecurity.checkBruteForceAttempts(email);
-    setIsBlocked(blocked);
-    return blocked;
-  };
-
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setIsLoading(true);
 
     try {
-      // Check for brute force attempts
-      const blocked = await checkBruteForce(email);
-      if (blocked) {
-        setError("アカウントが一時的にロックされています。15分後に再試行してください。");
-        return;
-      }
-
       const signInResult = await secureSignIn(email, password);
-
-      // Log login attempt
-      await enhancedSecurity.logLoginAttempt({
-        email,
-        success: signInResult.success,
-        timestamp: new Date()
-      });
 
       if (!signInResult.success) {
         throw new Error(signInResult.error || "ログインに失敗しました。");
@@ -75,13 +55,6 @@ const Auth = () => {
     } catch (error: any) {
       console.error("Sign in error:", error);
       setError(error.message || "ログインに失敗しました。");
-      
-      // Log failed login attempt
-      await enhancedSecurity.logLoginAttempt({
-        email,
-        success: false,
-        timestamp: new Date()
-      });
     } finally {
       setIsLoading(false);
     }
@@ -104,16 +77,6 @@ const Auth = () => {
         throw new Error(signUpResult.error || "アカウント作成に失敗しました。");
       }
 
-      // Log successful signup
-      await enhancedSecurity.logSecurityEvent({
-        event_type: 'user_signup',
-        details: {
-          email,
-          display_name: displayName,
-          timestamp: new Date().toISOString()
-        }
-      });
-
       toast({
         title: "アカウント作成完了",
         description: "確認メールを送信しました。メールを確認してアカウントを有効化してください。",
@@ -133,7 +96,6 @@ const Auth = () => {
     setIsLoading(true);
 
     try {
-      // Call our password reset edge function
       const response = await supabase.functions.invoke('send-password-reset', {
         body: { email: resetEmail }
       });
@@ -220,16 +182,7 @@ const Auth = () => {
                     </Alert>
                   )}
 
-                  {isBlocked && (
-                    <Alert variant="destructive">
-                      <AlertCircle className="h-4 w-4" />
-                      <AlertDescription>
-                        セキュリティのため、このアカウントは一時的にロックされています。
-                      </AlertDescription>
-                    </Alert>
-                  )}
-
-                  <Button type="submit" className="w-full" disabled={isLoading || isBlocked}>
+                  <Button type="submit" className="w-full" disabled={isLoading}>
                     {isLoading ? "ログイン中..." : "ログイン"}
                   </Button>
 
