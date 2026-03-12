@@ -13,28 +13,6 @@ export const useSecureAuth = () => {
     setIsProcessing(true);
     
     try {
-      // ブルートフォース攻撃チェック
-      const eligibilityCheck = await authSecurity.checkLoginEligibility(email);
-      
-      if (!eligibilityCheck.allowed) {
-        toast({
-          title: "ログインがブロックされました",
-          description: eligibilityCheck.reason || "しばらく時間をおいてからお試しください。",
-          variant: "destructive",
-        });
-        
-        // 失敗を記録
-        await authSecurity.recordLoginAttempt({
-          email,
-          success: false,
-          timestamp: new Date(),
-          ip_address: 'blocked',
-          user_agent: navigator.userAgent
-        });
-        
-        return { success: false, error: eligibilityCheck.reason };
-      }
-
       // 実際のログイン試行
       const result = await signIn(email, password);
       const success = !result.error;

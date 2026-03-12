@@ -1,0 +1,1 @@
+DELETE FROM security_events WHERE event_type = 'login_failed';
