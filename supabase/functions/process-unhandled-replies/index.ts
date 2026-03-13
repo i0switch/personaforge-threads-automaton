@@ -393,7 +393,19 @@ serve(async (req) => {
               }
             } else {
               // AI返信が未生成の場合は新規生成
-              console.log(`🤖 AI返信を新規生成: ${reply.id}`);
+              // ★ CRITICAL FIX: process-unhandled-repliesが既にロック済み（auto_reply_sent=true, processing）
+              // そのため threads-auto-reply を呼ぶ前にロックを一旦解除する
+              console.log(`🤖 AI返信を新規生成: ${reply.id} - ロック一時解除`);
+              
+              await supabase
+                .from('thread_replies')
+                .update({ 
+                  auto_reply_sent: false,
+                  reply_status: 'pending',
+                  updated_at: new Date().toISOString()
+                })
+                .eq('reply_id', reply.reply_id);
+              
               const autoReplyResult = await supabase.functions.invoke('threads-auto-reply', {
                 body: {
                   postContent: 'Original post content',
@@ -406,11 +418,9 @@ serve(async (req) => {
 
               if (autoReplyResult.error) {
                 console.error(`❌ AI自動返信呼び出しエラー:`, autoReplyResult.error);
-                // リトライカウントを更新
                 const newRetryCount = (reply.retry_count || 0) + 1;
                 const maxRetries = reply.max_retries || 3;
                 
-                // CRITICAL: エラー詳細を必ず記録
                 await supabase
                   .from('thread_replies')
                   .update({ 
@@ -431,8 +441,15 @@ serve(async (req) => {
                   
                 console.log(`🔄 リトライ記録: ${newRetryCount}/${maxRetries}回目 - reply: ${reply.id}`);
               } else {
-                console.log(`✅ AI自動返信呼び出し成功: ${reply.id}`);
-                replySent = true;
+                // ★ CRITICAL FIX: threads-auto-reply が skipped を返した場合も検出
+                const responseData = autoReplyResult.data;
+                if (responseData?.skipped) {
+                  console.warn(`⚠️ threads-auto-reply がスキップ返答: ${reply.id} (reason: ${responseData.reason})`);
+                  // ロックが解除済みなので、そのまま次のcronで再試行される
+                } else {
+                  console.log(`✅ AI自動返信呼び出し成功: ${reply.id}`);
+                  replySent = true;
+                }
               }
             }
           } catch (error) {
