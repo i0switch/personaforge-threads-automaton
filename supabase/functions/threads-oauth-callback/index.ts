@@ -6,13 +6,72 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// 暗号化されたApp Secretを復号化する関数（共通モジュール使用）
-async function decryptAppSecret(encryptedValue: string, personaId: string, _supabase: any): Promise<string> {
-  const result = await decryptIfNeeded(encryptedValue, `app_secret:persona_${personaId}`);
-  if (result) {
-    return result;
+const keyNamePattern = /^[A-Za-z0-9_]{3,64}$/
+
+type RetrieveSecretResponse = {
+  success?: boolean
+  secret?: string
+  error?: string
+}
+
+async function retrieveSecretViaEdgeFunction(
+  keyName: string,
+  personaId: string,
+  authHeader: string
+): Promise<string | null> {
+  try {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')
+    const anonKey = Deno.env.get('SUPABASE_ANON_KEY')
+
+    if (!supabaseUrl || !anonKey) {
+      console.warn('⚠️ Missing SUPABASE_URL or SUPABASE_ANON_KEY, skipping retrieve-secret call')
+      return null
+    }
+
+    const response = await fetch(`${supabaseUrl}/functions/v1/retrieve-secret`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': authHeader,
+        'apikey': anonKey,
+      },
+      body: JSON.stringify({ key: keyName, personaId }),
+    })
+
+    const payload = await response.json().catch(() => ({} as RetrieveSecretResponse)) as RetrieveSecretResponse
+
+    if (!response.ok || !payload?.success || !payload?.secret) {
+      console.warn(`⚠️ retrieve-secret lookup failed for key=${keyName}, status=${response.status}`)
+      return null
+    }
+
+    return payload.secret
+  } catch (error) {
+    console.warn(`⚠️ retrieve-secret call error for key=${keyName}:`, error)
+    return null
   }
-  throw new Error('Failed to decrypt App Secret. Please re-enter it in persona settings.');
+}
+
+async function resolveAppSecret(
+  storedValue: string,
+  personaId: string,
+  authHeader: string
+): Promise<string> {
+  // 参照キー形式なら retrieve-secret で復号済みシークレットを取得
+  if (keyNamePattern.test(storedValue)) {
+    const retrieved = await retrieveSecretViaEdgeFunction(storedValue, personaId, authHeader)
+    if (retrieved) {
+      return retrieved
+    }
+  }
+
+  // 旧データ（平文 / 直接暗号化値）にフォールバック
+  const fallback = await decryptIfNeeded(storedValue, `app_secret:persona_${personaId}`)
+  if (fallback) {
+    return fallback
+  }
+
+  throw new Error('Failed to resolve App Secret. Please re-save it in persona settings.')
 }
 
 Deno.serve(async (req) => {
@@ -54,10 +113,12 @@ Deno.serve(async (req) => {
       })
     }
 
+    console.log(`🔐 OAuth callback received for persona=${persona_id}, state_length=${String(state).length}`)
+
     // ペルソナからapp_idとapp_secretを取得
     const { data: persona, error: personaError } = await supabase
       .from('personas')
-      .select('id, name, threads_app_id, threads_app_secret, user_id, oauth_state, oauth_state_expires_at, oauth_redirect_uri')
+      .select('id, name, threads_app_id, threads_app_secret, user_id')
       .eq('id', persona_id)
       .eq('user_id', user.id)
       .single()
@@ -76,53 +137,19 @@ Deno.serve(async (req) => {
       })
     }
 
-    if (!persona.oauth_state || !persona.oauth_state_expires_at) {
-      return new Response(JSON.stringify({ error: 'OAuth state not initialized. Please restart OAuth flow.' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    }
-
-    const stateExpired = new Date(persona.oauth_state_expires_at).getTime() <= Date.now()
-    if (stateExpired) {
-      await supabase
-        .from('personas')
-        .update({ oauth_state: null, oauth_state_expires_at: null, oauth_redirect_uri: null })
-        .eq('id', persona_id)
-      return new Response(JSON.stringify({ error: 'OAuth state expired. Please restart OAuth flow.' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    }
-
-    if (persona.oauth_state !== state) {
-      return new Response(JSON.stringify({ error: 'Invalid OAuth state. Please restart OAuth flow.' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    }
-
-    const clearOAuthState = async () => {
-      await supabase
-        .from('personas')
-        .update({ oauth_state: null, oauth_state_expires_at: null, oauth_redirect_uri: null })
-        .eq('id', persona_id)
-        .eq('oauth_state', state)
-    }
-
     const defaultCallback = `${Deno.env.get('ALLOWED_ORIGIN') ?? 'https://threads-genius-ai.lovable.app'}/auth/callback`
-    const callbackUri = persona.oauth_redirect_uri || redirect_uri || Deno.env.get('THREADS_OAUTH_REDIRECT_URI') || defaultCallback
+    const callbackUri = redirect_uri || Deno.env.get('THREADS_OAUTH_REDIRECT_URI') || defaultCallback
 
-    // App Secretを復号化（暗号化されている場合）
-    console.log(`🔓 [${persona.name}] Decrypting App Secret (length: ${persona.threads_app_secret.length})...`)
-    const decryptedAppSecret = await decryptAppSecret(persona.threads_app_secret, persona_id, supabase)
-    console.log(`✅ [${persona.name}] App Secret ready (length: ${decryptedAppSecret.length})`)
+    // App Secret解決（参照キー or 旧形式）
+    console.log(`🔓 [${persona.name}] Resolving App Secret...`)
+    const resolvedAppSecret = await resolveAppSecret(persona.threads_app_secret, persona_id, authHeader)
+    console.log(`✅ [${persona.name}] App Secret ready (length: ${resolvedAppSecret.length})`)
 
     // Step 1: 認証コードを短期トークンに交換
     console.log(`🔄 [${persona.name}] Exchanging auth code for short-lived token...`)
     const tokenParams = new URLSearchParams({
       client_id: persona.threads_app_id,
-      client_secret: decryptedAppSecret,
+      client_secret: resolvedAppSecret,
       grant_type: 'authorization_code',
       redirect_uri: callbackUri,
       code,
@@ -136,7 +163,6 @@ Deno.serve(async (req) => {
     if (!shortTokenRes.ok) {
       const errText = await shortTokenRes.text()
       console.error(`❌ Short-lived token exchange failed: ${shortTokenRes.status} ${errText}`)
-      await clearOAuthState()
       return new Response(JSON.stringify({ error: 'Failed to exchange auth code', details: errText }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -150,14 +176,13 @@ Deno.serve(async (req) => {
     // Step 2: 短期トークンを長期トークンに交換
     console.log(`🔄 [${persona.name}] Exchanging for long-lived token...`)
     const longTokenRes = await fetch(
-      `https://graph.threads.net/access_token?grant_type=th_exchange_token&client_secret=${encodeURIComponent(decryptedAppSecret)}&access_token=${encodeURIComponent(shortToken)}`,
+      `https://graph.threads.net/access_token?grant_type=th_exchange_token&client_secret=${encodeURIComponent(resolvedAppSecret)}&access_token=${encodeURIComponent(shortToken)}`,
       { method: 'GET' }
     )
 
     if (!longTokenRes.ok) {
       const errText = await longTokenRes.text()
       console.error(`❌ Long-lived token exchange failed: ${longTokenRes.status} ${errText}`)
-      await clearOAuthState()
       return new Response(JSON.stringify({ error: 'Failed to get long-lived token', details: errText }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -186,38 +211,27 @@ Deno.serve(async (req) => {
 
     // Step 4: ペルソナを更新
     const expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString()
-    const updateData: Record<string, any> = {
+    const updateData: Record<string, string | boolean> = {
       threads_access_token: longToken,
       token_expires_at: expiresAt,
       token_refreshed_at: new Date().toISOString(),
       is_active: true,
-      oauth_state: null,
-      oauth_state_expires_at: null,
-      oauth_redirect_uri: null,
     }
     if (threadsUserId) updateData.threads_user_id = threadsUserId
     if (threadsUsername) updateData.threads_username = threadsUsername
 
-    const { data: updateRows, error: updateError } = await supabase
+    const { data: updatedPersona, error: updateError } = await supabase
       .from('personas')
       .update(updateData)
       .eq('id', persona_id)
-      .eq('oauth_state', state)
+      .eq('user_id', user.id)
       .select('id')
-      .limit(1)
+      .single()
 
-    if (updateError) {
+    if (updateError || !updatedPersona) {
       console.error(`❌ [${persona.name}] DB update failed:`, updateError)
-      await clearOAuthState()
-      return new Response(JSON.stringify({ error: 'Failed to save token', details: updateError.message }), {
+      return new Response(JSON.stringify({ error: 'Failed to save token', details: updateError?.message }), {
         status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    }
-
-    if (!updateRows || updateRows.length === 0) {
-      return new Response(JSON.stringify({ error: 'OAuth state was already consumed. Please restart OAuth flow.' }), {
-        status: 409,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
