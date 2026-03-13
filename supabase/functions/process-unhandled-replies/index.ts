@@ -165,39 +165,50 @@ serve(async (req) => {
     // ステップ2: リトライ可能な失敗リプライを追加
     const retryableReplies = await getRetryableFailedReplies();
 
-    // 未処理のリプライを取得
-    // pending: auto_reply_sent=false のみ（24時間以内）
-    // scheduled: scheduled_reply_atが過去なら作成日時に関係なく取得（古いscheduledも処理する）
-    // completed: scheduled_reply_atが過去かつ auto_reply_sent=false のみ
+    // 未処理のリプライを取得（最適化: 必要カラムのみ）
+    const selectCols = 'id, reply_id, reply_text, persona_id, reply_status, auto_reply_sent, ai_response, retry_count, max_retries, last_retry_at, original_post_id, reply_author_id, reply_author_username, reply_timestamp, scheduled_reply_at, created_at, error_details';
     const now = new Date().toISOString();
     const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
-    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
     
-    // pending/completedは2時間以内、scheduledは期限切れならいつでも処理
-    const [unprocessedResult, scheduledResult] = await Promise.all([
+    // ★ クエリ最適化: 3つのシンプルなクエリに分割（複雑なORを避ける）
+    const [pendingResult, scheduledWithTimeResult, scheduledNullTimeResult] = await Promise.all([
+      // 1. pending（2時間以内）
       supabase
         .from('thread_replies')
-        .select('*')
-        .or(`and(reply_status.eq.pending,auto_reply_sent.eq.false),and(reply_status.eq.completed,auto_reply_sent.eq.false,scheduled_reply_at.lte.${now})`)
+        .select(selectCols)
+        .eq('reply_status', 'pending')
+        .eq('auto_reply_sent', false)
         .gte('created_at', twoHoursAgo)
         .order('created_at', { ascending: true })
-        .limit(10),
-      // ★ CRITICAL FIX: scheduled は created_at 制限を完全撤廃
-      // 以前は24時間制限があり、遅延送信のスケジュール済みリプライが期限切れで処理されなかった
+        .limit(5),
+      // 2. scheduled + scheduled_reply_at が過去（期限なし）
       supabase
         .from('thread_replies')
-        .select('*')
+        .select(selectCols)
         .eq('reply_status', 'scheduled')
         .eq('auto_reply_sent', false)
-        .or(`scheduled_reply_at.lte.${now},scheduled_reply_at.is.null`)
-        .order('scheduled_reply_at', { ascending: true, nullsFirst: false })
-        .limit(10) // 上限を10に拡大（溜まったスケジュール済みを処理するため）
+        .not('scheduled_reply_at', 'is', null)
+        .lte('scheduled_reply_at', now)
+        .order('scheduled_reply_at', { ascending: true })
+        .limit(5),
+      // 3. scheduled + scheduled_reply_at がNULL（7日以内に限定してスキャン範囲を制限）
+      supabase
+        .from('thread_replies')
+        .select(selectCols)
+        .eq('reply_status', 'scheduled')
+        .eq('auto_reply_sent', false)
+        .is('scheduled_reply_at', null)
+        .gte('created_at', sevenDaysAgo)
+        .order('created_at', { ascending: true })
+        .limit(5)
     ]);
 
-    const fetchError = unprocessedResult.error || scheduledResult.error;
+    const fetchError = pendingResult.error || scheduledWithTimeResult.error || scheduledNullTimeResult.error;
     const unprocessedReplies = [
-      ...(unprocessedResult.data || []),
-      ...(scheduledResult.data || [])
+      ...(pendingResult.data || []),
+      ...(scheduledWithTimeResult.data || []),
+      ...(scheduledNullTimeResult.data || [])
     ];
 
     if (fetchError) {
