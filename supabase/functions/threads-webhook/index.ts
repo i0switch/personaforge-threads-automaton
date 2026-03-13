@@ -569,6 +569,24 @@ async function processReply(persona: any, reply: any): Promise<{ processed: bool
       }
 
       console.log(`ℹ️ 自動返信条件に該当なし - persona: ${persona.name}`);
+      
+      // ★ CRITICAL FIX: 自動返信条件に該当しない場合、reply_statusを'completed'に更新
+      // これにより、processing状態のまま放置されてタイムアウトする問題を防止
+      await supabase
+        .from('thread_replies')
+        .update({ 
+          reply_status: 'completed',
+          auto_reply_sent: true,  // 処理完了済みとしてマーク（再処理防止）
+          error_details: {
+            info: 'No auto-reply condition matched',
+            ai_auto_reply_enabled: persona.ai_auto_reply_enabled,
+            auto_reply_enabled: persona.auto_reply_enabled,
+            timestamp: new Date().toISOString()
+          },
+          updated_at: new Date().toISOString()
+        })
+        .eq('reply_id', reply.id);
+      
       return { processed: true, failed: false };
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : String(error);
