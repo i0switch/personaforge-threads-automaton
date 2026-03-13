@@ -173,19 +173,22 @@ const AutoReply = () => {
         persona: selectedPersona
       });
 
-      // Get current session for authentication
-      const { data: { session } } = await supabase.auth.getSession();
-      console.log('generateAutoReply: Session obtained:', !!session);
-      
+      const personaPayload = {
+        id: selectedPersona.id,
+        user_id: selectedPersona.user_id,
+        name: selectedPersona.name,
+        age: selectedPersona.age,
+        personality: selectedPersona.personality,
+        expertise: selectedPersona.expertise,
+        tone_of_voice: selectedPersona.tone_of_voice,
+      };
+
       const { data, error } = await supabase.functions.invoke('generate-auto-reply', {
         body: {
           postContent: testPostContent,
           replyContent: testReplyContent,
-          persona: selectedPersona
+          persona: personaPayload,
         },
-        headers: session ? {
-          Authorization: `Bearer ${session.access_token}`,
-        } : {}
       });
 
       console.log('generateAutoReply: Auto-reply response received:', { data, error });
