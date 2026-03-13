@@ -174,17 +174,17 @@ serve(async (req) => {
         .or(`and(reply_status.eq.pending,auto_reply_sent.eq.false),and(reply_status.eq.completed,auto_reply_sent.eq.false,scheduled_reply_at.lte.${now})`)
         .gte('created_at', twoHoursAgo)
         .order('created_at', { ascending: true })
-        .limit(10), // バッチ処理のため上限を厳格化
-      // scheduled: created_atに関係なく、scheduled_reply_atが過去のもの全て（またはnullで長期放置）
+        .limit(10),
+      // ★ CRITICAL FIX: scheduled は created_at 制限を完全撤廃
+      // 以前は24時間制限があり、遅延送信のスケジュール済みリプライが期限切れで処理されなかった
       supabase
         .from('thread_replies')
         .select('*')
         .eq('reply_status', 'scheduled')
         .eq('auto_reply_sent', false)
         .or(`scheduled_reply_at.lte.${now},scheduled_reply_at.is.null`)
-        .gte('created_at', twentyFourHoursAgo)
         .order('scheduled_reply_at', { ascending: true, nullsFirst: false })
-        .limit(5) // バッチ処理のため上限を厳格化
+        .limit(10) // 上限を10に拡大（溜まったスケジュール済みを処理するため）
     ]);
 
     const fetchError = unprocessedResult.error || scheduledResult.error;
