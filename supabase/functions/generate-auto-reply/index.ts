@@ -159,6 +159,12 @@ serve(async (req) => {
         .maybeSingle();
 
       if (ownershipError || !ownedPersona) {
+        console.warn('❌ Persona ownership required', {
+          requesterUserId,
+          personaId: persona.id,
+          ownershipError: ownershipError?.message ?? null,
+        });
+
         return new Response(
           JSON.stringify({ error: 'Forbidden: persona ownership required' }),
           {
