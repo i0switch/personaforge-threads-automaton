@@ -1,0 +1,1 @@
+CREATE INDEX IF NOT EXISTS idx_thread_replies_failed_created_at ON public.thread_replies (created_at DESC, last_retry_at, retry_count) WHERE reply_status = 'failed' AND auto_reply_sent = false;
