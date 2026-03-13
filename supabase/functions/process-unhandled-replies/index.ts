@@ -100,18 +100,17 @@ async function cleanupStuckProcessing(): Promise<number> {
 // リトライ可能な失敗リプライを取得（指数バックオフ）
 async function getRetryableFailedReplies(): Promise<any[]> {
   const now = Date.now();
-  const twentyFourHoursAgo = new Date(now - 24 * 60 * 60 * 1000).toISOString();
+  // ★ 2時間に短縮してスキャン範囲を最小化（インデックスなし対策）
+  const twoHoursAgo = new Date(now - 2 * 60 * 60 * 1000).toISOString();
   
-  // CRITICAL FIX: JOINを使わず個別クエリ（重複FK回避）
-  // ★ limitを先に適用して取得量を抑える
   const { data: failedReplies, error } = await supabase
     .from('thread_replies')
     .select('id, reply_id, reply_text, persona_id, reply_status, auto_reply_sent, ai_response, retry_count, max_retries, last_retry_at, original_post_id, reply_author_id, reply_author_username, reply_timestamp, scheduled_reply_at, created_at, error_details')
     .eq('reply_status', 'failed')
     .eq('auto_reply_sent', false)
-    .gte('created_at', twentyFourHoursAgo)
+    .gte('created_at', twoHoursAgo)
     .order('created_at', { ascending: false })
-    .limit(10);
+    .limit(5);
   
   if (error || !failedReplies) {
     if (error) console.error('❌ 失敗リプライ取得エラー:', error.message);
