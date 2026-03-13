@@ -52,10 +52,19 @@ async function checkRateLimit(
   }
 }
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') ?? 'https://threads-genius-ai.lovable.app',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+const CORS_ALLOW_HEADERS = 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version';
+
+function getCorsHeaders(req: Request) {
+  const requestOrigin = req.headers.get('origin');
+  const configuredOrigin = Deno.env.get('ALLOWED_ORIGIN');
+
+  return {
+    'Access-Control-Allow-Origin': requestOrigin ?? configuredOrigin ?? '*',
+    'Access-Control-Allow-Headers': CORS_ALLOW_HEADERS,
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Vary': 'Origin',
+  };
+}
 
 // Phase 1 Security: Input validation schema
 const AutoReplyRequestSchema = z.object({
@@ -73,9 +82,17 @@ const AutoReplyRequestSchema = z.object({
 });
 
 serve(async (req) => {
+  const corsHeaders = getCorsHeaders(req);
+
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
+
+  console.log('📥 generate-auto-reply request', {
+    method: req.method,
+    origin: req.headers.get('origin') ?? null,
+    hasAuthorization: Boolean(req.headers.get('authorization') ?? req.headers.get('Authorization')),
+  });
 
   try {
     const supabase = createClient(
