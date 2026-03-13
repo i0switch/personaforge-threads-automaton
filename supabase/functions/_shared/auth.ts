@@ -48,6 +48,14 @@ export async function requireAuthenticatedUser(
     };
   }
 
+  const bearer = authHeader.slice('Bearer '.length).trim();
+  if (!bearer) {
+    return {
+      ok: false,
+      response: jsonResponse({ success: false, error: 'Unauthorized: empty bearer token' }, 401, corsHeaders),
+    };
+  }
+
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
   const supabaseAuthKey = Deno.env.get('SUPABASE_ANON_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
   if (!supabaseUrl || !supabaseAuthKey) {
@@ -62,7 +70,7 @@ export async function requireAuthenticatedUser(
     auth: { persistSession: false },
   });
 
-  const { data, error } = await authClient.auth.getUser();
+  const { data, error } = await authClient.auth.getUser(bearer);
   if (error || !data.user) {
     return {
       ok: false,
