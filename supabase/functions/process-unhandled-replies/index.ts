@@ -56,12 +56,16 @@ async function checkPersonaReplyRateLimit(personaId: string): Promise<{ allowed:
 // CRITICAL: auto_reply_sentの状態に関わらずクリーンアップ
 async function cleanupStuckProcessing(): Promise<number> {
   const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   
+  // ★ created_at制限を追加してスキャン範囲を制限
   const { data: stuckReplies, error: fetchError } = await supabase
     .from('thread_replies')
-    .select('id, reply_text, persona_id, auto_reply_sent')
+    .select('id')
     .eq('reply_status', 'processing')
-    .lt('updated_at', tenMinutesAgo);
+    .gte('created_at', oneDayAgo)
+    .lt('updated_at', tenMinutesAgo)
+    .limit(10);
   
   if (fetchError || !stuckReplies || stuckReplies.length === 0) {
     return 0;
