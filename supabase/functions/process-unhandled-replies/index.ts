@@ -96,16 +96,21 @@ async function cleanupStuckProcessing(): Promise<number> {
 // リトライ可能な失敗リプライを取得（指数バックオフ）
 async function getRetryableFailedReplies(): Promise<any[]> {
   const now = Date.now();
+  const twentyFourHoursAgo = new Date(now - 24 * 60 * 60 * 1000).toISOString();
   
   // CRITICAL FIX: JOINを使わず個別クエリ（重複FK回避）
+  // ★ limitを先に適用して取得量を抑える
   const { data: failedReplies, error } = await supabase
     .from('thread_replies')
-    .select('*')
+    .select('id, reply_id, reply_text, persona_id, reply_status, auto_reply_sent, ai_response, retry_count, max_retries, last_retry_at, original_post_id, reply_author_id, reply_author_username, reply_timestamp, scheduled_reply_at, created_at, error_details')
     .eq('reply_status', 'failed')
-    .eq('auto_reply_sent', false)  // ★ auto_reply_sent=false のみ（trueはmax_retries到達済み）
-    .gte('created_at', new Date(now - 24 * 60 * 60 * 1000).toISOString());
+    .eq('auto_reply_sent', false)
+    .gte('created_at', twentyFourHoursAgo)
+    .order('created_at', { ascending: false })
+    .limit(10);
   
   if (error || !failedReplies) {
+    if (error) console.error('❌ 失敗リプライ取得エラー:', error.message);
     return [];
   }
   
@@ -125,6 +130,8 @@ async function getRetryableFailedReplies(): Promise<any[]> {
   
   // バッチ処理のため上限を厳格化
   const targetReplies = retryable.slice(0, 5);
+  if (targetReplies.length === 0) return [];
+  
   const personaIds = Array.from(new Set(targetReplies.map(r => r.persona_id).filter(Boolean)));
 
   const { data: personaRows } = await supabase
