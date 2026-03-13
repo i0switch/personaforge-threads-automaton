@@ -102,6 +102,12 @@ serve(async (req) => {
 
     const authResult = await requireAuthenticatedUser(req, corsHeaders);
     if (!authResult.ok) {
+      const authFailureBody = await authResult.response.clone().text();
+      console.error('❌ generate-auto-reply auth failed', {
+        status: authResult.response.status,
+        body: authFailureBody,
+        origin: req.headers.get('origin') ?? null,
+      });
       return authResult.response;
     }
 
