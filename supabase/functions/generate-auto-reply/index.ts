@@ -65,10 +65,10 @@ const AutoReplyRequestSchema = z.object({
     id: z.string().uuid().optional(),
     user_id: z.string().uuid().optional(),
     name: z.string().max(100),
-    age: z.string().max(50).optional(),
-    personality: z.string().max(1000).optional(),
-    expertise: z.array(z.string().max(100)).optional(),
-    tone_of_voice: z.string().max(5000).optional()
+    age: z.string().max(50).nullish(),
+    personality: z.string().max(1000).nullish(),
+    expertise: z.array(z.string().max(100)).nullish(),
+    tone_of_voice: z.string().max(5000).nullish()
   })
 });
 
