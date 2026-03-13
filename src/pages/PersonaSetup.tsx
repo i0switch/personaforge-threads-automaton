@@ -173,9 +173,12 @@ const PersonaSetup = () => {
       if (formData.threads_app_secret?.trim() && formData.threads_app_secret.trim() !== "" && formData.threads_app_secret !== "***設定済み***") {
         console.log("Encrypting threads_app_secret for persona:", editingPersona?.id || 'new');
 
+        // ペルソナIDベースの大文字キー名を生成
+        const secretKeyName = `THREADS_APP_SECRET_${(editingPersona?.id || `NEW_${Date.now()}`).replace(/-/g, '_').toUpperCase()}`;
+        
         const response = await supabase.functions.invoke('save-secret', {
           body: {
-            keyName: `threads_app_secret_${editingPersona?.id || `new_${Date.now()}`}`,
+            keyName: secretKeyName,
             keyValue: formData.threads_app_secret
           }
         });
@@ -186,7 +189,8 @@ const PersonaSetup = () => {
         }
 
         console.log("Encryption successful:", response.data);
-        personaData.threads_app_secret = response.data.encrypted_key;
+        // save-secretはDBに保存するので、キー名を参照として保持
+        personaData.threads_app_secret = secretKeyName;
       } else if (editingPersona && editingPersona.threads_app_secret) {
         personaData.threads_app_secret = editingPersona.threads_app_secret;
       }
