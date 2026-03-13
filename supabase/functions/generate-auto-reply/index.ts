@@ -102,6 +102,12 @@ serve(async (req) => {
 
     const authResult = await requireAuthenticatedUser(req, corsHeaders);
     if (!authResult.ok) {
+      const authFailureBody = await authResult.response.clone().text();
+      console.error('❌ generate-auto-reply auth failed', {
+        status: authResult.response.status,
+        body: authFailureBody,
+        origin: req.headers.get('origin') ?? null,
+      });
       return authResult.response;
     }
 
@@ -126,6 +132,12 @@ serve(async (req) => {
     console.log(`✅ Input validation passed for persona: ${persona.name}`);
 
     if (persona.user_id && persona.user_id !== requesterUserId) {
+      console.warn('❌ Persona user mismatch', {
+        requesterUserId,
+        personaUserId: persona.user_id,
+        personaId: persona.id ?? null,
+      });
+
       return new Response(
         JSON.stringify({ error: 'Forbidden: persona user mismatch' }),
         {
@@ -147,6 +159,12 @@ serve(async (req) => {
         .maybeSingle();
 
       if (ownershipError || !ownedPersona) {
+        console.warn('❌ Persona ownership required', {
+          requesterUserId,
+          personaId: persona.id,
+          ownershipError: ownershipError?.message ?? null,
+        });
+
         return new Response(
           JSON.stringify({ error: 'Forbidden: persona ownership required' }),
           {
