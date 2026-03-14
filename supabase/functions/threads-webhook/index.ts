@@ -1105,7 +1105,7 @@ async function sendThreadsReply(
       console.error('❌ Threads 投稿公開失敗:', errorText);
       
       // レート制限エラーを検出
-      let errorDetails;
+      let errorDetails: Record<string, any>;
       try {
         const errorData = JSON.parse(errorText);
         errorDetails = {

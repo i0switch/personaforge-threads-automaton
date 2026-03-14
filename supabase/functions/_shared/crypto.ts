@@ -57,13 +57,13 @@ async function decryptWithRawKey(
     try {
       const keyMaterial = await crypto.subtle.importKey(
         'raw',
-        candidate,
+        candidate.buffer as ArrayBuffer,
         { name: 'AES-GCM' },
         false,
         ['decrypt']
       );
       const decrypted = await crypto.subtle.decrypt(
-        { name: 'AES-GCM', iv },
+        { name: 'AES-GCM', iv: iv.buffer as ArrayBuffer },
         keyMaterial,
         ciphertext
       );
@@ -90,7 +90,7 @@ async function derivePBKDF2Key(
   );
 
   return crypto.subtle.deriveKey(
-    { name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' },
+    { name: 'PBKDF2', salt: salt.buffer as ArrayBuffer, iterations: 100000, hash: 'SHA-256' },
     baseKey,
     { name: 'AES-GCM', length: 256 },
     false,
@@ -109,7 +109,7 @@ async function decryptWithPBKDF2(
 ): Promise<string> {
   const derivedKey = await derivePBKDF2Key(encryptionKey, salt, ['decrypt']);
   const decrypted = await crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv },
+    { name: 'AES-GCM', iv: iv.buffer as ArrayBuffer },
     derivedKey,
     ciphertext
   );
