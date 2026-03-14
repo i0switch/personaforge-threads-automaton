@@ -1,7 +1,7 @@
 
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { Client, handle_file } from "https://esm.sh/@gradio/client@1.15.3";
+import { Client, handle_file } from "npm:@gradio/client@1.15.3";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.50.0';
 
 const corsHeaders = {
