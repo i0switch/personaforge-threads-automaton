@@ -63,7 +63,7 @@ serve(async (req) => {
     const { data: keyData, error: keyError } = await supabase
       .from('user_api_keys')
       .select('encrypted_key')
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .eq('key_name', keyName)
       .single();
 
