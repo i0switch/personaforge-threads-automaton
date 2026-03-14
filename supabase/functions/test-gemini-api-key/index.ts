@@ -31,18 +31,25 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // 認証チェック
+    // 認証チェック（getClaims使用でネットワーク呼び出し不要）
     const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
+    if (!authHeader?.startsWith('Bearer ')) {
       throw new Error('認証が必要です');
     }
 
     const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-
-    if (authError || !user) {
+    
+    // anonKeyでクライアント作成し、ユーザートークンで認証
+    const supabaseAnon = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY')!, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    
+    const { data: claimsData, error: claimsError } = await supabaseAnon.auth.getClaims(token);
+    if (claimsError || !claimsData?.claims?.sub) {
       throw new Error('認証に失敗しました');
     }
+    
+    const userId = claimsData.claims.sub as string;
 
     const { keyName } = await req.json();
 
@@ -56,7 +63,7 @@ serve(async (req) => {
     const { data: keyData, error: keyError } = await supabase
       .from('user_api_keys')
       .select('encrypted_key')
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .eq('key_name', keyName)
       .single();
 
