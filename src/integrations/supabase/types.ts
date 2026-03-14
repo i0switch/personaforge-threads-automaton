@@ -182,6 +182,8 @@ export type Database = {
       }
       auto_post_configs: {
         Row: {
+          claim_expires_at: string | null
+          claim_token: string | null
           content_prefs: string | null
           created_at: string
           id: string
@@ -191,12 +193,16 @@ export type Database = {
           persona_id: string
           post_time: string
           post_times: string[] | null
+          processing_started_at: string | null
+          processing_status: string | null
           prompt_template: string | null
           timezone: string
           updated_at: string
           user_id: string
         }
         Insert: {
+          claim_expires_at?: string | null
+          claim_token?: string | null
           content_prefs?: string | null
           created_at?: string
           id?: string
@@ -206,12 +212,16 @@ export type Database = {
           persona_id: string
           post_time: string
           post_times?: string[] | null
+          processing_started_at?: string | null
+          processing_status?: string | null
           prompt_template?: string | null
           timezone?: string
           updated_at?: string
           user_id: string
         }
         Update: {
+          claim_expires_at?: string | null
+          claim_token?: string | null
           content_prefs?: string | null
           created_at?: string
           id?: string
@@ -221,6 +231,8 @@ export type Database = {
           persona_id?: string
           post_time?: string
           post_times?: string[] | null
+          processing_started_at?: string | null
+          processing_status?: string | null
           prompt_template?: string | null
           timezone?: string
           updated_at?: string
