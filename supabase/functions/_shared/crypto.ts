@@ -57,13 +57,13 @@ async function decryptWithRawKey(
     try {
       const keyMaterial = await crypto.subtle.importKey(
         'raw',
-        candidate,
+        candidate.buffer as ArrayBuffer,
         { name: 'AES-GCM' },
         false,
         ['decrypt']
       );
       const decrypted = await crypto.subtle.decrypt(
-        { name: 'AES-GCM', iv },
+        { name: 'AES-GCM', iv: iv.buffer as ArrayBuffer },
         keyMaterial,
         ciphertext
       );
