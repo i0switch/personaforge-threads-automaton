@@ -44,12 +44,12 @@ serve(async (req) => {
       global: { headers: { Authorization: authHeader } },
     });
     
-    const { data: claimsData, error: claimsError } = await supabaseAnon.auth.getClaims(token);
-    if (claimsError || !claimsData?.claims?.sub) {
+    const { data: { user }, error: userError } = await supabaseAnon.auth.getUser(token);
+    if (userError || !user) {
       throw new Error('認証に失敗しました');
     }
     
-    const userId = claimsData.claims.sub as string;
+    const userId = user.id;
 
     const { keyName } = await req.json();
 
