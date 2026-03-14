@@ -2,6 +2,7 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
+import { requireInternalRequest } from '../_shared/auth.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') ?? 'https://threads-genius-ai.lovable.app',
@@ -18,13 +19,11 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  const cronSecret = Deno.env.get('CRON_SECRET');
-  const provided = req.headers.get('x-cron-secret');
-  if (!cronSecret || !provided || provided !== cronSecret) {
-    return new Response(JSON.stringify({ success: false, error: 'Unauthorized' }), {
-      status: 401,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+  // Use shared auth: accepts both x-cron-secret and service_role Authorization
+  const internalAuth = requireInternalRequest(req, corsHeaders);
+  if (!internalAuth.ok) {
+    console.error('Auto-scheduler auth failed - request rejected');
+    return internalAuth.response;
   }
 
   try {
