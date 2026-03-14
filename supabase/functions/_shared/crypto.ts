@@ -109,7 +109,7 @@ async function decryptWithPBKDF2(
 ): Promise<string> {
   const derivedKey = await derivePBKDF2Key(encryptionKey, salt, ['decrypt']);
   const decrypted = await crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv },
+    { name: 'AES-GCM', iv: iv.buffer as ArrayBuffer },
     derivedKey,
     ciphertext
   );

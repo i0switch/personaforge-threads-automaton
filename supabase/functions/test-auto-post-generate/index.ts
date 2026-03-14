@@ -45,14 +45,14 @@ async function getUserApiKey(userId: string, keyName: string): Promise<string | 
 
       const keyMaterial = await crypto.subtle.importKey(
         'raw',
-        materialBytes,
+        materialBytes.buffer as ArrayBuffer,
         { name: 'AES-GCM' },
         false,
         ['decrypt']
       );
 
       const decrypted = await crypto.subtle.decrypt(
-        { name: 'AES-GCM', iv },
+        { name: 'AES-GCM', iv: iv.buffer as ArrayBuffer },
         keyMaterial,
         ciphertext
       );

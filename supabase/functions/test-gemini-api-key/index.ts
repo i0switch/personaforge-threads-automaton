@@ -192,7 +192,7 @@ serve(async (req) => {
       JSON.stringify({
         success: false,
         status: 'error',
-        message: error.message || '予期しないエラーが発生しました',
+        message: (error instanceof Error ? error.message : String(error)) || '予期しないエラーが発生しました',
         details: error
       }),
       { 

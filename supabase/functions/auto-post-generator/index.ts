@@ -916,7 +916,7 @@ serve(async (req) => {
               console.log(`📅 All slots processed for persona ${persona.name}, next run: ${nextRunAt}`);
             } else {
               // 🚨 CRITICAL: 部分的に処理した場合も、次の未処理スロットを計算
-              const remainingSlots = randomTimes.filter(time => !postedTimesToday.includes(time));
+              const remainingSlots = randomTimes.filter((time: string) => !postedTimesToday.includes(time));
               if (remainingSlots.length > 0) {
                 // 次の未処理スロットの時刻を計算
                 const nextSlot = remainingSlots[0];
