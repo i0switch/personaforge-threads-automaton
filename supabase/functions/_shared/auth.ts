@@ -14,6 +14,7 @@ export function requireInternalRequest(req: Request, corsHeaders: CorsHeaders): 
   const providedCronSecret = req.headers.get('x-cron-secret');
 
   if (cronSecret && providedCronSecret && providedCronSecret === cronSecret) {
+    console.log('✅ Internal auth success via x-cron-secret');
     return { ok: true };
   }
 
@@ -23,7 +24,20 @@ export function requireInternalRequest(req: Request, corsHeaders: CorsHeaders): 
   const apiKey = req.headers.get('apikey');
 
   if (serviceRoleKey && (bearer === serviceRoleKey || apiKey === serviceRoleKey)) {
+    console.log('✅ Internal auth success via service_role key');
     return { ok: true };
+  }
+
+  // 認証失敗時のログ強化
+  if (!cronSecret) console.warn('⚠️ Server missing CRON_SECRET environment variable');
+  if (!serviceRoleKey) console.warn('⚠️ Server missing SUPABASE_SERVICE_ROLE_KEY environment variable');
+  
+  if (providedCronSecret) {
+    console.error('❌ Internal auth failed: x-cron-secret mismatch');
+  } else if (bearer || apiKey) {
+    console.error('❌ Internal auth failed: service_role key mismatch');
+  } else {
+    console.error('❌ Internal auth failed: No valid internal authentication headers found');
   }
 
   return {

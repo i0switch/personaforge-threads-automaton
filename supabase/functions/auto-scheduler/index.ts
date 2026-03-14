@@ -19,6 +19,24 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // 🛡️ Pre-flight check: Ensure environment is configured
+  const url = Deno.env.get('SUPABASE_URL');
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+
+  if (!url || url.length < 5) {
+    console.error('🚨 CONFIG ERROR: SUPABASE_URL is missing or invalid.');
+    return new Response(JSON.stringify({ error: 'Server configuration error: missing SUPABASE_URL' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  }
+
+  if (!serviceKey || serviceKey.length < 10) {
+    console.error('🚨 CONFIG ERROR: SUPABASE_SERVICE_ROLE_KEY is missing or too short.');
+    console.error('👉 ACTION REQUIRED: Set the SUPABASE_SERVICE_ROLE_KEY environment variable in Supabase dashboard.');
+    return new Response(
+      JSON.stringify({ error: 'Server configuration error: missing or invalid service role key' }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
   // Use shared auth: accepts both x-cron-secret and service_role Authorization
   const internalAuth = requireInternalRequest(req, corsHeaders);
   if (!internalAuth.ok) {

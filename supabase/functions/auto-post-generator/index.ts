@@ -59,6 +59,12 @@ async function releaseExpiredAutoPostClaims(nowIso: string): Promise<number> {
     .select('id');
 
   if (error) {
+    if (error.code === '42703') {
+      console.error('🚨 DATABASE MISMATCH: Column "processing_status" does not exist in "auto_post_configs" table.');
+      console.error('👉 ACTION REQUIRED: Please apply the migration (20260314011311_9b6d3fce-a5bf-489f-91a4-dc44fc6e3334.sql) to the live database.');
+      // 致命的な不整合のため、ここでは例外を投げて処理を停止させる
+      throw new Error('Database schema mismatch: missing processing_status column');
+    }
     console.error('Failed to release expired auto-post claims:', error);
     return 0;
   }
@@ -88,6 +94,12 @@ async function claimAutoPostConfig(cfgId: string, expectedNextRunAt: string, wor
     .maybeSingle();
 
   if (error) {
+    if (error.code === '42703') {
+      const errorMsg = '🚨 DATABASE MISMATCH: Column "processing_status" or "claim_token" does not exist in "auto_post_configs".';
+      console.error(errorMsg);
+      console.error('👉 ACTION REQUIRED: Please apply the migration (20260314011311_9b6d3fce-a5bf-489f-91a4-dc44fc6e3334.sql) to the live database.');
+      throw new Error(`Database schema mismatch (42703): ${errorMsg}`);
+    }
     console.error(`Failed to claim auto-post config ${cfgId}:`, error);
     return null;
   }
