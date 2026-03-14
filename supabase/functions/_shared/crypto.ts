@@ -63,9 +63,9 @@ async function decryptWithRawKey(
         ['decrypt']
       );
       const decrypted = await crypto.subtle.decrypt(
-        { name: 'AES-GCM', iv: iv.buffer as ArrayBuffer },
+        { name: 'AES-GCM', iv: new Uint8Array(iv).buffer },
         keyMaterial,
-        ciphertext
+        new Uint8Array(ciphertext).buffer
       );
       return decoder.decode(decrypted);
     } catch (error) {
