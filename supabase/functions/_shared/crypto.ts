@@ -57,7 +57,7 @@ async function decryptWithRawKey(
     try {
       const keyMaterial = await crypto.subtle.importKey(
         'raw',
-        candidate.buffer as ArrayBuffer,
+        new Uint8Array(candidate).buffer,
         { name: 'AES-GCM' },
         false,
         ['decrypt']
