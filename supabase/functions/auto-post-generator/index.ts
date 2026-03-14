@@ -902,7 +902,7 @@ serve(async (req) => {
             
           if (!activeErr && stillActive?.is_active) {
             // 次回実行時刻を計算
-            const allSlotsPosted = randomTimes.every(time => postedTimesToday.includes(time));
+            const allSlotsPosted = randomTimes.every((time: string) => postedTimesToday.includes(time));
             const updateData: any = { 
               posted_times_today: postedTimesToday,
               last_posted_date: today,
