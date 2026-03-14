@@ -1,6 +1,7 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
+import { decryptValue } from '../_shared/crypto.ts';
 
 function getCorsHeaders(req: Request) {
   return {
@@ -29,37 +30,40 @@ serve(async (req) => {
     
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // 認証チェック（getClaims使用でネットワーク呼び出し不要）
+    // ユーザー認証
     const authHeader = req.headers.get('Authorization');
     if (!authHeader?.startsWith('Bearer ')) {
-      throw new Error('認証が必要です');
+      return new Response(JSON.stringify({
+        success: false, status: 'auth_error', message: '認証が必要です'
+      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 });
     }
 
     const token = authHeader.replace('Bearer ', '');
-    
-    // anonKeyでクライアント作成し、ユーザートークンで認証
     const supabaseAnon = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY')!, {
       global: { headers: { Authorization: authHeader } },
     });
     
     const { data: { user }, error: userError } = await supabaseAnon.auth.getUser(token);
     if (userError || !user) {
-      throw new Error('認証に失敗しました');
+      return new Response(JSON.stringify({
+        success: false, status: 'auth_error', message: '認証に失敗しました'
+      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 });
     }
     
     const userId = user.id;
-
     const { keyName } = await req.json();
 
     if (!keyName) {
-      throw new Error('keyNameが必要です');
+      return new Response(JSON.stringify({
+        success: false, status: 'error', message: 'keyNameが必要です'
+      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 });
     }
 
-    console.log(`🔑 Testing API key: ${keyName}`);
+    console.log(`🔑 Testing API key: ${keyName} for user: ${userId}`);
 
-    // データベースから暗号化されたキーを取得
+    // Service Roleクライアントで暗号化キーをDBから取得
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
     const { data: keyData, error: keyError } = await supabase
       .from('user_api_keys')
       .select('encrypted_key')
@@ -68,137 +72,76 @@ serve(async (req) => {
       .single();
 
     if (keyError || !keyData) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          status: 'not_found',
-          message: 'APIキーが見つかりません'
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      console.error(`❌ Key not found: ${keyName} for user: ${userId}`);
+      return new Response(JSON.stringify({
+        success: false, status: 'not_found', message: 'APIキーが見つかりません'
+      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    // 復号化（retrieve-secretを使用）
-    const { data: secretData, error: secretError } = await supabase.functions.invoke(
-      'retrieve-secret',
-      {
-        body: { key: keyName, fallback: keyData.encrypted_key },
-        headers: { Authorization: authHeader }
-      }
-    );
+    // _shared/crypto.ts で直接復号（retrieve-secret を経由しない）
+    const decryptResult = await decryptValue(keyData.encrypted_key, `test-gemini:${keyName}`);
 
-    if (secretError || !secretData?.secret) {
-      throw new Error('APIキーの復号化に失敗しました');
+    if (!decryptResult.success) {
+      console.error(`❌ Decryption failed: ${keyName}, errorType: ${decryptResult.errorType}`);
+      return new Response(JSON.stringify({
+        success: false,
+        status: 'decrypt_error',
+        message: decryptResult.errorType === 'no_encryption_key'
+          ? 'ENCRYPTION_KEYが未設定です'
+          : 'APIキーの復号化に失敗しました',
+        errorType: decryptResult.errorType,
+      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    const apiKey = secretData.secret;
+    const apiKey = decryptResult.value;
 
-    // Gemini APIにテストリクエストを送信
+    // Gemini APIにテストリクエスト
     console.log('📡 Sending test request to Gemini API...');
-    
     const geminiResponse = await fetch(
       'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent',
       {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-goog-api-key': apiKey,
-        },
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
         body: JSON.stringify({
-          contents: [{
-            parts: [{
-              text: 'Hello'
-            }]
-          }]
+          contents: [{ parts: [{ text: 'Hello' }] }]
         })
       }
     );
 
     const responseText = await geminiResponse.text();
     console.log(`📊 Gemini API Response Status: ${geminiResponse.status}`);
-    console.log(`📊 Gemini API Response: ${responseText.substring(0, 200)}...`);
 
     if (!geminiResponse.ok) {
       let errorData;
-      try {
-        errorData = JSON.parse(responseText);
-      } catch {
-        errorData = { message: responseText };
+      try { errorData = JSON.parse(responseText); } catch { errorData = { message: responseText }; }
+
+      if (geminiResponse.status === 429 || responseText.includes('RESOURCE_EXHAUSTED') || responseText.includes('quota')) {
+        return new Response(JSON.stringify({
+          success: false, status: 'quota_exceeded', message: 'クォータ制限に達しています', details: errorData
+        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
 
-      // クォータ枯渇のチェック
-      if (geminiResponse.status === 429 || 
-          responseText.includes('RESOURCE_EXHAUSTED') ||
-          responseText.includes('quota')) {
-        return new Response(
-          JSON.stringify({
-            success: false,
-            status: 'quota_exceeded',
-            message: 'クォータ制限に達しています',
-            details: errorData
-          }),
-          { 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 200 
-          }
-        );
-      }
-
-      // 無効なAPIキー
       if (geminiResponse.status === 400 || geminiResponse.status === 403) {
-        return new Response(
-          JSON.stringify({
-            success: false,
-            status: 'invalid_key',
-            message: '無効なAPIキーです',
-            details: errorData
-          }),
-          { 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 200 
-          }
-        );
+        return new Response(JSON.stringify({
+          success: false, status: 'invalid_key', message: '無効なAPIキーです', details: errorData
+        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
 
-      // その他のエラー
-      return new Response(
-        JSON.stringify({
-          success: false,
-          status: 'error',
-          message: `APIエラー: ${geminiResponse.status}`,
-          details: errorData
-        }),
-        { 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 200 
-        }
-      );
+      return new Response(JSON.stringify({
+        success: false, status: 'error', message: `APIエラー: ${geminiResponse.status}`, details: errorData
+      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    // 成功
     console.log('✅ API Key test successful');
-    return new Response(
-      JSON.stringify({
-        success: true,
-        status: 'ok',
-        message: 'APIキーは正常に動作しています'
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return new Response(JSON.stringify({
+      success: true, status: 'ok', message: 'APIキーは正常に動作しています'
+    }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
   } catch (error) {
     console.error('❌ Test error:', error);
-    return new Response(
-      JSON.stringify({
-        success: false,
-        status: 'error',
-        message: (error instanceof Error ? error.message : String(error)) || '予期しないエラーが発生しました',
-        details: error
-      }),
-      { 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200
-      }
-    );
+    return new Response(JSON.stringify({
+      success: false, status: 'error',
+      message: (error instanceof Error ? error.message : String(error)) || '予期しないエラーが発生しました',
+    }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 });
   }
 });
