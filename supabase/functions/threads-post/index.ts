@@ -340,6 +340,8 @@ serve(async (req) => {
       const { data: tokenData, error: tokenError } = await supabase.functions.invoke('retrieve-secret', {
         body: { 
           key: `threads_access_token_${post.persona_id}`,
+          userId: userId,
+          personaId: post.persona_id,
           fallback: post.personas?.threads_access_token
         },
         headers: {
